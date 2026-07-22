@@ -5,7 +5,8 @@ import pytest
 from autoviz.services.dataset import register_dataset
 from autoviz.services.registry import DatasetRegistry
 
-TEST_DATA = Path(__file__).parent.parent / "test-data"
+# Repo root / test-data (conftest lives at backend/tests/).
+TEST_DATA = Path(__file__).parent.parent.parent / "test-data"
 
 
 def data_path(*parts: str) -> str:

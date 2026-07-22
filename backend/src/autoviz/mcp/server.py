@@ -2,7 +2,7 @@
 
 Each tool is a thin adapter (Docs/06 §3); business logic lives in
 autoviz.services so FastAPI routes can reuse the exact same functions.
-Run: python -m autoviz.mcp_server  (stdio transport).
+Run: python -m autoviz.mcp  (stdio transport).
 """
 
 from typing import Any
