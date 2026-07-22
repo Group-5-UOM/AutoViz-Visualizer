@@ -1,0 +1,109 @@
+.board-sidebar {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-width);
+  height: 100%;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  transition: width 0.22s ease, margin 0.22s ease, opacity 0.22s ease;
+  z-index: 20;
+}
+
+.board-sidebar.is-collapsed {
+  width: 0;
+  border-right: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: var(--sidebar-width);
+  height: 100%;
+  padding: 12px 0 10px;
+  text-align: center;
+}
+
+.sidebar-top,
+.sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--text-secondary);
+  transition: color 0.15s ease;
+  width: 100%;
+}
+
+.sidebar-btn:hover {
+  color: var(--text-primary);
+}
+
+.sidebar-btn:hover .sidebar-icon-wrap {
+  background: var(--bg-hover);
+}
+
+.sidebar-btn.is-active {
+  color: var(--accent);
+}
+
+.sidebar-btn.is-active .sidebar-icon-wrap {
+  background: var(--accent-soft);
+}
+
+.sidebar-icon-wrap {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+}
+
+.sidebar-label {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 500;
+}
+
+.sidebar-collapse-btn {
+  margin-top: 6px;
+  width: 36px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+}
+
+.sidebar-collapse-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.collapse-chevrons {
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .board-sidebar:not(.is-collapsed) {
+    position: absolute;
+    left: 0;
+    top: var(--topbar-height);
+    bottom: 0;
+    box-shadow: var(--shadow-md);
+  }
+}
