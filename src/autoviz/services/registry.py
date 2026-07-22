@@ -1,0 +1,37 @@
+"""In-memory dataset registry — dataset_id -> loaded DataFrame + schema + profile."""
+
+import hashlib
+import time
+from dataclasses import dataclass, field
+from typing import Any
+
+import pandas as pd
+
+
+@dataclass
+class DatasetRecord:
+    dataset_id: str
+    source: str
+    df: pd.DataFrame
+    # Logical column types: name -> "number" | "boolean" | "datetime" | "string"
+    schema: dict[str, str]
+    profile: dict[str, Any] = field(default_factory=dict)
+
+
+class DatasetRegistry:
+    def __init__(self) -> None:
+        self._records: dict[str, DatasetRecord] = {}
+
+    def new_id(self, source: str) -> str:
+        digest = hashlib.sha1(f"{source}:{time.time_ns()}".encode()).hexdigest()[:8]
+        return f"ds_{digest}"
+
+    def add(self, record: DatasetRecord) -> None:
+        self._records[record.dataset_id] = record
+
+    def get(self, dataset_id: str) -> DatasetRecord | None:
+        return self._records.get(dataset_id)
+
+
+# Module-level registry shared by the MCP server process.
+REGISTRY = DatasetRegistry()

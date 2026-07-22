@@ -1,0 +1,73 @@
+"""Canonical analysis-plan schema — single source of truth for the plan shape.
+
+Pydantic v2 models implementing Docs/06-MCP-Server-Plan.md §2. Allow-lists are
+enforced structurally via Literal types at parse time; semantic checks against
+a dataset's profiled schema live in services/validation.py.
+"""
+
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+FilterOp = Literal["eq", "neq", "gt", "lt", "contains"]
+AggFn = Literal["sum", "mean", "min", "max", "count"]
+DeriveFn = Literal["month", "year", "day", "lower", "round"]
+ChartType = Literal["bar", "line", "scatter", "pie"]
+Intent = Literal[
+    "comparison", "trend", "distribution", "relationship", "composition", "ranking"
+]
+SortDir = Literal["asc", "desc"]
+
+
+class _StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class Filter(_StrictModel):
+    column: str
+    op: FilterOp
+    value: Any
+
+
+class Derive(_StrictModel):
+    name: str
+    from_: str = Field(alias="from")
+    fn: DeriveFn
+
+
+class Aggregation(_StrictModel):
+    column: str
+    fn: AggFn
+    as_: str = Field(alias="as")
+
+
+class Sort(_StrictModel):
+    by: str
+    dir: SortDir = "asc"
+
+
+class ChartSpec(_StrictModel):
+    type: ChartType
+    x: str
+    y: str
+    color: str | None = None
+
+
+class AnalysisPlan(_StrictModel):
+    dataset_id: str
+    intent: Intent
+    select: list[str] = Field(default_factory=list)
+    filters: list[Filter] = Field(default_factory=list)
+    derive: list[Derive] = Field(default_factory=list)
+    group_by: list[str] = Field(default_factory=list, max_length=2)
+    aggregations: list[Aggregation] = Field(default_factory=list)
+    sort: list[Sort] = Field(default_factory=list)
+    limit: int = Field(default=100, ge=1)
+    chart: ChartSpec | None = None
+
+    def produced_columns(self) -> set[str]:
+        """Columns present in the result table this plan would produce."""
+        if self.group_by or self.aggregations:
+            return set(self.group_by) | {a.as_ for a in self.aggregations}
+        produced = set(self.select) | {d.name for d in self.derive}
+        return produced

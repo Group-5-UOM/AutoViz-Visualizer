@@ -1,0 +1,86 @@
+"""Tool Orchestrator: validate -> execute -> recommend -> generate as one flow.
+
+Partial failure is this layer's responsibility (Docs/06 §1): every failure is
+returned as structured error content naming the step that failed, never a
+thrown exception, so the caller can reason about retry vs. escalation.
+"""
+
+from typing import Any
+
+from autoviz.schema.analysis_plan import AnalysisPlan
+from autoviz.services.charts import generate_chart, recommend_chart_type
+from autoviz.services.execution import execute_analysis
+from autoviz.services.registry import REGISTRY, DatasetRegistry
+from autoviz.services.validation import validate_analysis_plan
+
+
+def run_pipeline(
+    dataset_id: str,
+    analysis_plan: dict[str, Any],
+    registry: DatasetRegistry = REGISTRY,
+) -> dict[str, Any]:
+    verdict = validate_analysis_plan(dataset_id, analysis_plan, registry)
+    if not verdict["valid"]:
+        return {"status": "error", "failed_step": "validate_analysis_plan", "errors": verdict["errors"]}
+    effective_plan = verdict.get("repaired_plan", analysis_plan)
+
+    executed = execute_analysis(dataset_id, effective_plan, registry)
+    if "error" in executed:
+        return {
+            "status": "error",
+            "failed_step": "execute_analysis",
+            "errors": [executed["error"], *executed.get("validation_errors", [])],
+        }
+
+    plan = AnalysisPlan.model_validate(effective_plan)
+    record = registry.get(dataset_id)
+    if record is None:
+        return {"status": "error", "failed_step": "execute_analysis", "errors": [f"Unknown dataset_id: {dataset_id}"]}
+    result_table = executed["result_table"]
+
+    if plan.chart is not None:
+        chart_spec: dict[str, Any] = plan.chart.model_dump(exclude_none=True)
+        recommendation = None
+    else:
+        result_columns = list(result_table[0].keys()) if result_table else []
+        effective_types = dict(record.schema)
+        for d in plan.derive:
+            effective_types[d.name] = "number" if d.fn in ("month", "year", "day", "round") else "string"
+        for a in plan.aggregations:
+            effective_types[a.as_] = "number"
+        result_schema = [
+            {"name": c, "type": effective_types.get(c, "string")} for c in result_columns
+        ]
+        recommendation = recommend_chart_type(result_schema, plan.intent)
+        if "error" in recommendation:
+            return {
+                "status": "error",
+                "failed_step": "recommend_chart_type",
+                "errors": [recommendation["error"]],
+                "result": executed,
+            }
+        chart_spec = {
+            "type": recommendation["chart_type"],
+            "x": recommendation["x"],
+            "y": recommendation["y"],
+        }
+        if recommendation.get("color"):
+            chart_spec["color"] = recommendation["color"]
+
+    chart = generate_chart(result_table, chart_spec)
+    if not chart["valid"]:
+        return {
+            "status": "error",
+            "failed_step": "generate_chart",
+            "errors": chart["warnings"],
+            "result": executed,
+        }
+
+    return {
+        "status": "ok",
+        "result": executed,
+        "chart_spec": chart_spec,
+        "recommendation": recommendation,
+        "vega_lite_spec": chart["vega_lite_spec"],
+        "warnings": chart["warnings"],
+    }
