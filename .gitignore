@@ -13,3 +13,7 @@ backend/exports/
 
 # API keys (planner LLM)
 .env
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
