@@ -7,6 +7,7 @@ thrown exception, so the caller can reason about retry vs. escalation.
 
 from typing import Any
 
+from autoviz.schema.allowlists import DATE_DERIVE_FNS, NUMERIC_DERIVE_FNS
 from autoviz.schema.analysis_plan import AnalysisPlan
 from autoviz.services.charts import generate_chart, recommend_chart_type
 from autoviz.services.execution import execute_analysis
@@ -45,7 +46,9 @@ def run_pipeline(
         result_columns = list(result_table[0].keys()) if result_table else []
         effective_types = dict(record.schema)
         for d in plan.derive:
-            effective_types[d.name] = "number" if d.fn in ("month", "year", "day", "round") else "string"
+            effective_types[d.name] = (
+                "number" if d.fn in (DATE_DERIVE_FNS | NUMERIC_DERIVE_FNS) else "string"
+            )
         for a in plan.aggregations:
             effective_types[a.as_] = "number"
         result_schema = [
@@ -62,8 +65,9 @@ def run_pipeline(
         chart_spec = {
             "type": recommendation["chart_type"],
             "x": recommendation["x"],
-            "y": recommendation["y"],
         }
+        if recommendation.get("y") is not None:  # histogram has no y column
+            chart_spec["y"] = recommendation["y"]
         if recommendation.get("color"):
             chart_spec["color"] = recommendation["color"]
 

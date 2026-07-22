@@ -32,6 +32,12 @@ class DatasetRegistry:
     def get(self, dataset_id: str) -> DatasetRecord | None:
         return self._records.get(dataset_id)
 
+    def remove(self, dataset_id: str) -> bool:
+        return self._records.pop(dataset_id, None) is not None
+
+    def all(self) -> list[DatasetRecord]:
+        return list(self._records.values())
+
 
 # Module-level registry shared by the MCP server process.
 REGISTRY = DatasetRegistry()

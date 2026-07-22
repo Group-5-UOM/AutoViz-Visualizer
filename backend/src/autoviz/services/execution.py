@@ -22,15 +22,22 @@ _DERIVE_SQL = {
     "month": "date_part('month', {col})",
     "year": "date_part('year', {col})",
     "day": "date_part('day', {col})",
+    "weekday": "date_part('dow', {col})",
     "lower": "lower({col})",
+    "upper": "upper({col})",
+    "trim": "trim({col})",
     "round": "round({col})",
+    "abs": "abs({col})",
 }
 
+# Scalar-valued ops; "in" and "between" build their placeholders in build_sql.
 _FILTER_SQL = {
     "eq": "{col} = ?",
     "neq": "{col} != ?",
     "gt": "{col} > ?",
+    "gte": "{col} >= ?",
     "lt": "{col} < ?",
+    "lte": "{col} <= ?",
     "contains": "contains(CAST({col} AS VARCHAR), ?)",
 }
 
@@ -40,6 +47,8 @@ _AGG_SQL = {
     "min": "min({col})",
     "max": "max({col})",
     "count": "count({col})",
+    "median": "median({col})",
+    "count_distinct": "count(DISTINCT {col})",
 }
 
 
@@ -68,8 +77,17 @@ def build_sql(plan: AnalysisPlan) -> tuple[str, list[Any]]:
     params: list[Any] = []
     where_parts: list[str] = []
     for f in plan.filters:
-        where_parts.append(_FILTER_SQL[f.op].format(col=_q(f.column)))
-        params.append(f.value)
+        col = _q(f.column)
+        if f.op == "between":
+            where_parts.append(f"{col} BETWEEN ? AND ?")
+            params.extend(f.value)
+        elif f.op == "in":
+            placeholders = ", ".join("?" for _ in f.value)
+            where_parts.append(f"{col} IN ({placeholders})")
+            params.extend(f.value)
+        else:
+            where_parts.append(_FILTER_SQL[f.op].format(col=col))
+            params.append(f.value)
 
     sql = f"WITH base AS ({base}) SELECT {', '.join(select_parts)} FROM base"
     if where_parts:

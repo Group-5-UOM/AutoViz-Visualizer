@@ -46,6 +46,19 @@ def test_op_outside_allowlist_fails(registry, iris_id):
     assert not verdict["valid"]
 
 
+def test_agg_fn_outside_allowlist_fails(registry, iris_id):
+    plan = _iris_plan(
+        aggregations=[{"column": "sepal_length", "fn": "variance", "as": "var"}], chart=None
+    )
+    verdict = validate_analysis_plan(iris_id, plan, registry)
+    assert not verdict["valid"]
+
+
+def test_unknown_top_level_field_fails(registry, iris_id):
+    verdict = validate_analysis_plan(iris_id, _iris_plan(sql="SELECT 1"), registry)
+    assert not verdict["valid"]
+
+
 def test_group_by_capped_at_two(registry, iris_id):
     plan = _iris_plan(group_by=["species", "sepal_length", "sepal_width"])
     verdict = validate_analysis_plan(iris_id, plan, registry)
@@ -91,3 +104,87 @@ def test_injection_like_filter_value_rejected(registry, iris_id):
     verdict = validate_analysis_plan(iris_id, plan, registry)
     assert not verdict["valid"]
     assert any("resembles code" in e for e in verdict["errors"])
+
+
+def test_between_requires_two_values(registry, iris_id):
+    plan = _iris_plan(
+        filters=[{"column": "sepal_length", "op": "between", "value": [1.0]}]
+    )
+    verdict = validate_analysis_plan(iris_id, plan, registry)
+    assert not verdict["valid"]
+    assert any("exactly 2" in e for e in verdict["errors"])
+
+
+def test_between_two_values_passes(registry, iris_id):
+    plan = _iris_plan(
+        filters=[{"column": "sepal_length", "op": "between", "value": [4.0, 6.0]}]
+    )
+    verdict = validate_analysis_plan(iris_id, plan, registry)
+    assert verdict["valid"], verdict["errors"]
+
+
+def test_in_requires_a_list(registry, iris_id):
+    plan = _iris_plan(filters=[{"column": "species", "op": "in", "value": "setosa"}])
+    verdict = validate_analysis_plan(iris_id, plan, registry)
+    assert not verdict["valid"]
+    assert any("list" in e for e in verdict["errors"])
+
+
+def test_scalar_op_rejects_list_value(registry, iris_id):
+    plan = _iris_plan(filters=[{"column": "species", "op": "eq", "value": ["setosa"]}])
+    verdict = validate_analysis_plan(iris_id, plan, registry)
+    assert not verdict["valid"]
+    assert any("scalar" in e for e in verdict["errors"])
+
+
+def test_injection_inside_in_list_rejected(registry, iris_id):
+    plan = _iris_plan(
+        filters=[{"column": "species", "op": "in", "value": ["setosa", "x; DROP TABLE df"]}]
+    )
+    verdict = validate_analysis_plan(iris_id, plan, registry)
+    assert not verdict["valid"]
+    assert any("resembles code" in e for e in verdict["errors"])
+
+
+def test_median_on_string_column_fails(registry, iris_id):
+    plan = _iris_plan(
+        aggregations=[{"column": "species", "fn": "median", "as": "med"}], chart=None
+    )
+    verdict = validate_analysis_plan(iris_id, plan, registry)
+    assert not verdict["valid"]
+    assert any("numeric" in e for e in verdict["errors"])
+
+
+def test_gte_on_string_column_fails(registry, iris_id):
+    plan = _iris_plan(filters=[{"column": "species", "op": "gte", "value": "a"}])
+    verdict = validate_analysis_plan(iris_id, plan, registry)
+    assert not verdict["valid"]
+
+
+def test_histogram_rejects_non_numeric_x(registry, iris_id):
+    plan = _iris_plan(
+        group_by=["species"],
+        aggregations=[{"column": "sepal_length", "fn": "mean", "as": "avg"}],
+        chart={"type": "histogram", "x": "species"},
+    )
+    verdict = validate_analysis_plan(iris_id, plan, registry)
+    assert not verdict["valid"]
+    assert any("numeric" in e for e in verdict["errors"])
+
+
+def test_histogram_without_y_passes(registry, iris_id):
+    plan = {
+        "dataset_id": "unused",
+        "intent": "distribution",
+        "select": ["sepal_length"],
+        "chart": {"type": "histogram", "x": "sepal_length"},
+    }
+    verdict = validate_analysis_plan(iris_id, plan, registry)
+    assert verdict["valid"], verdict["errors"]
+
+
+def test_non_histogram_requires_y(registry, iris_id):
+    plan = _iris_plan(chart={"type": "bar", "x": "species"})
+    verdict = validate_analysis_plan(iris_id, plan, registry)
+    assert not verdict["valid"]
+    assert any("chart.y" in e for e in verdict["errors"])

@@ -15,6 +15,8 @@ from autoviz.schema.allowlists import (
     AGG_FNS,
     DATE_DERIVE_FNS,
     FILTER_OPS,
+    LIST_VALUE_OPS,
+    MAX_IN_VALUES,
     MAX_LIMIT,
     NUMERIC_DERIVE_FNS,
     NUMERIC_ONLY_AGGS,
@@ -106,8 +108,35 @@ def validate_analysis_plan(
                 f"filter on '{f.column}': op '{f.op}' requires a numeric or datetime "
                 f"column ({col_type} given)"
             )
-        if _looks_like_code(f.value):
-            errors.append(f"filter on '{f.column}': value resembles code and is rejected")
+        # Value shape: "in"/"between" take a list of scalars, everything else a scalar.
+        if f.op in LIST_VALUE_OPS:
+            if not isinstance(f.value, list) or any(isinstance(v, (list, dict)) for v in f.value):
+                errors.append(
+                    f"filter on '{f.column}': op '{f.op}' requires a list of scalar values"
+                )
+                continue
+            if f.op == "between" and len(f.value) != 2:
+                errors.append(
+                    f"filter on '{f.column}': op 'between' requires exactly 2 values "
+                    f"[low, high] ({len(f.value)} given)"
+                )
+            if f.op == "in" and not (1 <= len(f.value) <= MAX_IN_VALUES):
+                errors.append(
+                    f"filter on '{f.column}': op 'in' requires 1-{MAX_IN_VALUES} values "
+                    f"({len(f.value)} given)"
+                )
+            for v in f.value:
+                if _looks_like_code(v):
+                    errors.append(
+                        f"filter on '{f.column}': a value resembles code and is rejected"
+                    )
+        else:
+            if isinstance(f.value, (list, dict)):
+                errors.append(
+                    f"filter on '{f.column}': op '{f.op}' requires a scalar value, not a list"
+                )
+            if _looks_like_code(f.value):
+                errors.append(f"filter on '{f.column}': value resembles code and is rejected")
 
     for col in plan.group_by:
         if col not in effective:
@@ -146,6 +175,18 @@ def validate_analysis_plan(
                     f"chart.{channel}: column '{col}' is not produced by the query "
                     f"(must come from select, group_by, derive, or an aggregation alias)"
                 )
+        if plan.chart.type == "histogram":
+            # Histogram bins one numeric column; y is a count, not a column.
+            if plan.chart.y is not None:
+                errors.append("chart.y: histogram takes no y column (y is the binned count)")
+            agg_aliases = {a.as_ for a in plan.aggregations}  # always numeric
+            x_type = "number" if plan.chart.x in agg_aliases else effective.get(plan.chart.x)
+            if plan.chart.x in produced and x_type != "number":
+                errors.append(
+                    f"chart.x: histogram requires a numeric column, '{plan.chart.x}' is {x_type}"
+                )
+        elif plan.chart.y is None:
+            errors.append(f"chart.y: required for chart type '{plan.chart.type}'")
 
     result: dict[str, Any] = {"valid": not errors, "errors": errors}
     if repaired is not None and not errors:

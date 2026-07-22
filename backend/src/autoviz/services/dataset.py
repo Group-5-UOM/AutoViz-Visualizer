@@ -5,6 +5,7 @@ inert JSON scalars, never interpreted or executed.
 """
 
 import math
+import os
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,38 @@ import pandas as pd
 from autoviz.services.registry import REGISTRY, DatasetRecord, DatasetRegistry
 
 PREVIEW_MAX_ROWS = 50
+
+
+def _default_data_roots() -> list[Path]:
+    # dataset.py sits at backend/src/autoviz/services/; parents[4] is the repo root.
+    repo_root = Path(__file__).resolve().parents[4]
+    return [repo_root / "test-data", repo_root]
+
+
+# Approved roots for resolving relative file_refs. Override with AUTOVIZ_DATA_ROOTS
+# (os.pathsep-separated list of directories).
+DATA_ROOTS: list[Path] = [
+    Path(p).resolve()
+    for p in os.environ.get("AUTOVIZ_DATA_ROOTS", "").split(os.pathsep)
+    if p.strip()
+] or _default_data_roots()
+
+
+def _resolve_file_ref(file_ref: str) -> Path | None:
+    """Resolve a file_ref to a real CSV path.
+
+    Absolute paths are used as-is (host-provided references). Relative paths are
+    resolved against the approved DATA_ROOTS only, and the resolved path must
+    stay inside its root — traversal out of an approved root is rejected.
+    """
+    path = Path(file_ref)
+    if path.is_absolute():
+        return path if path.is_file() else None
+    for root in DATA_ROOTS:
+        candidate = (root / path).resolve()
+        if candidate.is_file() and candidate.is_relative_to(root.resolve()):
+            return candidate
+    return None
 
 
 def _logical_type(series: pd.Series) -> str:
@@ -80,9 +113,13 @@ def _build_profile(df: pd.DataFrame, schema: dict[str, str]) -> dict[str, Any]:
 def register_dataset(
     file_ref: str, registry: DatasetRegistry = REGISTRY
 ) -> dict[str, Any]:
-    path = Path(file_ref)
-    if not path.is_file():
-        return {"error": f"File not found: {file_ref}"}
+    path = _resolve_file_ref(file_ref)
+    if path is None:
+        return {
+            "error": f"File not found: {file_ref}",
+            "hint": "Use an absolute path, or a path relative to an approved data root: "
+            + "; ".join(str(r) for r in DATA_ROOTS),
+        }
     try:
         df = pd.read_csv(path)
     except Exception as exc:
@@ -103,6 +140,28 @@ def register_dataset(
         "row_count": int(len(df)),
         "column_count": int(len(df.columns)),
     }
+
+
+def list_datasets(registry: DatasetRegistry = REGISTRY) -> dict[str, Any]:
+    return {
+        "datasets": [
+            {
+                "dataset_id": r.dataset_id,
+                "source": r.source,
+                "row_count": int(len(r.df)),
+                "column_count": int(len(r.df.columns)),
+            }
+            for r in registry.all()
+        ]
+    }
+
+
+def unregister_dataset(
+    dataset_id: str, registry: DatasetRegistry = REGISTRY
+) -> dict[str, Any]:
+    if not registry.remove(dataset_id):
+        return {"error": f"Unknown dataset_id: {dataset_id}"}
+    return {"removed": True, "dataset_id": dataset_id}
 
 
 def get_dataset_schema(

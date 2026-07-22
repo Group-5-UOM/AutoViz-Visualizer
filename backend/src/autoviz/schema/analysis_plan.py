@@ -9,10 +9,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-FilterOp = Literal["eq", "neq", "gt", "lt", "contains"]
-AggFn = Literal["sum", "mean", "min", "max", "count"]
-DeriveFn = Literal["month", "year", "day", "lower", "round"]
-ChartType = Literal["bar", "line", "scatter", "pie"]
+FilterOp = Literal["eq", "neq", "gt", "gte", "lt", "lte", "in", "between", "contains"]
+AggFn = Literal["sum", "mean", "min", "max", "count", "median", "count_distinct"]
+DeriveFn = Literal[
+    "month", "year", "day", "weekday", "lower", "upper", "trim", "round", "abs"
+]
+ChartType = Literal["bar", "line", "scatter", "pie", "area", "histogram"]
 Intent = Literal[
     "comparison", "trend", "distribution", "relationship", "composition", "ranking"
 ]
@@ -26,6 +28,8 @@ class _StrictModel(BaseModel):
 class Filter(_StrictModel):
     column: str
     op: FilterOp
+    # Scalar for most ops; a list of scalars for "in" (any length) and
+    # "between" ([low, high]). Arity is checked in services/validation.py.
     value: Any
 
 
@@ -49,7 +53,9 @@ class Sort(_StrictModel):
 class ChartSpec(_StrictModel):
     type: ChartType
     x: str
-    y: str
+    # Optional only for histogram (count of binned x); every other chart type
+    # requires y — enforced in services/validation.py.
+    y: str | None = None
     color: str | None = None
 
 

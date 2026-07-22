@@ -11,7 +11,14 @@ from autoviz.schema.allowlists import CHART_TYPES
 
 HIGH_CARDINALITY_COLOR = 10
 
-_VEGA_MARK = {"bar": "bar", "line": "line", "scatter": "point", "pie": "arc"}
+_VEGA_MARK = {
+    "bar": "bar",
+    "line": "line",
+    "scatter": "point",
+    "pie": "arc",
+    "area": "area",
+    "histogram": "bar",  # binned bar over one numeric column
+}
 
 _PIE_MAX_CATEGORIES = 6
 
@@ -57,9 +64,12 @@ def recommend_chart_type(
     elif intent == "ranking" and categorical:
         chart_type, x = "bar", categorical[0]
         rationale = f"Ranking intent — sorted bar chart over '{x}'."
+    elif intent == "distribution" and not categorical:
+        chart_type, x = "histogram", numeric[0]
+        rationale = f"Distribution intent over numeric '{x}' — histogram of binned counts."
     elif intent == "distribution":
         chart_type = "bar"
-        x = categorical[0] if categorical else numeric[-1]
+        x = categorical[0]
         rationale = f"Distribution intent — bar chart of counts over '{x}'."
     elif categorical:
         chart_type, x = "bar", categorical[0]
@@ -77,9 +87,10 @@ def recommend_chart_type(
     result: dict[str, Any] = {
         "chart_type": chart_type,
         "x": x,
-        "y": y,
         "rationale": rationale,
     }
+    if chart_type != "histogram":  # histogram's y is the binned count, not a column
+        result["y"] = y
     if color:
         result["color"] = color
     return result
@@ -118,13 +129,33 @@ def generate_chart(
             "warnings": [f"chart channel references absent column(s): {', '.join(missing)}"],
         }
 
+    required = ("x",) if chart_type == "histogram" else ("x", "y")
+    absent = [ch for ch in required if ch not in channels]
+    if absent:
+        return {
+            "vega_lite_spec": None,
+            "valid": False,
+            "warnings": [f"chart type '{chart_type}' requires channel(s): {', '.join(absent)}"],
+        }
+
     schema_hint = chart_spec.get("column_types")  # optional {name: logical_type}
 
     def enc(col: str) -> dict[str, Any]:
         values = [row.get(col) for row in result_table]
         return {"field": col, "type": _encoding_type(values, schema_hint, col)}
 
-    if chart_type == "pie":
+    if chart_type == "histogram":
+        if "y" in channels:
+            return {
+                "vega_lite_spec": None,
+                "valid": False,
+                "warnings": ["histogram takes no y column — y is the binned count"],
+            }
+        encoding = {
+            "x": {"field": channels["x"], "type": "quantitative", "bin": True},
+            "y": {"aggregate": "count", "type": "quantitative"},
+        }
+    elif chart_type == "pie":
         encoding: dict[str, Any] = {
             "theta": {**enc(channels["y"]), "type": "quantitative"},
             "color": {**enc(channels["x"]), "type": "nominal"},

@@ -49,6 +49,36 @@ def test_generate_chart_rejects_absent_column():
     assert not out["valid"]
 
 
+def test_distribution_numeric_only_recommends_histogram():
+    schema = [{"name": "price", "type": "number"}]
+    rec = recommend_chart_type(schema, "distribution")
+    assert rec["chart_type"] == "histogram"
+    assert rec["x"] == "price"
+    assert "y" not in rec
+
+
+def test_generate_chart_histogram_spec():
+    table = [{"price": 100}, {"price": 200}, {"price": 350}]
+    out = generate_chart(table, {"type": "histogram", "x": "price"})
+    assert out["valid"], out["warnings"]
+    spec = out["vega_lite_spec"]
+    assert spec["mark"] == "bar"
+    assert spec["encoding"]["x"] == {"field": "price", "type": "quantitative", "bin": True}
+    assert spec["encoding"]["y"] == {"aggregate": "count", "type": "quantitative"}
+
+
+def test_generate_chart_histogram_rejects_y():
+    out = generate_chart([{"price": 1}], {"type": "histogram", "x": "price", "y": "price"})
+    assert not out["valid"]
+
+
+def test_generate_chart_area_mark():
+    table = [{"month": 1, "total": 5.0}, {"month": 2, "total": 3.0}]
+    out = generate_chart(table, {"type": "area", "x": "month", "y": "total"})
+    assert out["valid"]
+    assert out["vega_lite_spec"]["mark"] == "area"
+
+
 def test_pipeline_end_to_end_iris(registry, iris_id):
     plan = {
         "dataset_id": iris_id,
@@ -61,6 +91,20 @@ def test_pipeline_end_to_end_iris(registry, iris_id):
     assert out["recommendation"]["chart_type"] == "bar"
     assert out["vega_lite_spec"]["mark"] == "bar"
     assert out["result"]["row_count"] == 3
+
+
+def test_pipeline_partial_failure_keeps_executed_result(registry, iris_id):
+    # Execution succeeds (string column only) but recommendation fails (no
+    # numeric measure) — the computed result must still come back.
+    plan = {
+        "dataset_id": iris_id,
+        "intent": "comparison",
+        "select": ["species"],
+    }
+    out = run_pipeline(iris_id, plan, registry)
+    assert out["status"] == "error"
+    assert out["failed_step"] == "recommend_chart_type"
+    assert out["result"]["row_count"] > 0  # partial result preserved
 
 
 def test_pipeline_structured_error_names_failed_step(registry, iris_id):
