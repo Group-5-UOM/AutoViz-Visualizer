@@ -1,0 +1,137 @@
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { SendHorizontal, Sparkles, X } from 'lucide-react';
+import type { ChatMessage } from '../../types/dashboard';
+import './ChatPanel.css';
+
+interface ChatPanelProps {
+  open: boolean;
+  messages: ChatMessage[];
+  isThinking: boolean;
+  onClose: () => void;
+  onSend: (text: string) => void;
+  onFocusChart?: (chartId: string) => void;
+}
+
+const SUGGESTIONS = [
+  'Show sales by category',
+  'Trend of revenue over time',
+  'Sales share as a pie chart',
+  'Correlation of advertising and sales',
+];
+
+export function ChatPanel({
+  open,
+  messages,
+  isThinking,
+  onClose,
+  onSend,
+  onFocusChart,
+}: ChatPanelProps) {
+  const [draft, setDraft] = useState('');
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages, isThinking, open]);
+
+  if (!open) return null;
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!draft.trim() || isThinking) return;
+    onSend(draft);
+    setDraft('');
+  };
+
+  return (
+    <section className="chat-panel" aria-label="AI chat">
+      <header className="chat-header">
+        <div className="chat-header-title">
+          <Sparkles size={16} />
+          <span>AI Chat</span>
+        </div>
+        <button
+          type="button"
+          className="chat-close-btn"
+          onClick={onClose}
+          aria-label="Close chat"
+        >
+          <X size={16} />
+        </button>
+      </header>
+
+      <div className="chat-messages" ref={listRef}>
+        {messages.map((msg) => (
+          <article
+            key={msg.id}
+            className={`chat-bubble chat-bubble--${msg.role}`}
+          >
+            <p>{msg.content}</p>
+            {msg.chartId && onFocusChart && (
+              <button
+                type="button"
+                className="chat-chart-link"
+                onClick={() => onFocusChart(msg.chartId!)}
+              >
+                View on canvas
+              </button>
+            )}
+          </article>
+        ))}
+
+        {isThinking && (
+          <article className="chat-bubble chat-bubble--assistant chat-bubble--thinking">
+            <span className="thinking-dots" aria-label="Thinking">
+              <i />
+              <i />
+              <i />
+            </span>
+          </article>
+        )}
+
+        {messages.length <= 1 && !isThinking && (
+          <div className="chat-suggestions">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className="suggestion-chip"
+                onClick={() => onSend(s)}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <form className="chat-composer" onSubmit={handleSubmit}>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Ask for a chart…"
+          rows={2}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              if (draft.trim() && !isThinking) {
+                onSend(draft);
+                setDraft('');
+              }
+            }
+          }}
+        />
+        <button
+          type="submit"
+          className="chat-send-btn"
+          disabled={!draft.trim() || isThinking}
+          aria-label="Send message"
+        >
+          <SendHorizontal size={18} />
+        </button>
+      </form>
+    </section>
+  );
+}

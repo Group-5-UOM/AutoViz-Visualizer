@@ -10,6 +10,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from autoviz.observability import observed
 from autoviz.schema.plan_guide import PLAN_GUIDE
 from autoviz.services import charts, dataset, execution, export, validation
 from autoviz.services.orchestrator import run_pipeline
@@ -23,6 +24,7 @@ _PLAN_GUIDE = PLAN_GUIDE
 
 
 @mcp.tool()
+@observed
 def register_dataset(file_ref: str) -> dict[str, Any]:
     """Register a CSV file and get a dataset_id.
 
@@ -36,6 +38,7 @@ def register_dataset(file_ref: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+@observed
 def list_datasets() -> dict[str, Any]:
     """List every dataset registered in this server session:
     [{dataset_id, source, row_count, column_count}]. Use this to recover a
@@ -44,6 +47,7 @@ def list_datasets() -> dict[str, Any]:
 
 
 @mcp.tool()
+@observed
 def unregister_dataset(dataset_id: str) -> dict[str, Any]:
     """Remove a registered dataset and free its memory. Returns {removed: true}
     or a structured error for an unknown dataset_id."""
@@ -51,6 +55,7 @@ def unregister_dataset(dataset_id: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+@observed
 def get_dataset_schema(dataset_id: str) -> dict[str, Any]:
     """Get the profiled column schema: [{name, type}] with logical types
     (number | boolean | datetime | string)."""
@@ -58,6 +63,7 @@ def get_dataset_schema(dataset_id: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+@observed
 def get_dataset_profile(dataset_id: str) -> dict[str, Any]:
     """Get the dataset profile: null_counts, duplicate_count, per-column
     cardinality, and numeric summary_stats."""
@@ -65,6 +71,7 @@ def get_dataset_profile(dataset_id: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+@observed
 def preview_dataset(dataset_id: str, limit: int = 10) -> dict[str, Any]:
     """Preview the first rows of a registered dataset as sanitized records."""
     return dataset.preview_dataset(dataset_id, limit)
@@ -75,6 +82,7 @@ def preview_dataset(dataset_id: str, limit: int = 10) -> dict[str, Any]:
     "closed operator/function allow-lists. Returns {valid, errors, repaired_plan?}; "
     "failures are errors, never warnings.\n" + _PLAN_GUIDE
 )
+@observed
 def validate_analysis_plan(dataset_id: str, analysis_plan: dict[str, Any]) -> dict[str, Any]:
     return validation.validate_analysis_plan(dataset_id, analysis_plan)
 
@@ -84,11 +92,13 @@ def validate_analysis_plan(dataset_id: str, analysis_plan: dict[str, Any]) -> di
     "{result_table, row_count, execution_time_ms, provenance} — the provenance includes "
     "the exact SQL, so every number is traceable.\n" + _PLAN_GUIDE
 )
+@observed
 def execute_analysis(dataset_id: str, analysis_plan: dict[str, Any]) -> dict[str, Any]:
     return execution.execute_analysis(dataset_id, analysis_plan)
 
 
 @mcp.tool()
+@observed
 def recommend_chart_type(result_schema: list[dict[str, str]], intent: str) -> dict[str, Any]:
     """Rule-based chart recommendation from the result schema
     ([{name, type}]) and analytical intent. Returns {chart_type, x, y,
@@ -97,6 +107,7 @@ def recommend_chart_type(result_schema: list[dict[str, str]], intent: str) -> di
 
 
 @mcp.tool()
+@observed
 def generate_chart(result_table: list[dict[str, Any]], chart_spec: dict[str, Any]) -> dict[str, Any]:
     """Build and structurally validate a Vega-Lite spec from a result table and
     chart spec {type, x, y, color?}. Returns {vega_lite_spec, valid, warnings}."""
@@ -109,11 +120,13 @@ def generate_chart(result_table: list[dict[str, Any]], chart_spec: dict[str, Any
     "Partial failures come back as structured content naming the failed step, never an "
     "exception.\n" + _PLAN_GUIDE
 )
+@observed
 def run_analysis_pipeline(dataset_id: str, analysis_plan: dict[str, Any]) -> dict[str, Any]:
     return run_pipeline(dataset_id, analysis_plan)
 
 
 @mcp.tool()
+@observed
 def export_chart(vega_lite_spec: dict[str, Any], filename: str | None = None) -> dict[str, Any]:
     """Save a Vega-Lite spec as a self-contained HTML file in the server's
     exports directory (rendered with vega-embed; open it in any browser).
@@ -135,6 +148,7 @@ def _get_agent():
 
 
 @mcp.tool()
+@observed
 def analyze(
     request: str,
     dataset_id: str | None = None,
@@ -158,6 +172,7 @@ def analyze(
 
 
 @mcp.tool()
+@observed
 def answer_clarification(thread_id: str, answer: str) -> dict[str, Any]:
     """Resume an analyze() run that paused with {status: "waiting_for_user"},
     supplying the user's answer to its clarification question."""
