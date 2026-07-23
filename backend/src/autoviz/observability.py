@@ -83,17 +83,24 @@ def classify_outcome(result: Any) -> dict[str, Any]:
     Tools never raise to the host — they encode failure in the returned dict, so
     the outcome is read back out of it: ``ok`` | ``error`` (has ``error``) |
     ``invalid`` (``valid is False``) | ``failed`` (``status == "error"``, with
-    the ``failed_step``).
+    the ``failed_step``). When the structured result carries a typed
+    ``error_code`` (autoviz.errors), it is echoed into the record so the log
+    distinguishes a plan defect from an infrastructure fault at a glance.
     """
     if not isinstance(result, dict):
         return {"outcome": "ok"}
+    code = result.get("error_code")
     if "error" in result:
-        return {"outcome": "error"}
-    if result.get("valid") is False:
-        return {"outcome": "invalid"}
-    if result.get("status") == "error":
-        return {"outcome": "failed", "failed_step": result.get("failed_step")}
-    return {"outcome": "ok"}
+        outcome = {"outcome": "error"}
+    elif result.get("valid") is False:
+        outcome = {"outcome": "invalid"}
+    elif result.get("status") == "error":
+        outcome = {"outcome": "failed", "failed_step": result.get("failed_step")}
+    else:
+        return {"outcome": "ok"}
+    if code is not None:
+        outcome["error_code"] = code
+    return outcome
 
 
 def observed(fn: Callable) -> Callable:
