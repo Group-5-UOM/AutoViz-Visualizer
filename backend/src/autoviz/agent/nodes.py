@@ -4,6 +4,7 @@ Deterministic nodes call the shared services unchanged — run_pipeline() stays
 the single source of truth for validate -> execute -> chart.
 """
 
+import time
 from typing import Any
 
 from langgraph.types import interrupt
@@ -14,15 +15,19 @@ from autoviz.agent.state import (
     ChartResult,
     WorkerState,
 )
+from autoviz.errors import PLAN_REPAIRABLE, RETRYABLE
 from autoviz.llm.client import IntentDecision, PlannerError, PlannerLLM
 from autoviz.services import charts, dataset
 from autoviz.services.orchestrator import run_pipeline
 from autoviz.services.registry import REGISTRY, DatasetRegistry
 
-# failed_step values that mean "the plan is wrong" -> repairable by the LLM.
-PLAN_REPAIR_STEPS = {"validate_analysis_plan", "execute_analysis"}
-# failed_step values after a successful execution -> deterministic fallback.
+# failed_step values after a successful execution -> deterministic chart fallback.
 CHART_FALLBACK_STEPS = {"recommend_chart_type", "generate_chart"}
+
+# Bounded retry for infrastructure faults (EXECUTION_ERROR / TIMEOUT). The plan
+# is already validated, so replanning would be wrong; a short backoff instead.
+MAX_EXEC_RETRIES = 1
+EXEC_RETRY_BACKOFF_S = 0.25
 
 
 # --- main-graph nodes ---------------------------------------------------------
@@ -130,9 +135,22 @@ def plan_node(state: WorkerState, *, planner: PlannerLLM) -> dict[str, Any]:
 
 
 def execute_node(state: WorkerState, *, registry: DatasetRegistry = REGISTRY) -> dict[str, Any]:
-    out = run_pipeline(state["dataset_id"], state["analysis_plan"], registry)
+    # Retry transient infrastructure faults in place with backoff; only a
+    # plan-repairable code sends us back to the planner (handled in routing).
+    attempts = 0
+    while True:
+        out = run_pipeline(state["dataset_id"], state["analysis_plan"], registry)
+        if (
+            out["status"] == "ok"
+            or out.get("error_code") not in RETRYABLE
+            or attempts >= MAX_EXEC_RETRIES
+        ):
+            break
+        attempts += 1
+        time.sleep(EXEC_RETRY_BACKOFF_S * attempts)
+
     update: dict[str, Any] = {"pipeline_output": out}
-    if out["status"] == "error" and out.get("failed_step") in PLAN_REPAIR_STEPS:
+    if out["status"] == "error" and out.get("error_code") in PLAN_REPAIRABLE:
         update["rejected_plan"] = state["analysis_plan"]
         update["validation_errors"] = [str(e) for e in out.get("errors", [])]
     return update

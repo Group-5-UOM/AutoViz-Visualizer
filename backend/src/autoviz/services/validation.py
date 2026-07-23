@@ -24,8 +24,27 @@ from autoviz.schema.allowlists import (
     STRING_DERIVE_FNS,
     STRING_ONLY_OPS,
 )
+from autoviz.errors import INVALID_PLAN, TYPE_MISMATCH, UNKNOWN_DATASET
 from autoviz.schema.analysis_plan import AnalysisPlan
 from autoviz.services.registry import REGISTRY, DatasetRegistry
+
+# Substrings unique to type-compatibility failures (op/fn on the wrong column
+# type). If *every* error is one of these the failure is a pure TYPE_MISMATCH;
+# any structural error (missing column, bad arity, ...) makes it INVALID_PLAN.
+# Both are plan-repairable, so this only sharpens the reported code.
+_TYPE_MARKERS = (
+    "requires a numeric column",
+    "requires a string column",
+    "requires a datetime column",
+    "requires a numeric or datetime",
+)
+
+
+def _plan_error_code(errors: list[str]) -> str:
+    if errors and all(any(m in e for m in _TYPE_MARKERS) for e in errors):
+        return TYPE_MISMATCH
+    return INVALID_PLAN
+
 
 # Values resembling code/SQL/shell are rejected outright (Proposal §4.7).
 _INJECTION_PATTERN = re.compile(
@@ -45,7 +64,11 @@ def validate_analysis_plan(
 ) -> dict[str, Any]:
     record = registry.get(dataset_id)
     if record is None:
-        return {"valid": False, "errors": [f"Unknown dataset_id: {dataset_id}"]}
+        return {
+            "valid": False,
+            "errors": [f"Unknown dataset_id: {dataset_id}"],
+            "error_code": UNKNOWN_DATASET,
+        }
 
     try:
         plan = AnalysisPlan.model_validate(analysis_plan)
@@ -53,7 +76,7 @@ def validate_analysis_plan(
         errors = [
             f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()
         ]
-        return {"valid": False, "errors": errors}
+        return {"valid": False, "errors": errors, "error_code": INVALID_PLAN}
 
     errors: list[str] = []
     repaired: dict[str, Any] | None = None
@@ -189,6 +212,8 @@ def validate_analysis_plan(
             errors.append(f"chart.y: required for chart type '{plan.chart.type}'")
 
     result: dict[str, Any] = {"valid": not errors, "errors": errors}
+    if errors:
+        result["error_code"] = _plan_error_code(errors)
     if repaired is not None and not errors:
         result["repaired_plan"] = repaired
     return result

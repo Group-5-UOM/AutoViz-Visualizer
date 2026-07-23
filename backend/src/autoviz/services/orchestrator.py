@@ -7,6 +7,12 @@ thrown exception, so the caller can reason about retry vs. escalation.
 
 from typing import Any
 
+from autoviz.errors import (
+    CHART_ERROR,
+    EXECUTION_ERROR,
+    INVALID_PLAN,
+    UNKNOWN_DATASET,
+)
 from autoviz.schema.allowlists import DATE_DERIVE_FNS, NUMERIC_DERIVE_FNS
 from autoviz.schema.analysis_plan import AnalysisPlan
 from autoviz.services.charts import generate_chart, recommend_chart_type
@@ -22,7 +28,12 @@ def run_pipeline(
 ) -> dict[str, Any]:
     verdict = validate_analysis_plan(dataset_id, analysis_plan, registry)
     if not verdict["valid"]:
-        return {"status": "error", "failed_step": "validate_analysis_plan", "errors": verdict["errors"]}
+        return {
+            "status": "error",
+            "failed_step": "validate_analysis_plan",
+            "error_code": verdict.get("error_code", INVALID_PLAN),
+            "errors": verdict["errors"],
+        }
     effective_plan = verdict.get("repaired_plan", analysis_plan)
 
     executed = execute_analysis(dataset_id, effective_plan, registry)
@@ -30,13 +41,19 @@ def run_pipeline(
         return {
             "status": "error",
             "failed_step": "execute_analysis",
+            "error_code": executed.get("error_code", EXECUTION_ERROR),
             "errors": [executed["error"], *executed.get("validation_errors", [])],
         }
 
     plan = AnalysisPlan.model_validate(effective_plan)
     record = registry.get(dataset_id)
     if record is None:
-        return {"status": "error", "failed_step": "execute_analysis", "errors": [f"Unknown dataset_id: {dataset_id}"]}
+        return {
+            "status": "error",
+            "failed_step": "execute_analysis",
+            "error_code": UNKNOWN_DATASET,
+            "errors": [f"Unknown dataset_id: {dataset_id}"],
+        }
     result_table = executed["result_table"]
 
     if plan.chart is not None:
@@ -59,6 +76,7 @@ def run_pipeline(
             return {
                 "status": "error",
                 "failed_step": "recommend_chart_type",
+                "error_code": CHART_ERROR,
                 "errors": [recommendation["error"]],
                 "result": executed,
             }
@@ -76,6 +94,7 @@ def run_pipeline(
         return {
             "status": "error",
             "failed_step": "generate_chart",
+            "error_code": CHART_ERROR,
             "errors": chart["warnings"],
             "result": executed,
         }

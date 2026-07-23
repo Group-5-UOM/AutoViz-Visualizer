@@ -6,17 +6,48 @@ appear, so injection is structurally impossible. A hard output-row ceiling is
 enforced regardless of the requested limit.
 """
 
+import os
+import threading
 import time
 from typing import Any
 
 import duckdb
 import pandas as pd
 
+from autoviz.errors import (
+    EXECUTION_ERROR,
+    INVALID_PLAN,
+    TIMEOUT,
+    UNKNOWN_DATASET,
+    make_error,
+)
 from autoviz.schema.allowlists import HARD_ROW_CEILING
 from autoviz.schema.analysis_plan import AnalysisPlan
 from autoviz.services.dataset import sanitize_records
 from autoviz.services.registry import REGISTRY, DatasetRegistry
 from autoviz.services.validation import validate_analysis_plan
+
+
+def _env_value(name: str, default: str) -> str:
+    raw = os.environ.get(name, "").strip()
+    return raw or default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        value = float(os.environ.get(name, ""))
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+# DuckDB resource governors, all overridable. memory_limit caps the engine's
+# working set; the timeout bounds wall-clock so a pathological query can't hang
+# a synchronous MCP call. threads is capped to keep one query from saturating
+# the host.
+DUCKDB_MEMORY_LIMIT = _env_value("AUTOVIZ_DUCKDB_MEMORY_LIMIT", "1GB")
+DUCKDB_THREADS = _env_value("AUTOVIZ_DUCKDB_THREADS", "2")
+EXECUTION_TIMEOUT_S = _env_float("AUTOVIZ_EXECUTION_TIMEOUT_S", 30.0)
 
 _DERIVE_SQL = {
     "month": "date_part('month', {col})",
@@ -50,6 +81,14 @@ _AGG_SQL = {
     "median": "median({col})",
     "count_distinct": "count(DISTINCT {col})",
 }
+
+
+def _interrupt(con: "duckdb.DuckDBPyConnection") -> None:
+    """Best-effort cancel of a running query from the watchdog thread."""
+    try:
+        con.interrupt()
+    except Exception:
+        pass
 
 
 def _q(identifier: str) -> str:
@@ -109,24 +148,44 @@ def execute_analysis(
 ) -> dict[str, Any]:
     record = registry.get(dataset_id)
     if record is None:
-        return {"error": f"Unknown dataset_id: {dataset_id}"}
+        return make_error(UNKNOWN_DATASET, f"Unknown dataset_id: {dataset_id}")
 
     verdict = validate_analysis_plan(dataset_id, analysis_plan, registry)
     if not verdict["valid"]:
-        return {"error": "Plan failed validation", "validation_errors": verdict["errors"]}
+        # Preserve the historical message/keys; add the taxonomy code so routing
+        # can tell a plan defect from an infrastructure fault.
+        return make_error(
+            verdict.get("error_code", INVALID_PLAN),
+            "Plan failed validation",
+            validation_errors=verdict["errors"],
+        )
     effective_plan = verdict.get("repaired_plan", analysis_plan)
     plan = AnalysisPlan.model_validate(effective_plan)
 
     sql, params = build_sql(plan)
     started = time.perf_counter()
+    timed_out = threading.Event()
+    con = duckdb.connect()
+    watchdog = threading.Timer(
+        EXECUTION_TIMEOUT_S, lambda: (timed_out.set(), _interrupt(con))
+    )
     try:
-        con = duckdb.connect()
+        con.execute(f"SET memory_limit='{DUCKDB_MEMORY_LIMIT}'")
+        con.execute(f"SET threads={DUCKDB_THREADS}")
         df: pd.DataFrame = record.df
         con.register("df", df)
+        watchdog.start()
         result = con.execute(sql, params).fetchdf()
     except Exception as exc:
-        return {"error": f"Execution failed: {exc}", "sql": sql}
+        if timed_out.is_set():
+            return make_error(
+                TIMEOUT,
+                f"Execution exceeded the {EXECUTION_TIMEOUT_S:g}s time budget.",
+                sql=sql,
+            )
+        return make_error(EXECUTION_ERROR, f"Execution failed: {exc}", sql=sql)
     finally:
+        watchdog.cancel()
         try:
             con.close()
         except Exception:

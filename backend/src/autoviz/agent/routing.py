@@ -2,13 +2,14 @@
 
 from langgraph.types import Send
 
-from autoviz.agent.nodes import CHART_FALLBACK_STEPS, PLAN_REPAIR_STEPS
+from autoviz.agent.nodes import CHART_FALLBACK_STEPS
 from autoviz.agent.state import (
     MAX_CLARIFICATIONS,
     MAX_PLAN_ATTEMPTS,
     AutoVizState,
     WorkerState,
 )
+from autoviz.errors import PLAN_REPAIRABLE
 
 
 def route_after_context(state: AutoVizState) -> str:
@@ -56,9 +57,11 @@ def route_after_execute(state: WorkerState) -> str:
     out = state["pipeline_output"]
     if out["status"] == "ok":
         return "finalize"
-    step = out.get("failed_step")
-    if step in PLAN_REPAIR_STEPS and _can_replan(state):
+    # Replan only for a genuinely plan-repairable failure — never for an
+    # infrastructure fault (those were already retried in execute_node) or a
+    # missing dataset, which no amount of replanning can fix.
+    if out.get("error_code") in PLAN_REPAIRABLE and _can_replan(state):
         return "plan"
-    if step in CHART_FALLBACK_STEPS:
+    if out.get("failed_step") in CHART_FALLBACK_STEPS:
         return "chart_fallback"
     return "finalize"

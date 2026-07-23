@@ -11,10 +11,31 @@ from typing import Any
 
 import pandas as pd
 
+from autoviz.errors import RESOURCE_LIMIT, UNKNOWN_DATASET, make_error
 from autoviz.services.registry import REGISTRY, DatasetRecord, DatasetRegistry
 from autoviz.services.safety import neutralize_text
 
 PREVIEW_MAX_ROWS = 50
+
+
+def _env_int(name: str, default: int) -> int:
+    """Read a positive int limit from the environment, falling back on default."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+# Ingestion ceilings enforced *before* a CSV is trusted into memory. pd.read_csv
+# would otherwise load the whole file before any check, so the byte cap is the
+# real memory guard; the row/column caps bound downstream work. All overridable.
+MAX_FILE_BYTES = _env_int("AUTOVIZ_MAX_FILE_BYTES", 50 * 1024 * 1024)  # 50 MiB
+MAX_ROWS = _env_int("AUTOVIZ_MAX_ROWS", 1_000_000)
+MAX_COLUMNS = _env_int("AUTOVIZ_MAX_COLUMNS", 512)
 
 
 def _default_data_roots() -> list[Path]:
@@ -126,10 +147,37 @@ def register_dataset(
             "hint": "Use an absolute path, or a path relative to an approved data root: "
             + "; ".join(str(r) for r in DATA_ROOTS),
         }
+
+    # Pre-read guards: reject oversized files before loading them into memory,
+    # and reject too-wide files from the header alone (a cheap read).
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        return {"error": f"Could not stat file: {exc}"}
+    if size > MAX_FILE_BYTES:
+        return make_error(
+            RESOURCE_LIMIT,
+            f"File is {size} bytes; the limit is {MAX_FILE_BYTES} bytes.",
+        )
+    try:
+        column_count = len(pd.read_csv(path, nrows=0).columns)
+    except Exception as exc:
+        return {"error": f"Could not read CSV: {exc}"}
+    if column_count > MAX_COLUMNS:
+        return make_error(
+            RESOURCE_LIMIT,
+            f"Dataset has {column_count} columns; the limit is {MAX_COLUMNS}.",
+        )
+
     try:
         df = pd.read_csv(path)
     except Exception as exc:
         return {"error": f"Could not read CSV: {exc}"}
+    if len(df) > MAX_ROWS:
+        return make_error(
+            RESOURCE_LIMIT,
+            f"Dataset has {len(df)} rows; the limit is {MAX_ROWS}.",
+        )
 
     df = _coerce_datetimes(df)
     schema = {col: _logical_type(df[col]) for col in df.columns}
@@ -166,7 +214,7 @@ def unregister_dataset(
     dataset_id: str, registry: DatasetRegistry = REGISTRY
 ) -> dict[str, Any]:
     if not registry.remove(dataset_id):
-        return {"error": f"Unknown dataset_id: {dataset_id}"}
+        return make_error(UNKNOWN_DATASET, f"Unknown dataset_id: {dataset_id}")
     return {"removed": True, "dataset_id": dataset_id}
 
 
@@ -175,7 +223,7 @@ def get_dataset_schema(
 ) -> dict[str, Any]:
     record = registry.get(dataset_id)
     if record is None:
-        return {"error": f"Unknown dataset_id: {dataset_id}"}
+        return make_error(UNKNOWN_DATASET, f"Unknown dataset_id: {dataset_id}")
     return {"columns": [{"name": neutralize_text(n), "type": t} for n, t in record.schema.items()]}
 
 
@@ -184,7 +232,7 @@ def get_dataset_profile(
 ) -> dict[str, Any]:
     record = registry.get(dataset_id)
     if record is None:
-        return {"error": f"Unknown dataset_id: {dataset_id}"}
+        return make_error(UNKNOWN_DATASET, f"Unknown dataset_id: {dataset_id}")
     return record.profile
 
 
@@ -193,6 +241,6 @@ def preview_dataset(
 ) -> dict[str, Any]:
     record = registry.get(dataset_id)
     if record is None:
-        return {"error": f"Unknown dataset_id: {dataset_id}"}
+        return make_error(UNKNOWN_DATASET, f"Unknown dataset_id: {dataset_id}")
     limit = max(1, min(int(limit), PREVIEW_MAX_ROWS))
     return {"rows": sanitize_records(record.df.head(limit))}
