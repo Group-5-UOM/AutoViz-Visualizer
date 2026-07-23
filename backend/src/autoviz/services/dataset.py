@@ -12,6 +12,7 @@ from typing import Any
 import pandas as pd
 
 from autoviz.services.registry import REGISTRY, DatasetRecord, DatasetRegistry
+from autoviz.services.safety import neutralize_text
 
 PREVIEW_MAX_ROWS = 50
 
@@ -83,6 +84,9 @@ def _sanitize_scalar(value: Any) -> Any:
         value = value.item()
     if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
         return None
+    if isinstance(value, str):
+        # Untrusted cell text reaching an LLM: defang instruction-injection.
+        return neutralize_text(value)
     return value
 
 
@@ -102,11 +106,13 @@ def _build_profile(df: pd.DataFrame, schema: dict[str, str]) -> dict[str, Any]:
             col: {stat: _sanitize_scalar(described.loc[stat, col]) for stat in described.index}
             for col in numeric_cols
         }
+    # Column names are also untrusted; neutralize the copies emitted to the LLM
+    # (the real names remain the DataFrame/SQL identifiers, untouched).
     return {
-        "null_counts": {c: int(df[c].isna().sum()) for c in df.columns},
+        "null_counts": {neutralize_text(c): int(df[c].isna().sum()) for c in df.columns},
         "duplicate_count": int(df.duplicated().sum()),
-        "cardinality": {c: int(df[c].nunique(dropna=True)) for c in df.columns},
-        "summary_stats": summary_stats,
+        "cardinality": {neutralize_text(c): int(df[c].nunique(dropna=True)) for c in df.columns},
+        "summary_stats": {neutralize_text(c): v for c, v in summary_stats.items()},
     }
 
 
@@ -170,7 +176,7 @@ def get_dataset_schema(
     record = registry.get(dataset_id)
     if record is None:
         return {"error": f"Unknown dataset_id: {dataset_id}"}
-    return {"columns": [{"name": n, "type": t} for n, t in record.schema.items()]}
+    return {"columns": [{"name": neutralize_text(n), "type": t} for n, t in record.schema.items()]}
 
 
 def get_dataset_profile(
