@@ -68,7 +68,12 @@ class AnalysisPlan(_StrictModel):
     group_by: list[str] = Field(default_factory=list, max_length=2)
     aggregations: list[Aggregation] = Field(default_factory=list)
     sort: list[Sort] = Field(default_factory=list)
-    limit: int = Field(default=100, ge=1)
+    # None = "no explicit cap": execution returns the full result up to the hard
+    # row ceiling. This matters for non-aggregated distribution/relationship
+    # queries whose rows ARE the chart data (histogram bins, scatter points) — a
+    # small default here would silently truncate them. Set an explicit limit only
+    # to cap ranking/top-N.
+    limit: int | None = Field(default=None, ge=1)
     chart: ChartSpec | None = None
 
     def produced_columns(self) -> set[str]:

@@ -186,7 +186,7 @@ def validate_analysis_plan(
         if s.by not in produced:
             errors.append(f"sort: column '{s.by}' is not produced by the query")
 
-    if plan.limit > MAX_LIMIT:
+    if plan.limit is not None and plan.limit > MAX_LIMIT:
         # The only deterministic repair attempted at this layer: clamp the limit.
         repaired = plan.model_dump(by_alias=True, exclude_none=True)
         repaired["limit"] = MAX_LIMIT

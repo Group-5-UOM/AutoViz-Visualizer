@@ -49,6 +49,31 @@ def test_filter_eq(registry, iris_id):
     assert all(r["species"] == "setosa" for r in result["result_table"])
 
 
+def test_distribution_without_limit_returns_all_rows(registry, titanic_id):
+    # Regression: a distribution plan with no explicit limit must NOT be capped
+    # at the old default of 100 — the histogram needs every value. Titanic has
+    # 891 rows; all must come through (they're under the 1000 ceiling).
+    plan = {"dataset_id": titanic_id, "intent": "distribution", "select": ["age"]}
+    result = execute_analysis(titanic_id, plan, registry)
+    assert "error" not in result, result
+    assert result["row_count"] == 891
+    assert result["provenance"]["sql"].endswith("LIMIT 1000")
+
+
+def test_explicit_limit_is_still_honored(registry, titanic_id):
+    # A ranking/top-N plan that sets an explicit small limit is respected.
+    plan = {
+        "dataset_id": titanic_id,
+        "intent": "ranking",
+        "select": ["fare"],
+        "sort": [{"by": "fare", "dir": "desc"}],
+        "limit": 10,
+    }
+    result = execute_analysis(titanic_id, plan, registry)
+    assert "error" not in result, result
+    assert result["row_count"] == 10
+
+
 def test_hard_row_ceiling_on_diamonds(registry, diamonds_id):
     plan = {
         "dataset_id": diamonds_id,

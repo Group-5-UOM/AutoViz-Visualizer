@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AutoViz · Agent Playground</title>
+
+  <!-- Vega stack for rendering the agent's Vega-Lite specs (CDN; local dev only). -->
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+
+  <style>
+    :root {
+      --bg: #0f1115; --panel: #171a21; --panel-2: #1e222b; --border: #2a2f3a;
+      --text: #e6e8ec; --muted: #99a0ad; --accent: #6ea8fe; --accent-2: #3b82f6;
+      --ok: #4ade80; --warn: #fbbf24; --err: #f87171; --radius: 10px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column;
+    }
+    header {
+      display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+      background: var(--panel); border-bottom: 1px solid var(--border); flex: 0 0 auto;
+    }
+    header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+    header .spacer { flex: 1; }
+    .pill { font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+    .pill.ok { color: var(--ok); border-color: #244b33; }
+    .pill.err { color: var(--err); border-color: #4b2424; }
+
+    main { flex: 1; display: grid; grid-template-columns: 320px 1fr; min-height: 0; }
+    aside {
+      background: var(--panel); border-right: 1px solid var(--border);
+      padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px;
+    }
+    section.card { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+    section.card h2 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+    input[type=text], input[type=email], input[type=password], input[type=url] {
+      width: 100%; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 13px;
+    }
+    input[type=file] { width: 100%; font-size: 12px; color: var(--muted); }
+    button {
+      cursor: pointer; border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+      padding: 8px 12px; border-radius: 8px; font-size: 13px; transition: .12s;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+    button.primary:hover { background: var(--accent); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+    .kv { font-size: 12px; color: var(--muted); }
+    .kv b { color: var(--text); font-weight: 600; }
+
+    /* Chat */
+    .chat-wrap { display: flex; flex-direction: column; min-height: 0; }
+    #chat { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+    .msg { max-width: 780px; }
+    .msg.user { align-self: flex-end; }
+    .bubble {
+      padding: 10px 14px; border-radius: 12px; border: 1px solid var(--border);
+      background: var(--panel-2); white-space: pre-wrap; word-wrap: break-word;
+    }
+    .msg.user .bubble { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+    .msg .who { font-size: 11px; color: var(--muted); margin: 0 4px 4px; }
+    .msg.user .who { text-align: right; }
+    .bubble.err { border-color: #4b2424; color: var(--err); }
+    .options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .options button { background: var(--bg); }
+    .chart-card { margin-top: 12px; background: #fff; border-radius: 8px; padding: 10px; overflow-x: auto; }
+    .chart-meta { font-size: 11px; color: var(--muted); margin: 8px 4px 0; }
+    details.raw { margin-top: 10px; }
+    details.raw summary { cursor: pointer; font-size: 11px; color: var(--muted); }
+    details.raw pre {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px; font-size: 11px; overflow-x: auto; max-height: 260px;
+    }
+
+    .composer { flex: 0 0 auto; border-top: 1px solid var(--border); background: var(--panel); padding: 12px 16px; }
+    .composer .row2 { display: flex; gap: 10px; align-items: flex-end; }
+    .composer textarea {
+      flex: 1; resize: none; height: 46px; padding: 12px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 10px; color: var(--text); font: inherit;
+    }
+    .composer textarea:focus { outline: none; border-color: var(--accent); }
+    .status-line { font-size: 11px; color: var(--muted); margin-bottom: 8px; min-height: 14px; }
+    .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🤖 AutoViz · Agent Playground</h1>
+    <span id="authPill" class="pill">signed out</span>
+    <span id="dsPill" class="pill">no dataset</span>
+    <div class="spacer"></div>
+    <span id="apiPill" class="pill">API ?</span>
+  </header>
+
+  <main>
+    <aside>
+      <section class="card">
+        <h2>1 · Backend</h2>
+        <label>API base URL</label>
+        <input id="apiBase" type="url" value="http://localhost:8000" />
+        <div class="row" style="margin-top:8px">
+          <button id="pingBtn">Check /health</button>
+        </div>
+        <div class="hint">Serve this page on <b>:3000</b> so the backend's default CORS allows it.</div>
+      </section>
+
+      <section class="card">
+        <h2>2 · Account</h2>
+        <label>Email</label>
+        <input id="email" type="email" value="playground@test.local" />
+        <label>Password</label>
+        <input id="password" type="password" value="playground-pw-123" />
+        <div class="row" style="margin-top:10px">
+          <button id="registerBtn">Register</button>
+          <button id="loginBtn" class="primary">Login</button>
+        </div>
+        <div class="hint" id="authInfo">Register once, then Login. Token is kept in memory only.</div>
+      </section>
+
+      <section class="card">
+        <h2>3 · Dataset</h2>
+        <label>Upload CSV</label>
+        <input id="fileInput" type="file" accept=".csv,text/csv" />
+        <div class="row" style="margin-top:10px">
+          <button id="uploadBtn" class="primary" disabled>Upload</button>
+          <button id="listBtn" disabled>My datasets</button>
+        </div>
+        <div class="hint" id="dsInfo">Sign in first. Try a file from <b>test-data/</b>.</div>
+      </section>
+
+      <section class="card">
+        <h2>Session</h2>
+        <div class="kv">dataset_id: <b id="sDataset">—</b></div>
+        <div class="kv">thread_id: <b id="sThread">—</b></div>
+        <button id="newThreadBtn" style="margin-top:10px; width:100%">New conversation</button>
+      </section>
+    </aside>
+
+    <div class="chat-wrap">
+      <div id="chat">
+        <div class="msg">
+          <div class="who">playground</div>
+          <div class="bubble">Sign in, upload a CSV, then ask a question like <b>"average fare by passenger class"</b> or <b>"distribution of ages"</b>. Charts render inline; clarifications show as buttons.</div>
+        </div>
+      </div>
+      <div class="composer">
+        <div class="status-line" id="statusLine"></div>
+        <div class="row2">
+          <textarea id="prompt" placeholder="Ask the agent about your dataset…  (Enter to send, Shift+Enter for newline)"></textarea>
+          <button id="sendBtn" class="primary" disabled>Send</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // ── State ────────────────────────────────────────────────────────────
+    const state = {
+      token: null,
+      datasetId: null,
+      datasetName: null,
+      threadId: null,
+      awaitingClarification: false,
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const apiBase = () => $("apiBase").value.replace(/\/+$/, "");
+
+    // ── HTTP helper ──────────────────────────────────────────────────────
+    async function api(path, { method = "GET", body = null, form = null } = {}) {
+      const headers = {};
+      if (state.token) headers["Authorization"] = "Bearer " + state.token;
+      let payload;
+      if (form) { payload = form; }              // FormData sets its own Content-Type
+      else if (body != null) { headers["Content-Type"] = "application/json"; payload = JSON.stringify(body); }
+      const res = await fetch(apiBase() + path, { method, headers, body: payload });
+      let data;
+      try { data = await res.json(); } catch { data = { error: `HTTP ${res.status}` }; }
+      if (!res.ok) {
+        const detail = data.detail || data.error || `HTTP ${res.status}`;
+        throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      }
+      return data;
+    }
+
+    function setStatus(text, busy = false) {
+      $("statusLine").innerHTML = busy ? `<span class="spinner"></span> ${text}` : (text || "");
+    }
+    function setAuthState(email) {
+      const p = $("authPill");
+      if (email) { p.textContent = "● " + email; p.className = "pill ok"; }
+      else { p.textContent = "signed out"; p.className = "pill"; }
+      const signedIn = !!state.token;
+      $("uploadBtn").disabled = !signedIn;
+      $("listBtn").disabled = !signedIn;
+      updateSendEnabled();
+    }
+    function setDatasetState() {
+      const p = $("dsPill");
+      if (state.datasetId) { p.textContent = "▤ " + (state.datasetName || state.datasetId); p.className = "pill ok"; }
+      else { p.textContent = "no dataset"; p.className = "pill"; }
+      $("sDataset").textContent = state.datasetId || "—";
+      updateSendEnabled();
+    }
+    function setThread() { $("sThread").textContent = state.threadId || "—"; }
+    function updateSendEnabled() { $("sendBtn").disabled = !(state.token && state.datasetId); }
+
+    // ── Chat rendering ───────────────────────────────────────────────────
+    function addMessage(role, text, { error = false } = {}) {
+      const wrap = document.createElement("div");
+      wrap.className = "msg " + role;
+      const who = document.createElement("div");
+      who.className = "who";
+      who.textContent = role === "user" ? "you" : "agent";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble" + (error ? " err" : "");
+      bubble.textContent = text;
+      wrap.appendChild(who); wrap.appendChild(bubble);
+      $("chat").appendChild(wrap);
+      $("chat").scrollTop = $("chat").scrollHeight;
+      return { wrap, bubble };
+    }
+
+    function renderCharts(container, charts) {
+      (charts || []).forEach((c, i) => {
+        if (c.status === "error") {
+          const e = document.createElement("div");
+          e.className = "chart-meta";
+          e.textContent = `⚠ "${c.task}" failed: ${(c.errors || []).join("; ")}`;
+          container.appendChild(e);
+          return;
+        }
+        if (c.vega_lite_spec) {
+          const card = document.createElement("div");
+          card.className = "chart-card";
+          const target = document.createElement("div");
+          target.id = "vg-" + Date.now() + "-" + i;
+          card.appendChild(target);
+          container.appendChild(card);
+          vegaEmbed("#" + target.id, c.vega_lite_spec, { actions: { export: true, source: false, editor: false, compiled: false } })
+            .catch((err) => { target.textContent = "Chart render error: " + err; });
+        }
+        const meta = document.createElement("div");
+        meta.className = "chart-meta";
+        const rows = (c.result || {}).row_count;
+        const type = (c.chart_spec || {}).type;
+        meta.textContent = [c.task, type && `${type} chart`, rows != null && `${rows} rows`].filter(Boolean).join(" · ");
+        container.appendChild(meta);
+      });
+    }
+
+    function renderAgentResponse(resp) {
+      // Clarification pause → question + option buttons.
+      if (resp.status === "waiting_for_user") {
+        state.threadId = resp.thread_id; setThread();
+        state.awaitingClarification = true;
+        const { bubble } = addMessage("agent", resp.question || "Could you clarify?");
+        if ((resp.options || []).length) {
+          const opts = document.createElement("div");
+          opts.className = "options";
+          resp.options.forEach((opt) => {
+            const b = document.createElement("button");
+            b.textContent = opt;
+            b.onclick = () => send(opt);
+            opts.appendChild(b);
+          });
+          bubble.parentElement.appendChild(opts);
+        }
+        return;
+      }
+
+      state.awaitingClarification = false;
+      if (resp.thread_id) { state.threadId = resp.thread_id; setThread(); }
+
+      if (resp.status === "failed") {
+        addMessage("agent", "Failed: " + ((resp.errors || []).join("; ") || resp.answer || "unknown error"), { error: true });
+        return;
+      }
+
+      const { wrap, bubble } = addMessage("agent", resp.answer || "(no summary)");
+      renderCharts(wrap, resp.charts);
+      // Raw envelope for debugging.
+      const det = document.createElement("details");
+      det.className = "raw";
+      det.innerHTML = `<summary>raw response</summary><pre>${escapeHtml(JSON.stringify(resp, null, 2))}</pre>`;
+      wrap.appendChild(det);
+      $("chat").scrollTop = $("chat").scrollHeight;
+    }
+    function escapeHtml(s) { return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+
+    // ── Actions ──────────────────────────────────────────────────────────
+    async function ping() {
+      try { await api("/health"); $("apiPill").textContent = "API ● up"; $("apiPill").className = "pill ok"; }
+      catch (e) { $("apiPill").textContent = "API ● down"; $("apiPill").className = "pill err"; }
+    }
+
+    async function register() {
+      setStatus("registering…", true);
+      try {
+        await api("/auth/register", { method: "POST", body: { email: $("email").value, password: $("password").value } });
+        $("authInfo").textContent = "Registered. Now click Login.";
+        setStatus("registered ✓");
+      } catch (e) { $("authInfo").textContent = "Register: " + e.message; setStatus(""); }
+    }
+
+    async function login() {
+      setStatus("logging in…", true);
+      try {
+        const r = await api("/auth/login", { method: "POST", body: { email: $("email").value, password: $("password").value } });
+        state.token = r.access_token;
+        setAuthState($("email").value);
+        $("authInfo").textContent = "Signed in. Token held in memory.";
+        setStatus("signed in ✓");
+      } catch (e) { $("authInfo").textContent = "Login: " + e.message; setStatus(""); }
+    }
+
+    async function upload() {
+      const f = $("fileInput").files[0];
+      if (!f) { $("dsInfo").textContent = "Choose a CSV first."; return; }
+      setStatus(`uploading ${f.name}…`, true);
+      try {
+        const fd = new FormData();
+        fd.append("file", f);
+        const r = await api("/datasets/upload", { method: "POST", form: fd });
+        state.datasetId = r.dataset_id;
+        state.datasetName = r.logical_name || f.name;
+        setDatasetState();
+        $("dsInfo").textContent = `Loaded ${r.logical_name}: ${r.row_count} rows × ${r.column_count} cols.`;
+        setStatus("dataset ready ✓");
+        // Fresh dataset → fresh conversation.
+        state.threadId = null; state.awaitingClarification = false; setThread();
+      } catch (e) { $("dsInfo").textContent = "Upload: " + e.message; setStatus(""); }
+    }
+
+    async function listDatasets() {
+      try {
+        const r = await api("/datasets");
+        const names = (r.datasets || []).map((d) => `${d.logical_name} (${d.row_count}r)`);
+        $("dsInfo").textContent = names.length ? "Yours: " + names.join(", ") : "No datasets yet.";
+      } catch (e) { $("dsInfo").textContent = "List: " + e.message; }
+    }
+
+    async function send(forcedText) {
+      const text = (forcedText != null ? forcedText : $("prompt").value).trim();
+      if (!text) return;
+      if (!state.token || !state.datasetId) return;
+      if (forcedText == null) $("prompt").value = "";
+      addMessage("user", text);
+      $("sendBtn").disabled = true;
+      setStatus("thinking…", true);
+      try {
+        let resp;
+        if (state.awaitingClarification && state.threadId) {
+          resp = await api("/agent/answer", { method: "POST", body: { thread_id: state.threadId, answer: text } });
+        } else {
+          resp = await api("/agent/analyze", {
+            method: "POST",
+            body: { request: text, dataset_id: state.datasetId, thread_id: state.threadId },
+          });
+        }
+        renderAgentResponse(resp);
+        setStatus("");
+      } catch (e) {
+        addMessage("agent", "Request error: " + e.message, { error: true });
+        setStatus("");
+      } finally {
+        updateSendEnabled();
+      }
+    }
+
+    function newThread() {
+      state.threadId = null; state.awaitingClarification = false; setThread();
+      addMessage("agent", "Started a new conversation (thread reset). Follow-ups won't carry prior context.");
+    }
+
+    // ── Wire up ──────────────────────────────────────────────────────────
+    $("pingBtn").onclick = ping;
+    $("registerBtn").onclick = register;
+    $("loginBtn").onclick = login;
+    $("uploadBtn").onclick = upload;
+    $("listBtn").onclick = listDatasets;
+    $("sendBtn").onclick = () => send();
+    $("newThreadBtn").onclick = newThread;
+    $("apiBase").onchange = ping;
+    $("prompt").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+
+    setAuthState(null); setDatasetState(); setThread(); ping();
+  </script>
+</body>
+</html>

@@ -22,7 +22,7 @@ from autoviz.schema.plan_guide import PLAN_GUIDE
 
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
-DEFAULT_MODEL = "google_genai:gemini-2.5-flash"
+DEFAULT_MODEL = "google_genai:gemini-3.5-flash"
 
 _FENCE = re.compile(r"^```[a-zA-Z]*\n|\n?```$")
 

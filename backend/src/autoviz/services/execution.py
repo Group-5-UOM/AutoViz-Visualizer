@@ -137,7 +137,11 @@ def build_sql(plan: AnalysisPlan) -> tuple[str, list[Any]]:
         sql += " ORDER BY " + ", ".join(
             f"{_q(s.by)} {'DESC' if s.dir == 'desc' else 'ASC'}" for s in plan.sort
         )
-    sql += f" LIMIT {min(plan.limit, HARD_ROW_CEILING)}"
+    # An explicit limit is honored (e.g. ranking "top 10"); None means "return
+    # everything up to the safety ceiling" so distributions/scatter plots aren't
+    # silently truncated before the chart bins/plots them.
+    cap = HARD_ROW_CEILING if plan.limit is None else min(plan.limit, HARD_ROW_CEILING)
+    sql += f" LIMIT {cap}"
     return sql, params
 
 

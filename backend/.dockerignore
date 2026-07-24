@@ -1,0 +1,32 @@
+# Keep the build context lean and secrets out of the image.
+# NOTE: uv.lock and pyproject.toml are intentionally NOT ignored — the build
+# needs them for `uv sync --frozen`.
+
+# Virtualenvs / caches
+.venv/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Secrets & local env
+.env
+*.env
+
+# Runtime artifacts (recreated in the container; mounted as volumes)
+uploads/
+exports/
+logs/
+
+# Build output
+dist/
+build/
+*.egg-info/
+
+# VCS / editor / OS cruft
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
