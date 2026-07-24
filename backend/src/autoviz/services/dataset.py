@@ -142,10 +142,25 @@ def _build_profile(df: pd.DataFrame, schema: dict[str, str]) -> dict[str, Any]:
             vals = df[col].dropna().unique().tolist()[:SAMPLE_VALUES_PER_COLUMN]
             sample_values[neutralize_text(col)] = sorted(neutralize_text(str(v)) for v in vals)
 
+    # Per-column null counts and percentages (of total rows). A column that is
+    # entirely null is "unusable": the planner must not select/group/aggregate on
+    # it, and it cannot supply a median/mode fill value (enforced in validation).
+    row_count = len(df)
+    null_counts = {c: int(df[c].isna().sum()) for c in df.columns}
+    null_percentage = {
+        neutralize_text(c): (round(100 * n / row_count, 2) if row_count else 0.0)
+        for c, n in null_counts.items()
+    }
+    unusable_columns = [
+        neutralize_text(c) for c in df.columns if row_count and null_counts[c] == row_count
+    ]
+
     # Column names are also untrusted; neutralize the copies emitted to the LLM
     # (the real names remain the DataFrame/SQL identifiers, untouched).
     return {
-        "null_counts": {neutralize_text(c): int(df[c].isna().sum()) for c in df.columns},
+        "null_counts": {neutralize_text(c): n for c, n in null_counts.items()},
+        "null_percentage": null_percentage,
+        "unusable_columns": unusable_columns,
         "duplicate_count": int(df.duplicated().sum()),
         "cardinality": {neutralize_text(c): int(df[c].nunique(dropna=True)) for c in df.columns},
         "summary_stats": {neutralize_text(c): v for c, v in summary_stats.items()},
@@ -189,6 +204,8 @@ def register_dataset(
         df = pd.read_csv(path)
     except Exception as exc:
         return {"error": f"Could not read CSV: {exc}"}
+    if df.shape[0] == 0 or df.shape[1] == 0:
+        return {"error": "CSV has no data rows (an empty or header-only file is not analysable)."}
     if len(df) > MAX_ROWS:
         return make_error(
             RESOURCE_LIMIT,

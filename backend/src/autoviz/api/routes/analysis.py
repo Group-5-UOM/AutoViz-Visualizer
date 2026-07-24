@@ -31,4 +31,11 @@ def execute(body: PlanRequest, registry: DatasetRegistry = Depends(get_registry)
 
 @router.post("/pipeline")
 def pipeline(body: PlanRequest, registry: DatasetRegistry = Depends(get_registry)):
-    return respond(run_pipeline(body.dataset_id, body.analysis_plan, registry))
+    return respond(
+        run_pipeline(
+            body.dataset_id,
+            body.analysis_plan,
+            registry,
+            approved_preprocessing_hash=body.approved_preprocessing_hash,
+        )
+    )

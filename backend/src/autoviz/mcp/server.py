@@ -118,11 +118,20 @@ def generate_chart(result_table: list[dict[str, Any]], chart_spec: dict[str, Any
     description="Orchestrated validate -> execute -> recommend -> generate in one call — "
     "the preferred tool for going from a plan to a rendered-ready Vega-Lite chart. "
     "Partial failures come back as structured content naming the failed step, never an "
-    "exception.\n" + _PLAN_GUIDE
+    "exception. If the plan's preprocessing would drop a large fraction of rows, this "
+    "returns {status: 'confirmation_required', confirmation: {question, options, impact, "
+    "preprocessing_hash}} WITHOUT executing; to proceed, call again passing that "
+    "preprocessing_hash as approved_preprocessing_hash.\n" + _PLAN_GUIDE
 )
 @observed
-def run_analysis_pipeline(dataset_id: str, analysis_plan: dict[str, Any]) -> dict[str, Any]:
-    return run_pipeline(dataset_id, analysis_plan)
+def run_analysis_pipeline(
+    dataset_id: str,
+    analysis_plan: dict[str, Any],
+    approved_preprocessing_hash: str | None = None,
+) -> dict[str, Any]:
+    return run_pipeline(
+        dataset_id, analysis_plan, approved_preprocessing_hash=approved_preprocessing_hash
+    )
 
 
 @mcp.tool()

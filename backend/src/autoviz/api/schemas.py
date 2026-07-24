@@ -17,6 +17,10 @@ from pydantic import BaseModel
 class PlanRequest(BaseModel):
     dataset_id: str
     analysis_plan: dict[str, Any]
+    # Echo back the preprocessing_hash from a prior {status: "confirmation_required"}
+    # response to approve a large row-removal and let /pipeline execute. Ignored by
+    # /validate and /execute.
+    approved_preprocessing_hash: str | None = None
 
 
 class RecommendChartRequest(BaseModel):
