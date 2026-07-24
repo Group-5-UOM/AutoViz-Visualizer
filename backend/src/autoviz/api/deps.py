@@ -1,10 +1,76 @@
-"""Shared FastAPI dependencies (Week 3 — not yet implemented).
+"""Shared FastAPI dependencies.
 
-Planned providers:
-- `get_registry()` — the process-wide `services.registry.REGISTRY` (same instance
-  the MCP server uses, so datasets registered over HTTP and MCP are shared).
-- `get_agent()` — a lazily-constructed singleton `agent.service.AgentService`,
-  mirroring `_get_agent()` in `mcp/server.py` (import inside the function so the
-  API can start without LangGraph/GOOGLE_API_KEY when only the granular routes
-  are used).
+Providers:
+- ``get_db()``           — SQLAlchemy session (from core.database)
+- ``get_current_user()`` — hybrid JWT + sessions auth via HttpOnly cookie
+- ``get_registry()``     — the process-wide ``services.registry.REGISTRY``
+  (planned, same instance the MCP server uses)
 """
+
+from datetime import datetime, timezone
+
+from fastapi import Cookie, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from autoviz.core.database import get_db
+from autoviz.models.session import UserSession
+from autoviz.models.user import User
+from autoviz.services.auth import decode_access_token
+
+
+def get_current_user(
+    access_token: str | None = Cookie(default=None),
+    db: Session = Depends(get_db),
+) -> User:
+    """Extract the authenticated user from the ``access_token`` HttpOnly cookie.
+
+    Verification is hybrid (two stages):
+    1. **JWT signature + expiry** — fast, no DB hit.
+    2. **``sessions`` row existence + ``expires_at``** — one indexed lookup on
+       ``sessions.token`` to confirm the session has not been revoked via logout.
+
+    Any failure raises ``HTTPException(401)``.
+    """
+    if access_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
+    # Stage 1: JWT decode (signature + exp claim)
+    user_id = decode_access_token(access_token)
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    # Stage 2: sessions row must exist and not be expired
+    session = (
+        db.query(UserSession)
+        .filter(
+            UserSession.token == access_token,
+            UserSession.user_id == user_id,
+        )
+        .first()
+    )
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session revoked or not found",
+        )
+    if session.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired",
+        )
+
+    # Load user
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    return user
