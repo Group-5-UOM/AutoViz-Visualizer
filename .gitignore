@@ -14,8 +14,10 @@ backend/exports/
 # Observability logs (per-call tool logging)
 backend/logs/
 
-# API keys (planner LLM)
+# Environment files (secrets & API keys)
 .env
+*.env
+backend/.env
 
 # Frontend
 frontend/node_modules/

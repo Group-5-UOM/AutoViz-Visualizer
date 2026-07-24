@@ -1,4 +1,4 @@
-"""Dataset routes (Week 3 — not yet implemented).
+"""Dataset routes — thin adapters over ``services.dataset``.
 
 Thin adapters over `services.dataset`, identical behavior to MCP tools 1-6:
 
@@ -13,6 +13,10 @@ Thin adapters over `services.dataset`, identical behavior to MCP tools 1-6:
     GET    /datasets/{dataset_id}/profile get_dataset_profile()
     GET    /datasets/{dataset_id}/preview preview_dataset(limit)
 
-Errors keep the services' structured `{error, hint?}` shape with an appropriate
+Errors keep the services' structured ``{error, hint?}`` shape with an appropriate
 HTTP status (404 unknown id, 400 bad file) — never a raised exception.
 """
+
+from fastapi import APIRouter
+
+router = APIRouter(tags=["datasets"])
