@@ -15,5 +15,30 @@ services:
       timeout: 3s
       retries: 5
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Entrypoint runs `alembic upgrade head`, then uvicorn on :8000.
+    environment:
+      # In-network Postgres (service name `db`). psycopg2 handles postgresql://.
+      DATABASE_URL: postgresql://autoviz:autoviz@db:5432/autoviz
+      SECRET_KEY: ${SECRET_KEY:-autoviz-dev-secret-key-change-in-production}
+      AUTOVIZ_CORS_ORIGINS: ${AUTOVIZ_CORS_ORIGINS:-http://localhost:3000}
+      AUTOVIZ_UPLOAD_TTL_HOURS: ${AUTOVIZ_UPLOAD_TTL_HOURS:-24}
+      # Set to "postgres" for durable LangGraph agent threads across restarts.
+      AUTOVIZ_AGENT_CHECKPOINTER: ${AUTOVIZ_AGENT_CHECKPOINTER:-}
+      # Only needed for the /agent routes.
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Persist session-isolated uploads independent of the container lifecycle.
+      - autoviz_uploads:/app/uploads
+
 volumes:
   autoviz_pgdata:
+  autoviz_uploads:
