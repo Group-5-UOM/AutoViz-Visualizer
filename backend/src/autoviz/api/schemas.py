@@ -1,16 +1,46 @@
-"""Pydantic request/response models for the HTTP API (Week 3 — not yet implemented).
+"""Pydantic request models for the HTTP API — thin wrappers over the MCP tool
+signatures.
 
-The plan grammar itself is NOT redefined here — `schema.analysis_plan.AnalysisPlan`
-is the single source of truth and is reused directly in request bodies.
-
-Planned models (thin wrappers matching the MCP tool signatures):
-- RegisterDatasetRequest{file_ref}          — plus a separate multipart upload route
-- PlanRequest{dataset_id, analysis_plan}    — for validate / execute / pipeline
-- ChartRequest{result_table, chart_spec}
-- ExportRequest{vega_lite_spec, filename?}
-- AnalyzeRequest{request, dataset_id?, file_ref?, thread_id?}
-- ClarificationRequest{thread_id, answer}
-
-Responses stay the same dicts the services already return (structured errors,
-never raised), so the frontend and MCP hosts see identical shapes.
+The plan grammar is NOT redefined here: `analysis_plan` is accepted as a raw
+object and validated by `services.validation` against
+`schema.analysis_plan.AnalysisPlan` (the single source of truth), so the caller
+gets AutoViz's structured, message-rich validation errors instead of a generic
+422 from a Pydantic body coercion. Responses stay the exact dicts the services
+already return.
 """
+
+from typing import Any
+
+from pydantic import BaseModel
+
+
+class PlanRequest(BaseModel):
+    dataset_id: str
+    analysis_plan: dict[str, Any]
+
+
+class RecommendChartRequest(BaseModel):
+    result_schema: list[dict[str, str]]
+    intent: str
+
+
+class GenerateChartRequest(BaseModel):
+    result_table: list[dict[str, Any]]
+    chart_spec: dict[str, Any]
+
+
+class ExportChartRequest(BaseModel):
+    vega_lite_spec: dict[str, Any]
+    filename: str | None = None
+
+
+class AnalyzeRequest(BaseModel):
+    request: str
+    dataset_id: str | None = None
+    file_ref: str | None = None
+    thread_id: str | None = None
+
+
+class ClarificationRequest(BaseModel):
+    thread_id: str
+    answer: str
