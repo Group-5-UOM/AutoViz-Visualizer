@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from autoviz.api.routes import agent, analysis, auth, charts
+from autoviz.api.routes import agent, analysis, auth, charts, datasets
 from autoviz.observability import configure_logging
 
 _log = logging.getLogger("autoviz.observability")
@@ -71,6 +71,7 @@ def create_app() -> FastAPI:
         return response
 
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
+    app.include_router(datasets.router, prefix="/datasets", tags=["datasets"])
     app.include_router(analysis.router, prefix="/analysis", tags=["analysis"])
     app.include_router(charts.router, prefix="/charts", tags=["charts"])
     app.include_router(agent.router, prefix="/agent", tags=["agent"])
