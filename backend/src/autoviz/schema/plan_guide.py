@@ -19,11 +19,13 @@ analysis_plan JSON structure (lists may be empty/omitted; dataset_id and intent 
   "aggregations": [{"column": "col", "fn": "sum"|"mean"|"min"|"max"|"count"|"median"|"count_distinct",
                     "as": "alias"}],
   "sort": [{"by": "col", "dir": "asc"|"desc"}],
-  "limit": 100,
+  "limit": <int, optional>,
   "chart": {"type": "bar"|"line"|"scatter"|"pie"|"area"|"histogram", "x": "col", "y": "col",
             "color": "col"}
 }
 Rules: group_by max 2 columns; limit max 1000; no other fields or op/fn values are accepted.
+Omit limit for distribution/relationship plans — the full column is needed to bin the
+histogram / plot every point; a limit truncates the data. Use limit only to cap ranking/top-N.
 Filter values are scalars, except: "in" takes a list of 1-20 scalars, "between" takes
 [low, high] (2 values) — both work on numeric/datetime columns ("in" on any type).
 Every column must exist in the dataset schema (call get_dataset_schema first).
