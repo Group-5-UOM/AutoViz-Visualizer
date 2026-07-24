@@ -37,6 +37,12 @@ MAX_FILE_BYTES = _env_int("AUTOVIZ_MAX_FILE_BYTES", 50 * 1024 * 1024)  # 50 MiB
 MAX_ROWS = _env_int("AUTOVIZ_MAX_ROWS", 1_000_000)
 MAX_COLUMNS = _env_int("AUTOVIZ_MAX_COLUMNS", 512)
 
+# Categorical columns at/under this distinct-value count get their values profiled
+# (see sample_values below) — enough to disambiguate references, small enough to
+# stay cheap and privacy-bounded. Values themselves are capped per column.
+SAMPLE_VALUE_MAX_CARDINALITY = 50
+SAMPLE_VALUES_PER_COLUMN = 50
+
 
 def _default_data_roots() -> list[Path]:
     # dataset.py sits at backend/src/autoviz/services/; parents[4] is the repo root.
@@ -127,6 +133,15 @@ def _build_profile(df: pd.DataFrame, schema: dict[str, str]) -> dict[str, Any]:
             col: {stat: _sanitize_scalar(described.loc[stat, col]) for stat in described.index}
             for col in numeric_cols
         }
+    # Distinct values of low-cardinality categorical columns — grounding for the
+    # ambiguity detectors (a literal in a request that matches values in >1
+    # column). Neutralized like every other user-string copied out of the frame.
+    sample_values: dict[str, list[str]] = {}
+    for col, logical in schema.items():
+        if logical in ("string", "boolean") and df[col].nunique(dropna=True) <= SAMPLE_VALUE_MAX_CARDINALITY:
+            vals = df[col].dropna().unique().tolist()[:SAMPLE_VALUES_PER_COLUMN]
+            sample_values[neutralize_text(col)] = sorted(neutralize_text(str(v)) for v in vals)
+
     # Column names are also untrusted; neutralize the copies emitted to the LLM
     # (the real names remain the DataFrame/SQL identifiers, untouched).
     return {
@@ -134,6 +149,7 @@ def _build_profile(df: pd.DataFrame, schema: dict[str, str]) -> dict[str, Any]:
         "duplicate_count": int(df.duplicated().sum()),
         "cardinality": {neutralize_text(c): int(df[c].nunique(dropna=True)) for c in df.columns},
         "summary_stats": {neutralize_text(c): v for c, v in summary_stats.items()},
+        "sample_values": sample_values,
     }
 
 

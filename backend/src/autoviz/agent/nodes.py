@@ -9,6 +9,8 @@ from typing import Any
 
 from langgraph.types import interrupt
 
+from autoviz import observability
+from autoviz.agent.ambiguity import detect_ambiguities
 from autoviz.agent.state import (
     MAX_TASKS,
     AutoVizState,
@@ -17,6 +19,7 @@ from autoviz.agent.state import (
 )
 from autoviz.errors import PLAN_REPAIRABLE, RETRYABLE
 from autoviz.llm.client import IntentDecision, PlannerError, PlannerLLM
+from autoviz.schema.clarification import Ambiguity, bind_answer
 from autoviz.services import charts, dataset
 from autoviz.services.orchestrator import run_pipeline
 from autoviz.services.registry import REGISTRY, DatasetRegistry
@@ -65,15 +68,56 @@ def classify_intent(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, An
     }
 
 
+def detect_ambiguity(state: AutoVizState) -> dict[str, Any]:
+    """Deterministic pre-check: queue the request's ambiguities (minus resolved ones).
+
+    Runs before the planner LLM so 'should we ask?' is a computed signal, not a
+    prompt guess. Re-runs after each answer (via the clarify loop) so answered
+    slots drop out and the queue shrinks toward empty.
+    """
+    ambs = detect_ambiguities(
+        state["user_request"],
+        state.get("schema") or [],
+        state.get("profile") or {},
+        resolved=state.get("resolved_slots") or {},
+    )
+    return {"pending_ambiguities": [a.model_dump() for a in ambs]}
+
+
 def clarify(state: AutoVizState) -> dict[str, Any]:
-    payload = state.get("clarification") or {
-        "question": "Could you clarify your request?",
-        "options": [],
-    }
+    """Ask one clarifying question and bind the answer.
+
+    Prefers a deterministic ambiguity (grounded options, answer bound to its slot);
+    falls back to an LLM-authored clarification when the detectors found nothing.
+    """
+    pending = state.get("pending_ambiguities") or []
+    if pending:
+        amb = Ambiguity.model_validate(pending[0])
+        answer = interrupt(amb.to_wire())  # pause; resumes here with the user's answer
+        resolution = bind_answer(amb, str(answer))
+        observability.log_event(
+            "clarification", source="detector", amb_type=amb.type, slot=amb.slot,
+            n_options=len(amb.options), resolution=resolution.source,
+            round=state.get("clarification_count", 0) + 1,
+        )
+        return {
+            "resolved_slots": {**(state.get("resolved_slots") or {}), resolution.slot: resolution.value},
+            "clarification_count": state.get("clarification_count", 0) + 1,
+            "clarify_source": "detector",
+            "clarification_answer": str(answer),
+        }
+
+    # LLM-authored clarification (detectors found nothing structural).
+    payload = state.get("clarification") or {"question": "Could you clarify your request?", "options": []}
     answer = interrupt(payload)
+    observability.log_event(
+        "clarification", source="llm", n_options=len(payload.get("options", [])),
+        round=state.get("clarification_count", 0) + 1,
+    )
     return {
         "clarification_answer": str(answer),
         "clarification_count": state.get("clarification_count", 0) + 1,
+        "clarify_source": "llm",
         "clarification": None,
     }
 

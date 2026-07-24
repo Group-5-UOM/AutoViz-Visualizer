@@ -103,6 +103,19 @@ def classify_outcome(result: Any) -> dict[str, Any]:
     return outcome
 
 
+def log_event(event: str, **fields: Any) -> None:
+    """Emit one structured observability record for a non-tool graph event.
+
+    Used for workflow events like clarification rounds. Pass only safe metadata —
+    types, slots, counts, outcomes — never raw dataset values or free-text, so the
+    log stays free of user cell contents (same discipline as `observed`).
+    """
+    try:
+        _logger.info(json.dumps({"event": event, **fields}, default=str))
+    except Exception:  # logging must never break the workflow
+        pass
+
+
 def observed(fn: Callable) -> Callable:
     """Log one structured record per call. ``functools.wraps`` keeps the original
     signature so FastMCP's schema introspection is unaffected."""

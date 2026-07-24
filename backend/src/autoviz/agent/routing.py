@@ -2,6 +2,7 @@
 
 from langgraph.types import Send
 
+from autoviz.agent.ambiguity import apply_resolutions
 from autoviz.agent.nodes import CHART_FALLBACK_STEPS
 from autoviz.agent.state import (
     MAX_CLARIFICATIONS,
@@ -13,7 +14,20 @@ from autoviz.errors import PLAN_REPAIRABLE
 
 
 def route_after_context(state: AutoVizState) -> str:
-    return "record_failure" if state.get("status") == "failed" else "classify_intent"
+    return "record_failure" if state.get("status") == "failed" else "detect_ambiguity"
+
+
+def route_after_detect(state: AutoVizState) -> str:
+    """Ask about a detected ambiguity if the round budget allows; else plan."""
+    pending = state.get("pending_ambiguities") or []
+    if pending and state.get("clarification_count", 0) < MAX_CLARIFICATIONS:
+        return "clarify"
+    return "classify_intent"
+
+
+def route_after_clarify(state: AutoVizState) -> str:
+    """A deterministic answer re-detects (queue may shrink); an LLM answer re-classifies."""
+    return "classify_intent" if state.get("clarify_source") == "llm" else "detect_ambiguity"
 
 
 def route_after_classify(state: AutoVizState) -> str | list[Send]:
@@ -21,6 +35,7 @@ def route_after_classify(state: AutoVizState) -> str | list[Send]:
     if wants_clarification and state.get("clarification_count", 0) < MAX_CLARIFICATIONS:
         return "clarify"
     tasks = state.get("tasks") or [state["user_request"]]
+    resolved = state.get("resolved_slots") or {}
     prior_plan = None
     if state.get("intent") == "refinement":
         for entry in reversed(state.get("history", [])):
@@ -31,7 +46,8 @@ def route_after_classify(state: AutoVizState) -> str | list[Send]:
         Send(
             "analysis_worker",
             {
-                "task": task,
+                # Bound clarification answers become explicit task constraints.
+                "task": apply_resolutions(task, resolved),
                 "dataset_id": state["dataset_id"],
                 "schema": state["schema"],
                 "profile": state["profile"],
