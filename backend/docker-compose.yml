@@ -30,6 +30,8 @@ services:
       AUTOVIZ_AGENT_CHECKPOINTER: ${AUTOVIZ_AGENT_CHECKPOINTER:-}
       # Only needed for the /agent routes.
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      # Planner model override (falls back to the in-code default if unset).
+      AUTOVIZ_PLANNER_MODEL: ${AUTOVIZ_PLANNER_MODEL:-}
     ports:
       - "8000:8000"
     depends_on:
