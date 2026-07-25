@@ -6,10 +6,10 @@ export interface LoginResponse {
   expires_at: string;
 }
 
-export async function registerUser(email: string, password: string) {
-  return apiRequest<{ id: string; email: string }>('/auth/register', {
+export async function registerUser(email: string, password: string, username: string) {
+  return apiRequest<{ id: string; email: string; username: string }>('/auth/register', {
     method: 'POST',
-    body: { email, password },
+    body: { email, password, username },
     auth: false,
   });
 }
