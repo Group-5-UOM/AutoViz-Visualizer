@@ -142,6 +142,18 @@ function labelCheck(name, { dataText }) {
   return null;
 }
 
+/**
+ * The table view reads its rows straight out of the spec (`lib/specData.ts`),
+ * so every generated spec has to carry them inline. If a chart type ever stops
+ * doing that, its accessible counterpart silently disappears with no error.
+ */
+function inlineRowsCheck(spec) {
+  const values = spec?.data?.values;
+  if (!Array.isArray(values) || values.length === 0) return 'carries no inline rows — table view would be unavailable';
+  if (typeof values[0] !== 'object' || values[0] === null) return 'inline rows are not objects — table view cannot column them';
+  return null;
+}
+
 /** Every chart must use the palette, not Vega's stock tableau10. */
 const TABLEAU = ['#4c78a8', '#f58518', '#e45756', '#72b7b2', '#54a24b'];
 function paletteCheck({ byType }) {
@@ -171,6 +183,8 @@ for (const [name, spec] of Object.entries(specs)) {
     if (pal) problems.push(pal);
     const lbl = labelCheck(name, result);
     if (lbl) problems.push(lbl);
+    const rows = inlineRowsCheck(spec);
+    if (rows) problems.push(rows);
     const extra = CHECKS[name]?.(result);
     if (extra) problems.push(extra);
 

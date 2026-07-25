@@ -1,0 +1,68 @@
+/* The table view is the chart's accessible counterpart — see DataTable.tsx. */
+
+.data-table-scroll {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  /* Wide tables scroll inside this box; the widget itself never scrolls. */
+  overscroll-behavior: contain;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+/* Present for screen readers; the widget title lives outside this DOM. */
+.data-table-caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.data-table th,
+.data-table td {
+  padding: 5px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-surface);
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom-color: var(--border);
+}
+
+/* Numeric columns align on the decimal, so tabular figures earn their place. */
+.data-table .is-numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table tbody tr:hover {
+  background: var(--bg-muted);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table-truncation {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-subtle);
+}

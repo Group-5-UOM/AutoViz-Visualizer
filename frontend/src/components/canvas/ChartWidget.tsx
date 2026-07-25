@@ -1,7 +1,9 @@
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import embed from 'vega-embed';
-import { Trash2 } from 'lucide-react';
+import { BarChart3, Table2, Trash2 } from 'lucide-react';
 import type { ChartWidget } from '../../types/dashboard';
+import { specRows } from '../../lib/specData';
+import { DataTable } from './DataTable';
 import './ChartWidget.css';
 
 interface ChartWidgetCardProps {
@@ -22,6 +24,8 @@ export function ChartWidgetCard({
   onResize,
 }: ChartWidgetCardProps) {
   const chartRef = useRef<HTMLDivElement>(null);
+  const [showTable, setShowTable] = useState(false);
+  const rows = useMemo(() => specRows(widget.vegaLiteSpec), [widget.vegaLiteSpec]);
   const dragRef = useRef<{
     mode: 'move' | 'resize';
     startX: number;
@@ -37,7 +41,8 @@ export function ChartWidgetCard({
   // view's interaction state (legend filter, zoom) mid-gesture.
   useEffect(() => {
     const el = chartRef.current;
-    if (!el) return;
+    // Nothing to embed into while the table is showing; re-runs when it closes.
+    if (!el || showTable) return;
 
     let cancelled = false;
     let view: { finalize: () => void } | null = null;
@@ -68,7 +73,7 @@ export function ChartWidgetCard({
       view?.finalize();
       el.innerHTML = '';
     };
-  }, [widget.vegaLiteSpec]);
+  }, [widget.vegaLiteSpec, showTable]);
 
   useEffect(() => {
     const onPointerMove = (e: PointerEvent) => {
@@ -136,22 +141,46 @@ export function ChartWidgetCard({
         onPointerDown={(e) => startDrag(e, 'move')}
       >
         <h3>{widget.title}</h3>
-        <button
-          type="button"
-          className="chart-delete-btn"
-          title="Delete chart"
-          aria-label="Delete chart"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-        >
-          <Trash2 size={14} />
-        </button>
+        <div className="chart-widget-actions">
+          {rows && (
+            <button
+              type="button"
+              className="chart-header-btn"
+              title={showTable ? 'Show chart' : 'Show data table'}
+              aria-label={showTable ? 'Show chart' : 'Show data table'}
+              aria-pressed={showTable}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowTable((on) => !on);
+              }}
+            >
+              {showTable ? <BarChart3 size={14} /> : <Table2 size={14} />}
+            </button>
+          )}
+          <button
+            type="button"
+            className="chart-header-btn is-danger"
+            title="Delete chart"
+            aria-label="Delete chart"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </header>
 
-      <div className="chart-widget-body" ref={chartRef} />
+      {showTable && rows ? (
+        <div className="chart-widget-body is-table">
+          <DataTable rows={rows} caption={`Data for ${widget.title}`} />
+        </div>
+      ) : (
+        <div className="chart-widget-body" ref={chartRef} />
+      )}
 
       {selected && (
         <p className="chart-explanation">{widget.explanation}</p>
