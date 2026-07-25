@@ -54,6 +54,9 @@ Omit limit for distribution/relationship plans — the full column is needed to 
 histogram / plot every point; a limit truncates the data. Use limit only to cap ranking/top-N.
 Filter values are scalars, except: "in" takes a list of 1-20 scalars, "between" takes
 [low, high] (2 values) — both work on numeric/datetime columns ("in" on any type).
+Some number columns are really coded categories (e.g. pclass 1/2/3, survived 0/1); the
+profile lists them as categorical_numeric_columns. Treat these as categories — group_by
+or chart.color them to compare classes — not as continuous measures to aggregate.
 Every column must exist in the dataset schema (call get_dataset_schema first).
 sum/mean/min/max/median need a numeric column; month/year/day/weekday derives need a
 datetime column. chart is optional (omit it to auto-recommend); chart.x/y/color may only

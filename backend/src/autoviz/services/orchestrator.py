@@ -93,18 +93,30 @@ def run_pipeline(
         }
     result_table = executed["result_table"]
 
+    result_columns = list(result_table[0].keys()) if result_table else []
+    # Effective type of every column the query produces. A numeric-coded category
+    # (pclass, survived) is demoted to "categorical" only where it is used as a
+    # dimension — a group_by key or an explicit colour channel — so it renders as
+    # discrete classes instead of a continuous scale. Elsewhere it stays a number:
+    # the same column can still be a measure when selected or aggregated on.
+    coded = set(record.categorical_numeric)
+    dimension_cols = set(plan.group_by)
+    if plan.chart is not None and plan.chart.color:
+        dimension_cols.add(plan.chart.color)
+    effective_types = dict(record.schema)
+    for c in coded & dimension_cols:
+        effective_types[c] = "categorical"
+    for d in plan.derive:
+        effective_types[d.name] = (
+            "number" if d.fn in (DATE_DERIVE_FNS | NUMERIC_DERIVE_FNS) else "string"
+        )
+    for a in plan.aggregations:
+        effective_types[a.as_] = "number"
+
     if plan.chart is not None:
         chart_spec: dict[str, Any] = plan.chart.model_dump(exclude_none=True)
         recommendation = None
     else:
-        result_columns = list(result_table[0].keys()) if result_table else []
-        effective_types = dict(record.schema)
-        for d in plan.derive:
-            effective_types[d.name] = (
-                "number" if d.fn in (DATE_DERIVE_FNS | NUMERIC_DERIVE_FNS) else "string"
-            )
-        for a in plan.aggregations:
-            effective_types[a.as_] = "number"
         result_schema = [
             {"name": c, "type": effective_types.get(c, "string")} for c in result_columns
         ]
@@ -126,6 +138,10 @@ def run_pipeline(
         if recommendation.get("color"):
             chart_spec["color"] = recommendation["color"]
 
+    # Encoding hint so each channel renders with the right Vega-Lite type — in
+    # particular coded categories go nominal (discrete legend/axis), not a
+    # continuous quantitative scale. Applies to host-supplied charts too.
+    chart_spec["column_types"] = {c: effective_types.get(c, "string") for c in result_columns}
     chart = generate_chart(result_table, chart_spec)
     if not chart["valid"]:
         return {
