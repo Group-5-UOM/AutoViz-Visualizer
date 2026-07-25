@@ -21,10 +21,10 @@ DERIVE_FNS = frozenset({"month", "year", "day", "weekday", "lower", "upper", "tr
 CHART_TYPES = frozenset({"bar", "line", "scatter", "pie", "area", "histogram"})
 
 MAX_GROUP_BY = 2
-MAX_LIMIT = 1000
+MAX_LIMIT = 100_000
 
 # Hard ceiling on rows returned by execution, regardless of what the plan requests.
-HARD_ROW_CEILING = 1000
+HARD_ROW_CEILING = 100_000
 
 # Type-compatibility contracts used by validation.
 NUMERIC_ONLY_AGGS = frozenset({"sum", "mean", "min", "max", "median"})

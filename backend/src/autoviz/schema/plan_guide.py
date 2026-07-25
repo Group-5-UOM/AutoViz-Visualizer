@@ -48,7 +48,7 @@ Preprocessing (explicit, never silent — the source CSV is never modified):
   >30% removing rows needs user confirmation (run_analysis_pipeline returns confirmation_required —
   re-call with approved_preprocessing_hash to proceed); 100% the column is unusable, do not select it.
 
-Rules: group_by max 2 columns; limit max 1000; no other fields or op/fn values are accepted.
+Rules: group_by max 2 columns; limit max 100000; no other fields or op/fn values are accepted.
 is_null/is_not_null take no value and work on any column type.
 Omit limit for distribution/relationship plans — the full column is needed to bin the
 histogram / plot every point; a limit truncates the data. Use limit only to cap ranking/top-N.

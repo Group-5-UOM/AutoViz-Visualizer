@@ -52,12 +52,12 @@ def test_filter_eq(registry, iris_id):
 def test_distribution_without_limit_returns_all_rows(registry, titanic_id):
     # Regression: a distribution plan with no explicit limit must NOT be capped
     # at the old default of 100 — the histogram needs every value. Titanic has
-    # 891 rows; all must come through (they're under the 1000 ceiling).
+    # 891 rows; all must come through (they're under the 100000 ceiling).
     plan = {"dataset_id": titanic_id, "intent": "distribution", "select": ["age"]}
     result = execute_analysis(titanic_id, plan, registry)
     assert "error" not in result, result
     assert result["row_count"] == 891
-    assert result["provenance"]["sql"].endswith("LIMIT 1000")
+    assert result["provenance"]["sql"].endswith("LIMIT 100000")
 
 
 def test_explicit_limit_is_still_honored(registry, titanic_id):
@@ -79,12 +79,13 @@ def test_hard_row_ceiling_on_diamonds(registry, diamonds_id):
         "dataset_id": diamonds_id,
         "intent": "distribution",
         "select": ["carat", "price"],
-        "limit": 1000,
+        "limit": 999999,
     }
     result = execute_analysis(diamonds_id, plan, registry)
     assert "error" not in result, result
-    # diamonds has 53,940 rows; ceiling must hold.
-    assert result["row_count"] <= 1000
+    # diamonds has 53,940 rows, so after clamping to 100000 the whole result fits.
+    assert result["row_count"] == 53940
+    assert result["provenance"]["sql"].endswith("LIMIT 100000")
 
 
 def test_mean_ignores_missing_values_on_penguins(registry):
