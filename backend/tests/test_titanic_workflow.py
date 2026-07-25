@@ -65,6 +65,35 @@ def test_titanic_full_workflow(registry):
     assert piped["recommendation"]["chart_type"] == "bar"
 
 
+def test_titanic_drop_nulls_reports_exact_effect(registry):
+    """Explicit cleaning end-to-end. Counts are derived from the profile, never
+    hardcoded — dropping age-nulls must remove exactly the profiled null count."""
+    dataset_id = register_dataset(data_path("general-testing", "titanic.csv"), registry)[
+        "dataset_id"
+    ]
+    profile = get_dataset_profile(dataset_id, registry)
+    age_nulls = profile["null_counts"]["age"]
+    assert age_nulls > 0  # Titanic ages are famously missing
+
+    plan = {
+        "dataset_id": dataset_id,
+        "intent": "comparison",
+        "preprocessing": [{"op": "drop_nulls", "columns": ["age"], "how": "any"}],
+        "group_by": ["class"],
+        "aggregations": [{"column": "age", "fn": "mean", "as": "avg_age"}],
+    }
+    executed = execute_analysis(dataset_id, plan, registry)
+    assert executed["input_rows"] == 891
+    assert executed["preprocessing"][0]["rows_affected"] == age_nulls
+    assert executed["output_rows"] == 891 - age_nulls
+
+    # Dropping age-nulls is well under the 30% gate, so the pipeline runs directly.
+    piped = run_pipeline(dataset_id, plan, registry)
+    assert piped["status"] == "ok", piped
+    # Source frame untouched: the nulls are still there.
+    assert int(registry.get(dataset_id).df["age"].isna().sum()) == age_nulls
+
+
 def test_titanic_chart_step_in_isolation(registry):
     """The recommend -> generate half of the workflow on the executed table."""
     dataset_id = register_dataset(data_path("general-testing", "titanic.csv"), registry)[

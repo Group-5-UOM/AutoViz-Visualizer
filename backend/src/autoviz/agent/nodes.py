@@ -183,7 +183,12 @@ def execute_node(state: WorkerState, *, registry: DatasetRegistry = REGISTRY) ->
     # plan-repairable code sends us back to the planner (handled in routing).
     attempts = 0
     while True:
-        out = run_pipeline(state["dataset_id"], state["analysis_plan"], registry)
+        out = run_pipeline(
+            state["dataset_id"],
+            state["analysis_plan"],
+            registry,
+            approved_preprocessing_hash=state.get("approved_preprocessing_hash"),
+        )
         if (
             out["status"] == "ok"
             or out.get("error_code") not in RETRYABLE
@@ -198,6 +203,41 @@ def execute_node(state: WorkerState, *, registry: DatasetRegistry = REGISTRY) ->
         update["rejected_plan"] = state["analysis_plan"]
         update["validation_errors"] = [str(e) for e in out.get("errors", [])]
     return update
+
+
+def confirm_preprocessing(state: WorkerState) -> dict[str, Any]:
+    """Present the shared pipeline's large-row-removal gate and bind the answer.
+
+    run_pipeline (the single enforcer) returned status "confirmation_required". We
+    surface its question, then deterministically map the answer: "proceed" approves
+    this exact preprocessing block (by hash) and re-executes; anything else skips the
+    row-dropping steps (keeping any fill_nulls) and runs on the full data.
+    """
+    out = state.get("pipeline_output") or {}
+    conf = out.get("confirmation") or {}
+    answer = interrupt({"question": conf.get("question"), "options": conf.get("options", [])})
+    norm = str(answer).strip().casefold()
+    proceed = "proceed" in norm or norm in ("y", "yes", "ok", "confirm")
+
+    observability.log_event(
+        "preprocessing_confirmation",
+        proceed=proceed,
+        dropped=(conf.get("impact") or {}).get("dropped"),
+        input_rows=(conf.get("impact") or {}).get("input_rows"),
+    )
+
+    if proceed:
+        return {"approved_preprocessing_hash": conf.get("preprocessing_hash")}
+
+    # Skip: strip only the row-dropping ops, keep fill_nulls (R3). The trimmed plan
+    # has no row-dropping preprocessing, so it will not gate again.
+    plan = dict(state["analysis_plan"] or {})
+    plan["preprocessing"] = [
+        op
+        for op in plan.get("preprocessing", [])
+        if op.get("op") not in ("drop_nulls", "drop_exact_duplicates")
+    ]
+    return {"analysis_plan": plan, "approved_preprocessing_hash": None}
 
 
 def chart_fallback(state: WorkerState) -> dict[str, Any]:

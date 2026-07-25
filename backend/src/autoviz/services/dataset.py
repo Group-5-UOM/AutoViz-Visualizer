@@ -43,6 +43,15 @@ MAX_COLUMNS = _env_int("AUTOVIZ_MAX_COLUMNS", 512)
 SAMPLE_VALUE_MAX_CARDINALITY = 50
 SAMPLE_VALUES_PER_COLUMN = 50
 
+# A numeric column whose values are whole numbers and whose distinct-value count
+# stays at/under this bound is treated as a *coded category* (pclass 1/2/3,
+# survived 0/1, sibsp 0-8) rather than a continuous measure: it is a dimension to
+# group and colour by, not a quantity to plot on a continuous scale. Continuous
+# measures (fare) are excluded by the whole-number test; wide integer columns
+# (age) by the cardinality bound. The source dtype is never changed — this signal
+# only informs chart encoding (nominal vs quantitative).
+CATEGORICAL_NUMERIC_MAX_CARDINALITY = 20
+
 
 def _default_data_roots() -> list[Path]:
     # dataset.py sits at backend/src/autoviz/services/; parents[4] is the repo root.
@@ -84,6 +93,28 @@ def _logical_type(series: pd.Series) -> str:
     if pd.api.types.is_datetime64_any_dtype(series):
         return "datetime"
     return "string"
+
+
+def _categorical_numeric_columns(df: pd.DataFrame, schema: dict[str, str]) -> list[str]:
+    """Numeric columns that are really coded categories, not measures.
+
+    A number column qualifies when every non-null value is a whole number and the
+    distinct count is at/under CATEGORICAL_NUMERIC_MAX_CARDINALITY. This flags the
+    likes of pclass and survived (which should group/colour as discrete classes)
+    while leaving continuous measures (fare) and wide integer columns (age) alone.
+    """
+    coded: list[str] = []
+    for col, logical in schema.items():
+        if logical != "number":
+            continue
+        series = df[col].dropna()
+        if series.empty:
+            continue
+        if not (series % 1 == 0).all():  # any fractional value -> a real measure
+            continue
+        if series.nunique() <= CATEGORICAL_NUMERIC_MAX_CARDINALITY:
+            coded.append(col)
+    return coded
 
 
 def _coerce_datetimes(df: pd.DataFrame) -> pd.DataFrame:
@@ -142,10 +173,25 @@ def _build_profile(df: pd.DataFrame, schema: dict[str, str]) -> dict[str, Any]:
             vals = df[col].dropna().unique().tolist()[:SAMPLE_VALUES_PER_COLUMN]
             sample_values[neutralize_text(col)] = sorted(neutralize_text(str(v)) for v in vals)
 
+    # Per-column null counts and percentages (of total rows). A column that is
+    # entirely null is "unusable": the planner must not select/group/aggregate on
+    # it, and it cannot supply a median/mode fill value (enforced in validation).
+    row_count = len(df)
+    null_counts = {c: int(df[c].isna().sum()) for c in df.columns}
+    null_percentage = {
+        neutralize_text(c): (round(100 * n / row_count, 2) if row_count else 0.0)
+        for c, n in null_counts.items()
+    }
+    unusable_columns = [
+        neutralize_text(c) for c in df.columns if row_count and null_counts[c] == row_count
+    ]
+
     # Column names are also untrusted; neutralize the copies emitted to the LLM
     # (the real names remain the DataFrame/SQL identifiers, untouched).
     return {
-        "null_counts": {neutralize_text(c): int(df[c].isna().sum()) for c in df.columns},
+        "null_counts": {neutralize_text(c): n for c, n in null_counts.items()},
+        "null_percentage": null_percentage,
+        "unusable_columns": unusable_columns,
         "duplicate_count": int(df.duplicated().sum()),
         "cardinality": {neutralize_text(c): int(df[c].nunique(dropna=True)) for c in df.columns},
         "summary_stats": {neutralize_text(c): v for c, v in summary_stats.items()},
@@ -189,6 +235,8 @@ def register_dataset(
         df = pd.read_csv(path)
     except Exception as exc:
         return {"error": f"Could not read CSV: {exc}"}
+    if df.shape[0] == 0 or df.shape[1] == 0:
+        return {"error": "CSV has no data rows (an empty or header-only file is not analysable)."}
     if len(df) > MAX_ROWS:
         return make_error(
             RESOURCE_LIMIT,
@@ -197,12 +245,18 @@ def register_dataset(
 
     df = _coerce_datetimes(df)
     schema = {col: _logical_type(df[col]) for col in df.columns}
+    categorical_numeric = _categorical_numeric_columns(df, schema)
+    profile = _build_profile(df, schema)
+    # Surface the coded-category signal to the planner too (real names untouched
+    # in the record; the copy emitted to the LLM is neutralized like the rest).
+    profile["categorical_numeric"] = [neutralize_text(c) for c in categorical_numeric]
     record = DatasetRecord(
         dataset_id=registry.new_id(str(path)),
         source=str(path),
         df=df,
         schema=schema,
-        profile=_build_profile(df, schema),
+        profile=profile,
+        categorical_numeric=categorical_numeric,
     )
     registry.add(record)
     return {

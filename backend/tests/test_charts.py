@@ -39,6 +39,29 @@ def test_generate_chart_bar_spec():
     assert spec["data"]["values"] == table
 
 
+def test_generate_chart_coded_category_encodes_nominal():
+    # A numeric-coded category (survived 0/1) on the color channel must render as
+    # discrete nominal groups, not a continuous quantitative scale.
+    table = [{"pclass": 1, "avg_fare": 84.2}, {"pclass": 3, "avg_fare": 13.7}]
+    out = generate_chart(
+        table,
+        {"type": "bar", "x": "pclass", "y": "avg_fare",
+         "column_types": {"pclass": "categorical", "avg_fare": "number"}},
+    )
+    assert out["valid"]
+    enc = out["vega_lite_spec"]["encoding"]
+    assert enc["x"] == {"field": "pclass", "type": "nominal"}
+    assert enc["y"] == {"field": "avg_fare", "type": "quantitative"}
+
+
+def test_recommend_treats_coded_category_as_dimension():
+    # pclass tagged "categorical" is the bar's x; the count stays the measure.
+    schema = [{"name": "pclass", "type": "categorical"}, {"name": "n", "type": "number"}]
+    rec = recommend_chart_type(schema, "distribution")
+    assert rec["chart_type"] == "bar"
+    assert rec["x"] == "pclass"
+
+
 def test_generate_chart_rejects_disallowed_mark():
     out = generate_chart([], {"type": "heatmap", "x": "a", "y": "b"})
     assert not out["valid"]
@@ -91,6 +114,23 @@ def test_pipeline_end_to_end_iris(registry, iris_id):
     assert out["recommendation"]["chart_type"] == "bar"
     assert out["vega_lite_spec"]["mark"] == "bar"
     assert out["result"]["row_count"] == 3
+
+
+def test_pipeline_coded_category_group_by_renders_nominal(registry, titanic_id):
+    # Grouping average fare by pclass: pclass is a numeric-coded category, so the
+    # x axis must be nominal (discrete 1/2/3), not a continuous quantitative scale.
+    plan = {
+        "dataset_id": titanic_id,
+        "intent": "comparison",
+        "group_by": ["pclass"],
+        "aggregations": [{"column": "fare", "fn": "mean", "as": "avg_fare"}],
+    }
+    out = run_pipeline(titanic_id, plan, registry)
+    assert out["status"] == "ok", out
+    enc = out["vega_lite_spec"]["encoding"]
+    assert enc["x"] == {"field": "pclass", "type": "nominal"}
+    assert enc["y"]["field"] == "avg_fare"
+    assert enc["y"]["type"] == "quantitative"
 
 
 def test_pipeline_partial_failure_keeps_executed_result(registry, iris_id):

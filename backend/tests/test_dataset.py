@@ -59,6 +59,16 @@ def test_titanic_profile_reports_real_nulls(registry, titanic_id):
     assert "age" in profile["summary_stats"]
 
 
+def test_titanic_categorical_numeric_detection(registry, titanic_id):
+    profile = get_dataset_profile(titanic_id, registry)
+    coded = set(profile["categorical_numeric"])
+    # Low-cardinality whole-number codes are flagged as categories...
+    assert {"survived", "pclass"} <= coded
+    # ...while continuous measures and wide integer columns are not.
+    assert "fare" not in coded  # fractional values -> a real measure
+    assert "age" not in coded  # too many distinct values to be a coded category
+
+
 def test_penguins_profile_nulls(registry):
     dataset_id = register_dataset(data_path("general-testing", "penguins.csv"), registry)["dataset_id"]
     profile = get_dataset_profile(dataset_id, registry)

@@ -86,6 +86,9 @@ class WorkerState(TypedDict, total=False):
     rejected_plan: dict[str, Any] | None
     validation_errors: list[str]
     plan_attempts: int
+    # Content hash of the preprocessing block the user approved (large row-removal
+    # gate). Bound to the block, not a boolean, so a repaired plan re-gates.
+    approved_preprocessing_hash: str | None
     pipeline_output: dict[str, Any] | None
     fallback_chart: dict[str, Any] | None
     chart_results: Annotated[list[ChartResult], add_or_reset]

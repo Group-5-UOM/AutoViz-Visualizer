@@ -1,8 +1,9 @@
 """Graph assembly: bounded workflow, not an unconstrained agent.
 
 START -> load_context -> classify_intent -> (clarify | Send fan-out | fail)
-Each analysis worker: plan -> execute -> [repair loop | chart fallback] -> finalize
-Workers join at compose_response. Interrupts require the checkpointer.
+Each analysis worker: plan -> execute -> [repair loop | preprocessing-confirmation |
+chart fallback] -> finalize. Workers join at compose_response. Interrupts (clarify and
+the large-row-removal gate) require the checkpointer.
 """
 
 from functools import partial
@@ -27,6 +28,7 @@ def build_graph(
     worker = StateGraph(WorkerState, output_schema=WorkerOutput)
     worker.add_node("plan", partial(nodes.plan_node, planner=planner))
     worker.add_node("execute", partial(nodes.execute_node, registry=registry))
+    worker.add_node("confirm_preprocessing", nodes.confirm_preprocessing)
     worker.add_node("chart_fallback", nodes.chart_fallback)
     worker.add_node("finalize", nodes.finalize_worker)
     worker.add_edge(START, "plan")
@@ -36,8 +38,16 @@ def build_graph(
     worker.add_conditional_edges(
         "execute",
         routing.route_after_execute,
-        {"plan": "plan", "chart_fallback": "chart_fallback", "finalize": "finalize"},
+        {
+            "plan": "plan",
+            "confirm_preprocessing": "confirm_preprocessing",
+            "chart_fallback": "chart_fallback",
+            "finalize": "finalize",
+        },
     )
+    # After the user answers the row-removal gate, re-run execute (now approved, or
+    # with the row-dropping steps skipped).
+    worker.add_edge("confirm_preprocessing", "execute")
     worker.add_edge("chart_fallback", "finalize")
     worker.add_edge("finalize", END)
 

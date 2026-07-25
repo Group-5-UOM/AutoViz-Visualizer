@@ -73,6 +73,9 @@ def route_after_execute(state: WorkerState) -> str:
     out = state["pipeline_output"]
     if out["status"] == "ok":
         return "finalize"
+    # The shared pipeline paused for large-row-removal confirmation; ask the user.
+    if out["status"] == "confirmation_required":
+        return "confirm_preprocessing"
     # Replan only for a genuinely plan-repairable failure — never for an
     # infrastructure fault (those were already retried in execute_node) or a
     # missing dataset, which no amount of replanning can fix.

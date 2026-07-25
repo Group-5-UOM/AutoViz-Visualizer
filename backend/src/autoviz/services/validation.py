@@ -6,6 +6,7 @@ and the chart may only reference columns the query actually produces. Failures
 are errors, never warnings — there is no raw-expression fallback.
 """
 
+import math
 import re
 from typing import Any
 
@@ -13,12 +14,17 @@ from pydantic import ValidationError
 
 from autoviz.schema.allowlists import (
     AGG_FNS,
+    CATEGORICAL_FILL_STRATEGIES,
     DATE_DERIVE_FNS,
     FILTER_OPS,
     LIST_VALUE_OPS,
+    MAX_FILL_STRING_LEN,
     MAX_IN_VALUES,
     MAX_LIMIT,
+    MAX_PREPROCESSING_COLUMNS,
+    NULL_OPS,
     NUMERIC_DERIVE_FNS,
+    NUMERIC_FILL_STRATEGIES,
     NUMERIC_ONLY_AGGS,
     ORDERED_OPS,
     STRING_DERIVE_FNS,
@@ -26,7 +32,7 @@ from autoviz.schema.allowlists import (
 )
 from autoviz.errors import INVALID_PLAN, TYPE_MISMATCH, UNKNOWN_DATASET
 from autoviz.schema.analysis_plan import AnalysisPlan
-from autoviz.services.registry import REGISTRY, DatasetRegistry
+from autoviz.services.registry import REGISTRY, DatasetRecord, DatasetRegistry
 
 # Substrings unique to type-compatibility failures (op/fn on the wrong column
 # type). If *every* error is one of these the failure is a pure TYPE_MISMATCH;
@@ -57,6 +63,125 @@ def _looks_like_code(value: Any) -> bool:
     return isinstance(value, str) and bool(_INJECTION_PATTERN.search(value))
 
 
+def _fully_null_columns(record: DatasetRecord, columns: set[str]) -> set[str]:
+    """Which of `columns` are entirely null (unusable) — computed from the frame.
+
+    Only the referenced columns are inspected (bounded work). An empty frame is
+    rejected at registration, so a non-empty column that is all-null is genuinely
+    unusable, not merely empty.
+    """
+    df = record.df
+    if len(df) == 0:
+        return set()
+    return {c for c in columns if c in df.columns and bool(df[c].isna().all())}
+
+
+def _fill_value_errors(value: Any, col_type: str, column: str) -> list[str]:
+    """Type/shape checks for a fill_nulls constant (R7): bound as a param, so a
+    code-looking string is ordinary data — we validate scalarity, finiteness,
+    length, and destination-column compatibility instead of pattern-matching."""
+    errs: list[str] = []
+    if value is None:
+        return [f"preprocessing fill_nulls on '{column}': strategy 'constant' requires a value"]
+    if isinstance(value, (list, dict)):
+        return [f"preprocessing fill_nulls on '{column}': constant value must be a scalar"]
+    if isinstance(value, float) and not math.isfinite(value):
+        errs.append(f"preprocessing fill_nulls on '{column}': constant value must be finite")
+    if isinstance(value, str) and len(value) > MAX_FILL_STRING_LEN:
+        errs.append(
+            f"preprocessing fill_nulls on '{column}': constant string exceeds "
+            f"{MAX_FILL_STRING_LEN} characters"
+        )
+    # Destination-column type compatibility (bool is a subclass of int — treat it
+    # as boolean, never as a numeric fill).
+    is_bool = isinstance(value, bool)
+    is_number = isinstance(value, (int, float)) and not is_bool
+    if col_type == "number" and not is_number:
+        errs.append(
+            f"preprocessing fill_nulls on '{column}': numeric column needs a numeric constant"
+        )
+    elif col_type == "boolean" and not is_bool:
+        errs.append(
+            f"preprocessing fill_nulls on '{column}': boolean column needs a boolean constant"
+        )
+    elif col_type in ("string", "datetime") and not isinstance(value, str):
+        errs.append(
+            f"preprocessing fill_nulls on '{column}': {col_type} column needs a string constant"
+        )
+    return errs
+
+
+def _validate_preprocessing(
+    plan: AnalysisPlan, schema: dict[str, str], fully_null: set[str], errors: list[str]
+) -> None:
+    """Validate the preprocessing block against the raw (pre-derive) schema.
+
+    Preprocessing runs first on real dataset columns, so it is checked against
+    `schema`, never derived names. Enforces column existence, strategy/type
+    compatibility, constant-value shape, resource ceilings, and op conflicts.
+    """
+    touched: set[str] = set()
+    drop_cols: set[str] = set()
+    fill_cols: set[str] = set()
+
+    for op in plan.preprocessing:
+        if op.op == "drop_nulls":
+            for col in op.columns:
+                touched.add(col)
+                if col not in schema:
+                    errors.append(f"preprocessing drop_nulls: column '{col}' does not exist")
+                elif col in fully_null:
+                    errors.append(
+                        f"preprocessing drop_nulls: column '{col}' is entirely null (unusable)"
+                    )
+                if col in fill_cols:
+                    errors.append(
+                        f"preprocessing: conflicting drop_nulls and fill_nulls on column '{col}'"
+                    )
+                drop_cols.add(col)
+        elif op.op == "fill_nulls":
+            col = op.column
+            touched.add(col)
+            col_type = schema.get(col)
+            if col_type is None:
+                errors.append(f"preprocessing fill_nulls: column '{col}' does not exist")
+            elif col in fully_null:
+                errors.append(
+                    f"preprocessing fill_nulls: column '{col}' is entirely null "
+                    f"(cannot compute a fill value)"
+                )
+            if col in fill_cols:
+                errors.append(f"preprocessing: multiple fill_nulls on column '{col}'")
+            if col in drop_cols:
+                errors.append(
+                    f"preprocessing: conflicting fill_nulls and drop_nulls on column '{col}'"
+                )
+            fill_cols.add(col)
+            if col_type is not None:
+                if op.strategy in NUMERIC_FILL_STRATEGIES and col_type != "number":
+                    errors.append(
+                        f"preprocessing fill_nulls on '{col}': strategy '{op.strategy}' "
+                        f"requires a numeric column ({col_type} given)"
+                    )
+                elif op.strategy in CATEGORICAL_FILL_STRATEGIES and col_type not in (
+                    "string",
+                    "boolean",
+                ):
+                    errors.append(
+                        f"preprocessing fill_nulls on '{col}': strategy '{op.strategy}' "
+                        f"requires a categorical (string/boolean) column ({col_type} given)"
+                    )
+                elif op.strategy == "constant":
+                    errors.extend(_fill_value_errors(op.value, col_type, col))
+        # drop_exact_duplicates takes no params — nothing to check.
+
+    if len(touched) > MAX_PREPROCESSING_COLUMNS:
+        errors.append(
+            f"preprocessing references {len(touched)} columns; the limit is "
+            f"{MAX_PREPROCESSING_COLUMNS}"
+        )
+
+
 def validate_analysis_plan(
     dataset_id: str,
     analysis_plan: dict[str, Any],
@@ -81,6 +206,27 @@ def validate_analysis_plan(
     errors: list[str] = []
     repaired: dict[str, Any] | None = None
     schema = record.schema
+
+    # Columns this plan touches directly on the raw schema; used to flag fully-null
+    # (unusable) columns cheaply, without scanning the whole frame.
+    pp_cols: set[str] = set()
+    for op in plan.preprocessing:
+        if op.op == "drop_nulls":
+            pp_cols.update(op.columns)
+        elif op.op == "fill_nulls":
+            pp_cols.add(op.column)
+    referenced = (
+        pp_cols
+        | set(plan.select)
+        | set(plan.group_by)
+        | {f.column for f in plan.filters}
+        | {a.column for a in plan.aggregations}
+        | {d.from_ for d in plan.derive}
+    )
+    fully_null = _fully_null_columns(record, {c for c in referenced if c in schema})
+
+    # Preprocessing runs first, on real columns — validate it against the raw schema.
+    _validate_preprocessing(plan, schema, fully_null, errors)
 
     # Derived columns become referenceable with a known logical type.
     effective: dict[str, str] = dict(schema)
@@ -113,6 +259,8 @@ def validate_analysis_plan(
     for col in plan.select:
         if col not in effective:
             errors.append(f"select: column '{col}' does not exist")
+        elif col in fully_null:
+            errors.append(f"select: column '{col}' is entirely null (unusable)")
 
     for f in plan.filters:
         if f.op not in FILTER_OPS:
@@ -121,6 +269,16 @@ def validate_analysis_plan(
         col_type = effective.get(f.column)
         if col_type is None:
             errors.append(f"filter: column '{f.column}' does not exist")
+            continue
+        # Null predicates take no value and work on any column type; they skip the
+        # scalar/list value checks below.
+        if f.op in NULL_OPS:
+            if f.value is not None:
+                errors.append(f"filter on '{f.column}': op '{f.op}' takes no value")
+            continue
+        # Every other op needs a value (the model now defaults it to None).
+        if f.value is None:
+            errors.append(f"filter on '{f.column}': op '{f.op}' requires a value")
             continue
         if f.op in STRING_ONLY_OPS and col_type != "string":
             errors.append(
@@ -164,6 +322,8 @@ def validate_analysis_plan(
     for col in plan.group_by:
         if col not in effective:
             errors.append(f"group_by: column '{col}' does not exist")
+        elif col in fully_null:
+            errors.append(f"group_by: column '{col}' is entirely null (unusable)")
 
     for a in plan.aggregations:
         if a.fn not in AGG_FNS:
@@ -173,6 +333,8 @@ def validate_analysis_plan(
         if col_type is None:
             errors.append(f"aggregation '{a.as_}': column '{a.column}' does not exist")
             continue
+        if a.column in fully_null:
+            errors.append(f"aggregation '{a.as_}': column '{a.column}' is entirely null (unusable)")
         if a.fn in NUMERIC_ONLY_AGGS and col_type != "number":
             errors.append(
                 f"aggregation '{a.as_}': fn '{a.fn}' requires a numeric column, "
