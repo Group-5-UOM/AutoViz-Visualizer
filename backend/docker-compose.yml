@@ -6,7 +6,8 @@ services:
       POSTGRES_PASSWORD: autoviz
       POSTGRES_DB: autoviz
     ports:
-      - "5432:5432"
+      # Host 5434 avoids clashing with system Postgres (5432) and stale 5433 binds.
+      - "5434:5432"
     volumes:
       - autoviz_pgdata:/var/lib/postgresql/data
     healthcheck:

@@ -7,6 +7,8 @@ interface ChatPanelProps {
   open: boolean;
   messages: ChatMessage[];
   isThinking: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
   onClose: () => void;
   onSend: (text: string) => void;
   onFocusChart?: (chartId: string) => void;
@@ -23,6 +25,8 @@ export function ChatPanel({
   open,
   messages,
   isThinking,
+  disabled = false,
+  disabledReason = 'Add a CSV file to start chatting.',
   onClose,
   onSend,
   onFocusChart,
@@ -38,9 +42,11 @@ export function ChatPanel({
 
   if (!open) return null;
 
+  const canSend = (text: string) => Boolean(text.trim()) && !isThinking && !disabled;
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (!draft.trim() || isThinking) return;
+    if (!canSend(draft)) return;
     onSend(draft);
     setDraft('');
   };
@@ -91,7 +97,7 @@ export function ChatPanel({
           </article>
         )}
 
-        {messages.length <= 1 && !isThinking && (
+        {messages.length <= 1 && !isThinking && !disabled && (
           <div className="chat-suggestions">
             {SUGGESTIONS.map((s) => (
               <button
@@ -107,16 +113,23 @@ export function ChatPanel({
         )}
       </div>
 
+      {disabled && (
+        <div className="chat-disabled-note" role="note">
+          {disabledReason}
+        </div>
+      )}
+
       <form className="chat-composer" onSubmit={handleSubmit}>
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Ask for a chart…"
+          placeholder={disabled ? 'Add a CSV file first…' : 'Ask for a chart…'}
           rows={2}
+          disabled={disabled}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              if (draft.trim() && !isThinking) {
+              if (canSend(draft)) {
                 onSend(draft);
                 setDraft('');
               }
@@ -126,7 +139,7 @@ export function ChatPanel({
         <button
           type="submit"
           className="chat-send-btn"
-          disabled={!draft.trim() || isThinking}
+          disabled={!canSend(draft)}
           aria-label="Send message"
         >
           <SendHorizontal size={18} />

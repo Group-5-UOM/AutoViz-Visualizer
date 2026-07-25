@@ -204,6 +204,24 @@
   cursor: not-allowed;
 }
 
+.chat-disabled-note {
+  margin: 0 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  border: 1px solid #cddcff;
+  color: var(--accent);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.chat-composer textarea:disabled {
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
 @media (max-width: 900px) {
   .chat-panel {
     position: absolute;
