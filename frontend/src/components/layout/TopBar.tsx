@@ -9,7 +9,7 @@ interface TopBarProps {
   userEmail?: string;
   onToggleSidebar: () => void;
   onToggleChat: () => void;
-  onLogout?: () => void;
+  onLogout?: () => void | Promise<void>;
 }
 
 export function TopBar({

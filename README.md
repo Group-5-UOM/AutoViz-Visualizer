@@ -11,6 +11,18 @@ Registered users upload a structured CSV, ask analytical questions in natural la
 | Database | PostgreSQL |
 | Charts | Vega-Lite |
 
+### Default local ports
+
+| Service | Port |
+| --- | --- |
+| Frontend (Vite) | `5173` |
+| Backend API | `8000` |
+| Postgres (system / pgAdmin) | `5432` |
+| Postgres (Docker Compose, host) | `5434` |
+| Agent playground | `3000` |
+
+By default the app uses system Postgres on port `5432` (database `autoviz`). Docker Compose maps Postgres as `5434:5432` if you prefer the container DB instead.
+
 ---
 
 ## Prerequisites
@@ -27,7 +39,7 @@ Registered users upload a structured CSV, ask analytical questions in natural la
 
 ```bash
 git clone https://github.com/codevector-2003/AutoViz-Visualizer.git
-cd DSEP
+cd AutoViz-Visualizer
 ```
 
 ---
@@ -47,28 +59,39 @@ Edit `backend/.env` and set at least:
 | `AUTOVIZ_CORS_ORIGINS` | Allowed frontend origins (comma-separated) |
 | `GOOGLE_API_KEY` | Planner LLM (agent routes) |
 
-For local Postgres via Docker Compose (see below):
+For system Postgres (pgAdmin, port `5432`) — create a database named `autoviz`, then:
 
 ```env
-DATABASE_URL=postgresql://autoviz:autoviz@localhost:5432/autoviz
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/autoviz
 SECRET_KEY=autoviz-dev-secret-key-change-in-production
 AUTOVIZ_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000
 GOOGLE_API_KEY=your-key-here
+```
+
+For Docker Compose Postgres instead:
+
+```env
+DATABASE_URL=postgresql://autoviz:autoviz@localhost:5434/autoviz
 ```
 
 ---
 
 ## Database
 
-Start PostgreSQL only:
+### Option A — system Postgres (port `5432`)
+
+Create database `autoviz` in pgAdmin (or `createdb -U postgres autoviz`), set `DATABASE_URL` as above, then migrate:
+
+```bash
+cd backend
+uv sync
+uv run alembic upgrade head
+```
+
+### Option B — Docker Compose Postgres (host port `5434`)
 
 ```bash
 docker compose -f backend/docker-compose.yml up -d db
-```
-
-Apply migrations (from a local backend install):
-
-```bash
 cd backend
 uv sync
 uv run alembic upgrade head
@@ -92,11 +115,11 @@ Docs: `http://localhost:8000/docs`
 
 ```bash
 cp backend/.env.example backend/.env
-# edit backend/.env (set GOOGLE_API_KEY if needed)
+# edit backend/.env (set DATABASE_URL / GOOGLE_API_KEY as needed)
 docker compose -f backend/docker-compose.yml up --build
 ```
 
-This starts Postgres and the API on port `8000` (migrations run on container start).
+This starts Postgres (host `5434`) and the API on port `8000` (migrations run on container start). The API container connects to the DB at `db:5432` on the Compose network.
 
 ---
 
@@ -104,6 +127,7 @@ This starts Postgres and the API on port `8000` (migrations run on container sta
 
 ```bash
 cd frontend
+cp .env.example .env   # VITE_API_BASE_URL=http://127.0.0.1:8000
 npm install
 npm run dev
 ```
@@ -125,12 +149,13 @@ npm run preview
 ```bash
 # 1. Env
 cp backend/.env.example backend/.env
+# set DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/autoviz
+# set AUTOVIZ_CORS_ORIGINS and GOOGLE_API_KEY as needed
 
-# 2. Database
-docker compose -f backend/docker-compose.yml up -d db
+# 2. Database — create `autoviz` in pgAdmin (port 5432), then migrate
+cd backend && uv sync && uv run alembic upgrade head
 
 # 3. Backend
-cd backend && uv sync && uv run alembic upgrade head
 uv run uvicorn autoviz.api.main:app --reload --port 8000
 
 # 4. Frontend (separate terminal)
@@ -158,7 +183,7 @@ Sample CSVs are under `test-data/`.
 ## Repository layout
 
 ```
-DSEP/
+AutoViz-Visualizer/
 ├── frontend/           # React + TypeScript board UI
 ├── backend/            # FastAPI, agent, MCP, Alembic, Docker
 ├── agent-playground/   # Dev-only agent test page

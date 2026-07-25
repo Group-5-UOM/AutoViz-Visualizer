@@ -1,22 +1,49 @@
+import { useRef, type ChangeEvent } from 'react';
+import { FileSpreadsheet, Upload } from 'lucide-react';
 import { ChartWidgetCard } from './ChartWidget';
 import type { ChartWidget } from '../../types/dashboard';
 import './DashboardCanvas.css';
 
+interface DatasetInfo {
+  datasetId: string;
+  fileName: string;
+  rowCount: number;
+  columnCount: number;
+}
+
 interface DashboardCanvasProps {
   widgets: ChartWidget[];
   selectedWidgetId: string | null;
+  dataset: DatasetInfo | null;
+  uploading: boolean;
+  uploadError: string | null;
   onSelect: (id: string | null) => void;
   onUpdate: (id: string, patch: Partial<ChartWidget>) => void;
   onDelete: (id: string) => void;
+  onCsvSelected: (file: File) => void;
 }
 
 export function DashboardCanvas({
   widgets,
   selectedWidgetId,
+  dataset,
+  uploading,
+  uploadError,
   onSelect,
   onUpdate,
   onDelete,
+  onCsvSelected,
 }: DashboardCanvasProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const showUploadPrompt = widgets.length === 0 && !dataset;
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    void onCsvSelected(file);
+    e.target.value = '';
+  };
+
   return (
     <main
       className="dashboard-canvas"
@@ -25,14 +52,80 @@ export function DashboardCanvas({
     >
       <div className="canvas-grid" aria-hidden />
 
-      {widgets.length === 0 && (
+      {showUploadPrompt && (
         <div className="canvas-empty">
           <div className="canvas-empty-card">
-            <h2>Your dashboard canvas</h2>
+            <div className="canvas-upload-icon" aria-hidden>
+              <FileSpreadsheet size={28} strokeWidth={1.75} />
+            </div>
+            <h2>Add a CSV file</h2>
             <p>
-              Ask the AI chat to create a visualization. Charts will appear here
-              so you can move, resize, and arrange them into a dashboard.
+              Upload a structured CSV dataset to start asking questions and
+              building charts on this canvas.
             </p>
+            <button
+              type="button"
+              className="canvas-upload-btn"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              <Upload size={16} />
+              {uploading ? 'Uploading…' : 'Add CSV file'}
+            </button>
+            {uploadError && (
+              <p className="canvas-upload-error" role="alert">
+                {uploadError}
+              </p>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="canvas-file-input"
+              onChange={handleFileChange}
+              disabled={uploading}
+            />
+          </div>
+        </div>
+      )}
+
+      {widgets.length === 0 && dataset && (
+        <div className="canvas-empty">
+          <div className="canvas-empty-card">
+            <div className="canvas-upload-icon is-ready" aria-hidden>
+              <FileSpreadsheet size={28} strokeWidth={1.75} />
+            </div>
+            <h2>Dataset ready</h2>
+            <p>
+              <strong>{dataset.fileName}</strong> is loaded on the server
+              ({dataset.rowCount.toLocaleString()} rows × {dataset.columnCount}{' '}
+              cols). Ask the AI chat to create a visualization — charts will
+              appear here.
+            </p>
+            <button
+              type="button"
+              className="canvas-upload-btn canvas-upload-btn--secondary"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              <Upload size={16} />
+              {uploading ? 'Uploading…' : 'Replace CSV'}
+            </button>
+            {uploadError && (
+              <p className="canvas-upload-error" role="alert">
+                {uploadError}
+              </p>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="canvas-file-input"
+              onChange={handleFileChange}
+              disabled={uploading}
+            />
           </div>
         </div>
       )}

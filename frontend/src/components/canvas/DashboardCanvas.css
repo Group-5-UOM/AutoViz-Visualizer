@@ -33,7 +33,6 @@
   inset: 0;
   display: grid;
   place-items: center;
-  pointer-events: none;
   z-index: 1;
   padding: 24px;
 }
@@ -41,12 +40,28 @@
 .canvas-empty-card {
   max-width: 420px;
   text-align: center;
-  padding: 28px 24px;
+  padding: 32px 28px;
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(6px);
+}
+
+.canvas-upload-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.canvas-upload-icon.is-ready {
+  background: #e8f6ef;
+  color: var(--success);
 }
 
 .canvas-empty-card h2 {
@@ -59,8 +74,70 @@
 }
 
 .canvas-empty-card p {
-  margin: 0;
+  margin: 0 0 20px;
   font-size: 14px;
   line-height: 1.5;
   color: var(--text-secondary);
+}
+
+.canvas-empty-card p strong {
+  color: var(--text-primary);
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.canvas-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 18px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.canvas-upload-btn:hover {
+  background: var(--accent-hover);
+}
+
+.canvas-upload-btn:active {
+  transform: translateY(1px);
+}
+
+.canvas-upload-btn--secondary {
+  background: var(--bg-surface);
+  color: var(--accent);
+  border: 1px solid #b8c7ef;
+}
+
+.canvas-upload-btn--secondary:hover {
+  background: var(--accent-soft);
+}
+
+.canvas-upload-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.canvas-upload-error {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: #fdecec;
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.canvas-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }

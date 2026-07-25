@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { ApiError } from '../lib/api';
+import { loginUser, registerUser } from '../lib/auth';
 import './LoginPage.css';
 
 interface LoginPageProps {
@@ -7,6 +9,7 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -17,15 +20,30 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     e.preventDefault();
     setError('');
 
-    if (!email.trim() || !password.trim()) {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password.trim()) {
       setError('Enter your email and password to continue.');
       return;
     }
 
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 450));
-    setSubmitting(false);
-    onLogin(email.trim());
+    try {
+      if (mode === 'register') {
+        await registerUser(trimmedEmail, password);
+      }
+      await loginUser(trimmedEmail, password);
+      onLogin(trimmedEmail);
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Could not sign in.';
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -45,10 +63,14 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           </p>
         </section>
 
-        <section className="login-panel" aria-label="Sign in">
+        <section className="login-panel" aria-label={mode === 'login' ? 'Sign in' : 'Create account'}>
           <header className="login-panel-header">
-            <h2>Sign in</h2>
-            <p>Welcome back. Continue to your visualization workspace.</p>
+            <h2>{mode === 'login' ? 'Sign in' : 'Create account'}</h2>
+            <p>
+              {mode === 'login'
+                ? 'Welcome back. Continue to your visualization workspace.'
+                : 'Register once, then upload a CSV and start exploring.'}
+            </p>
           </header>
 
           <form className="login-form" onSubmit={handleSubmit} noValidate>
@@ -74,7 +96,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   name="password"
-                  autoComplete="current-password"
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -90,28 +112,61 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               </span>
             </label>
 
-            <div className="login-row">
-              <label className="login-remember">
-                <input type="checkbox" name="remember" />
-                <span>Remember me</span>
-              </label>
-              <button type="button" className="login-link-btn">
-                Forgot password?
-              </button>
-            </div>
+            {mode === 'login' && (
+              <div className="login-row">
+                <label className="login-remember">
+                  <input type="checkbox" name="remember" />
+                  <span>Remember me</span>
+                </label>
+                <button type="button" className="login-link-btn">
+                  Forgot password?
+                </button>
+              </div>
+            )}
 
             {error && <p className="login-error" role="alert">{error}</p>}
 
             <button type="submit" className="login-submit" disabled={submitting}>
-              {submitting ? 'Signing in…' : 'Sign in'}
+              {submitting
+                ? mode === 'login'
+                  ? 'Signing in…'
+                  : 'Creating account…'
+                : mode === 'login'
+                  ? 'Sign in'
+                  : 'Create account'}
             </button>
           </form>
 
           <p className="login-footer">
-            Don&apos;t have an account?{' '}
-            <button type="button" className="login-link-btn">
-              Create one
-            </button>
+            {mode === 'login' ? (
+              <>
+                Don&apos;t have an account?{' '}
+                <button
+                  type="button"
+                  className="login-link-btn"
+                  onClick={() => {
+                    setMode('register');
+                    setError('');
+                  }}
+                >
+                  Create one
+                </button>
+              </>
+            ) : (
+              <>
+                Already registered?{' '}
+                <button
+                  type="button"
+                  className="login-link-btn"
+                  onClick={() => {
+                    setMode('login');
+                    setError('');
+                  }}
+                >
+                  Sign in
+                </button>
+              </>
+            )}
           </p>
         </section>
       </main>
