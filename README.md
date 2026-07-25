@@ -26,7 +26,7 @@ Registered users upload a structured CSV, ask analytical questions in natural la
 ## Clone
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/codevector-2003/AutoViz-Visualizer.git
 cd DSEP
 ```
 
