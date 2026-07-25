@@ -59,16 +59,18 @@
   color: var(--danger);
 }
 
+/* The spec sizes itself from this box (width/height: "container"), so it needs a
+   definite height and a child that stretches to fill rather than centring. */
 .chart-widget-body {
   flex: 1;
   min-height: 0;
   padding: 8px 10px 4px;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
 }
 
-.chart-widget-body .vega-embed {
+.chart-widget-body .vega-embed,
+.chart-widget-body .vega-embed .chart-wrapper {
   width: 100%;
   height: 100%;
 }

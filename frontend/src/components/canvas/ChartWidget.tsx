@@ -32,18 +32,28 @@ export function ChartWidgetCard({
     originH: number;
   } | null>(null);
 
+  // The spec sizes itself from the container, so vega-embed's ResizeObserver
+  // handles resizing — re-embedding on every drag frame would throw away the
+  // view's interaction state (legend filter, zoom) mid-gesture.
   useEffect(() => {
     const el = chartRef.current;
     if (!el) return;
 
     let cancelled = false;
+    let view: { finalize: () => void } | null = null;
+
     const run = async () => {
       try {
-        await embed(el, widget.vegaLiteSpec as never, {
+        const result = await embed(el, widget.vegaLiteSpec as never, {
           actions: false,
           renderer: 'svg',
           tooltip: true,
         });
+        if (cancelled) {
+          result.finalize();
+          return;
+        }
+        view = result;
       } catch (err) {
         if (!cancelled) {
           el.innerHTML = `<p class="chart-error">Could not render chart</p>`;
@@ -55,9 +65,10 @@ export function ChartWidgetCard({
 
     return () => {
       cancelled = true;
+      view?.finalize();
       el.innerHTML = '';
     };
-  }, [widget.vegaLiteSpec, widget.width, widget.height]);
+  }, [widget.vegaLiteSpec]);
 
   useEffect(() => {
     const onPointerMove = (e: PointerEvent) => {

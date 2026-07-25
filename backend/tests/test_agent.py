@@ -4,6 +4,7 @@ from typing import Any
 
 from autoviz.agent.service import AgentService
 from autoviz.llm.client import Clarification, IntentDecision, PlannerError
+from autoviz.services.charts import primary_layer
 
 
 class FakePlanner:
@@ -62,7 +63,7 @@ def test_happy_path_single_chart(registry, iris_id):
     chart = out["charts"][0]
     assert chart["status"] == "ok"
     assert chart["result"]["row_count"] == 3
-    assert chart["vega_lite_spec"]["mark"]
+    assert primary_layer(chart["vega_lite_spec"])["mark"]
     assert "summary" in out["answer"]
 
 

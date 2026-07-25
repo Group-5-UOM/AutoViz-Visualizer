@@ -17,8 +17,32 @@ AGG_FNS = frozenset({"sum", "mean", "min", "max", "count", "median", "count_dist
 
 DERIVE_FNS = frozenset({"month", "year", "day", "weekday", "lower", "upper", "trim", "round", "abs"})
 
-# Any validated Vega-Lite mark; histogram is a binned bar over one numeric column.
-CHART_TYPES = frozenset({"bar", "line", "scatter", "pie", "area", "histogram"})
+# Any validated Vega-Lite mark. Several are not one-to-one with a Vega mark:
+# histogram is a binned bar over one numeric column, grouped_bar is a bar with an
+# xOffset (a plain bar + colour stacks instead), donut is an arc with an inner
+# radius, and heatmap is a rect grid whose colour carries the measure rather than
+# a series. See Docs/13 §6.
+CHART_TYPES = frozenset(
+    {
+        "bar",
+        "line",
+        "scatter",
+        "pie",
+        "area",
+        "histogram",
+        "heatmap",
+        "boxplot",
+        "grouped_bar",
+        "donut",
+    }
+)
+
+# Legible ceilings for the colour channel. Adjacent forms (bars, lines, stacked
+# segments) place series next to each other and can carry the full token set;
+# all-pairs forms (scatter) put every series beside every other, so any two hues
+# have to be separable and the safe ceiling is far lower.
+MAX_SERIES_ADJACENT = 8
+MAX_SERIES_ALL_PAIRS = 3
 
 MAX_GROUP_BY = 2
 MAX_LIMIT = 100_000

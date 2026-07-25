@@ -6,7 +6,7 @@ Exercises the canonical host-LLM path (the granular tools' business logic) with
 no LLM and no mocks — deterministic DuckDB + Vega-Lite the whole way.
 """
 
-from autoviz.services.charts import generate_chart, recommend_chart_type
+from autoviz.services.charts import generate_chart, primary_layer, recommend_chart_type
 from autoviz.services.dataset import (
     get_dataset_profile,
     get_dataset_schema,
@@ -61,7 +61,7 @@ def test_titanic_full_workflow(registry):
     piped = run_pipeline(dataset_id, plan, registry)
     assert piped["status"] == "ok", piped
     assert piped["chart_spec"]["type"] == "bar"  # ranking/comparison over categorical
-    assert piped["vega_lite_spec"]["mark"]
+    assert primary_layer(piped["vega_lite_spec"])["mark"]
     assert piped["recommendation"]["chart_type"] == "bar"
 
 
@@ -107,4 +107,4 @@ def test_titanic_chart_step_in_isolation(registry):
     assert "error" not in rec
     chart = generate_chart(result_table, {"type": rec["chart_type"], "x": rec["x"], "y": rec["y"]})
     assert chart["valid"] is True, chart["warnings"]
-    assert chart["vega_lite_spec"]["mark"]
+    assert primary_layer(chart["vega_lite_spec"])["mark"]

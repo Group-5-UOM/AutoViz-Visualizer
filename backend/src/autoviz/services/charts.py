@@ -7,9 +7,16 @@ structurally validates the Vega-Lite spec.
 
 from typing import Any
 
-from autoviz.schema.allowlists import CHART_TYPES
-
-HIGH_CARDINALITY_COLOR = 10
+from autoviz.errors import NO_CHART_FIT, make_error
+from autoviz.schema.allowlists import (
+    CHART_TYPES,
+    MAX_SERIES_ADJACENT,
+    MAX_SERIES_ALL_PAIRS,
+)
+from autoviz.services.chart_interaction import attach as attach_interaction
+from autoviz.services.chart_labels import build_label_layer
+from autoviz.services.chart_theme import attach as attach_theme
+from autoviz.vega import VEGA_LITE_SCHEMA
 
 _VEGA_MARK = {
     "bar": "bar",
@@ -18,9 +25,27 @@ _VEGA_MARK = {
     "pie": "arc",
     "area": "area",
     "histogram": "bar",  # binned bar over one numeric column
+    "heatmap": "rect",  # grid of categories; colour carries the measure
+    "boxplot": "boxplot",  # composite mark — Vega-Lite computes the quartiles
+    "grouped_bar": "bar",  # bar + xOffset; a plain bar + colour stacks instead
+    "donut": "arc",
 }
 
 _PIE_MAX_CATEGORIES = 6
+
+# Arc charts: category on colour, measure on theta.
+_ARC_TYPES = frozenset({"pie", "donut"})
+
+# Forms where any two series can end up adjacent, so the colour ceiling is the
+# stricter all-pairs one.
+_ALL_PAIRS_TYPES = frozenset({"scatter"})
+
+# Channels each type needs beyond the default x+y.
+_REQUIRED_CHANNELS: dict[str, tuple[str, ...]] = {
+    "histogram": ("x",),
+    "heatmap": ("x", "y", "color"),
+    "grouped_bar": ("x", "y", "color"),
+}
 
 
 def _split_columns(result_schema: list[dict[str, str]]):
@@ -38,7 +63,9 @@ def recommend_chart_type(
     numeric, temporal, categorical = _split_columns(result_schema)
 
     if not numeric:
-        return {"error": "No numeric column in the result to plot as a measure"}
+        return make_error(
+            NO_CHART_FIT, "No numeric column in the result to plot as a measure"
+        )
 
     y = numeric[0]
     color = None
@@ -59,11 +86,21 @@ def recommend_chart_type(
         if categorical:
             color = categorical[0]
     elif intent == "composition" and categorical:
-        chart_type, x = "pie", categorical[0]
-        rationale = f"Composition intent over '{x}' — pie shows part-to-whole shares."
+        # Donut over pie: the centre hole removes the wedge-area comparison that
+        # makes pies hard to read. `pie` stays available if asked for by name.
+        chart_type, x = "donut", categorical[0]
+        rationale = f"Composition intent over '{x}' — donut shows part-to-whole shares."
     elif intent == "ranking" and categorical:
         chart_type, x = "bar", categorical[0]
         rationale = f"Ranking intent — sorted bar chart over '{x}'."
+    elif intent in ("distribution", "relationship") and len(categorical) >= 2:
+        # Two categories crossed with a measure is a grid, and a grid is a
+        # heatmap — the shape MAX_GROUP_BY = 2 already produces.
+        chart_type, x, y, color = "heatmap", categorical[0], categorical[1], numeric[0]
+        rationale = (
+            f"Two categorical columns crossed with '{color}' — heatmap grid of "
+            f"'{x}' by '{y}', colour carrying the measure."
+        )
     elif intent == "distribution" and not categorical:
         chart_type, x = "histogram", numeric[0]
         rationale = f"Distribution intent over numeric '{x}' — histogram of binned counts."
@@ -71,11 +108,18 @@ def recommend_chart_type(
         chart_type = "bar"
         x = categorical[0]
         rationale = f"Distribution intent — bar chart of counts over '{x}'."
+    elif len(categorical) >= 2:
+        # Side by side, not stacked: a plain bar with a colour channel stacks,
+        # which answers part-to-whole rather than "compare these series".
+        chart_type, x = "grouped_bar", categorical[0]
+        color = categorical[1]
+        rationale = (
+            f"Comparison across '{x}' split by '{color}' — grouped bars sit side "
+            f"by side so the series can be compared directly."
+        )
     elif categorical:
         chart_type, x = "bar", categorical[0]
         rationale = f"Comparison across categories of '{x}' — bar chart."
-        if len(categorical) > 1:
-            color = categorical[1]
     elif temporal:
         chart_type, x = "line", temporal[0]
         rationale = f"Temporal column '{x}' available — line chart."
@@ -107,6 +151,30 @@ def _encoding_type(values: list[Any], column_schema: dict[str, str] | None, name
     return "nominal"
 
 
+def primary_layer(spec: dict[str, Any]) -> dict[str, Any]:
+    """The data layer of a generated spec — its `mark` and `encoding`.
+
+    A spec that carries direct labels is layered, so `mark` and `encoding` sit
+    one level down. Anything reading a generated spec's encoding should go
+    through here rather than assuming a unit spec.
+    """
+    layers = spec.get("layer")
+    return layers[0] if layers else spec
+
+
+def _mark_def(chart_type: str) -> Any:
+    """The Vega-Lite mark, as a bare name or a mark definition object."""
+    if chart_type == "donut":
+        # Derived from the view, not an absolute pixel count: charts size from
+        # their container, so a literal innerRadius inverts at small widths.
+        return {"type": "arc", "innerRadius": {"expr": "min(width, height) / 5"}}
+    if chart_type == "boxplot":
+        # Vega-Lite rejects selection params on composite marks, so the mark's
+        # own tooltip is the only way to surface the quartiles it computes.
+        return {"type": "boxplot", "extent": 1.5, "tooltip": True}
+    return _VEGA_MARK[chart_type]
+
+
 def generate_chart(
     result_table: list[dict[str, Any]], chart_spec: dict[str, Any]
 ) -> dict[str, Any]:
@@ -129,7 +197,7 @@ def generate_chart(
             "warnings": [f"chart channel references absent column(s): {', '.join(missing)}"],
         }
 
-    required = ("x",) if chart_type == "histogram" else ("x", "y")
+    required = _REQUIRED_CHANNELS.get(chart_type, ("x", "y"))
     absent = [ch for ch in required if ch not in channels]
     if absent:
         return {
@@ -155,7 +223,7 @@ def generate_chart(
             "x": {"field": channels["x"], "type": "quantitative", "bin": True},
             "y": {"aggregate": "count", "type": "quantitative"},
         }
-    elif chart_type == "pie":
+    elif chart_type in _ARC_TYPES:
         encoding: dict[str, Any] = {
             "theta": {**enc(channels["y"]), "type": "quantitative"},
             "color": {**enc(channels["x"]), "type": "nominal"},
@@ -163,22 +231,72 @@ def generate_chart(
         n_cats = len({row.get(channels["x"]) for row in result_table})
         if n_cats > _PIE_MAX_CATEGORIES:
             warnings.append(
-                f"pie has {n_cats} categories (> {_PIE_MAX_CATEGORIES}) — consider a bar chart"
+                f"{chart_type} has {n_cats} categories (> {_PIE_MAX_CATEGORIES}) "
+                "— consider a bar chart"
             )
+    elif chart_type == "heatmap":
+        # Both axes are categories; the measure rides the colour channel, which
+        # is why heatmap is the one type whose colour is quantitative.
+        encoding = {
+            "x": enc(channels["x"]),
+            "y": enc(channels["y"]),
+            "color": {**enc(channels["color"]), "type": "quantitative"},
+        }
+    elif chart_type == "boxplot":
+        # Vega-Lite derives the quartiles from raw rows; y must be the values
+        # themselves, not a per-group aggregate.
+        encoding = {
+            "x": enc(channels["x"]),
+            "y": {**enc(channels["y"]), "type": "quantitative"},
+        }
     else:
         encoding = {"x": enc(channels["x"]), "y": enc(channels["y"])}
+        # A ranking is only a ranking once it is ordered. recommend_chart_type
+        # already promises "sorted bar chart"; this is what keeps that true.
+        # Scoped to a discrete axis — sorting a time axis by value destroys it.
+        if (
+            chart_spec.get("intent") == "ranking"
+            and chart_type == "bar"
+            and encoding["x"]["type"] == "nominal"
+        ):
+            encoding["x"]["sort"] = "-y"
         if "color" in channels:
             encoding["color"] = enc(channels["color"])
+            if chart_type == "grouped_bar":
+                # What separates grouped from stacked: without xOffset a bar with
+                # a colour channel stacks.
+                encoding["xOffset"] = enc(channels["color"])
             n_colors = len({row.get(channels["color"]) for row in result_table})
-            if n_colors > HIGH_CARDINALITY_COLOR:
+            cap = (
+                MAX_SERIES_ALL_PAIRS
+                if chart_type in _ALL_PAIRS_TYPES
+                else MAX_SERIES_ADJACENT
+            )
+            if n_colors > cap:
                 warnings.append(
-                    f"color channel has {n_colors} distinct values — legend may be unreadable"
+                    f"color channel has {n_colors} distinct values (> {cap} for "
+                    f"'{chart_type}') — series will not be reliably distinguishable"
                 )
 
-    spec = {
-        "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    data_layer: dict[str, Any] = {"mark": _mark_def(chart_type), "encoding": encoding}
+    label_layer = build_label_layer(chart_type, encoding, result_table)
+
+    spec: dict[str, Any] = {
+        "$schema": VEGA_LITE_SCHEMA,
         "data": {"values": result_table},
-        "mark": _VEGA_MARK[chart_type],
-        "encoding": encoding,
     }
+    if label_layer is None:
+        spec.update(data_layer)
+    else:
+        # Labels force a layered spec. Consumers that assume a top-level `mark`
+        # have to accept `layer` too — see export.py's spec check.
+        spec["layer"] = [data_layer, label_layer]
+
+    attach_theme(spec)
+    attach_interaction(spec, chart_type)
+    # Size from the container rather than Vega's 200px default, so a chart
+    # reflows when the dashboard widget is resized instead of being re-embedded.
+    # Belongs to the spec as a whole, so it is set after any layering.
+    spec["width"] = "container"
+    spec["height"] = "container"
     return {"vega_lite_spec": spec, "valid": True, "warnings": warnings}

@@ -1,4 +1,4 @@
-from autoviz.services.charts import generate_chart, recommend_chart_type
+from autoviz.services.charts import generate_chart, primary_layer, recommend_chart_type
 from autoviz.services.orchestrator import run_pipeline
 
 
@@ -33,9 +33,9 @@ def test_generate_chart_bar_spec():
     out = generate_chart(table, {"type": "bar", "x": "species", "y": "avg"})
     assert out["valid"]
     spec = out["vega_lite_spec"]
-    assert spec["mark"] == "bar"
-    assert spec["encoding"]["x"] == {"field": "species", "type": "nominal"}
-    assert spec["encoding"]["y"] == {"field": "avg", "type": "quantitative"}
+    assert primary_layer(spec)["mark"] == "bar"
+    assert primary_layer(spec)["encoding"]["x"] == {"field": "species", "type": "nominal"}
+    assert primary_layer(spec)["encoding"]["y"] == {"field": "avg", "type": "quantitative"}
     assert spec["data"]["values"] == table
 
 
@@ -49,7 +49,7 @@ def test_generate_chart_coded_category_encodes_nominal():
          "column_types": {"pclass": "categorical", "avg_fare": "number"}},
     )
     assert out["valid"]
-    enc = out["vega_lite_spec"]["encoding"]
+    enc = primary_layer(out["vega_lite_spec"])["encoding"]
     assert enc["x"] == {"field": "pclass", "type": "nominal"}
     assert enc["y"] == {"field": "avg_fare", "type": "quantitative"}
 
@@ -85,9 +85,9 @@ def test_generate_chart_histogram_spec():
     out = generate_chart(table, {"type": "histogram", "x": "price"})
     assert out["valid"], out["warnings"]
     spec = out["vega_lite_spec"]
-    assert spec["mark"] == "bar"
-    assert spec["encoding"]["x"] == {"field": "price", "type": "quantitative", "bin": True}
-    assert spec["encoding"]["y"] == {"aggregate": "count", "type": "quantitative"}
+    assert primary_layer(spec)["mark"] == "bar"
+    assert primary_layer(spec)["encoding"]["x"] == {"field": "price", "type": "quantitative", "bin": True}
+    assert primary_layer(spec)["encoding"]["y"] == {"aggregate": "count", "type": "quantitative"}
 
 
 def test_generate_chart_histogram_rejects_y():
@@ -99,7 +99,7 @@ def test_generate_chart_area_mark():
     table = [{"month": 1, "total": 5.0}, {"month": 2, "total": 3.0}]
     out = generate_chart(table, {"type": "area", "x": "month", "y": "total"})
     assert out["valid"]
-    assert out["vega_lite_spec"]["mark"] == "area"
+    assert primary_layer(out["vega_lite_spec"])["mark"] == "area"
 
 
 def test_pipeline_end_to_end_iris(registry, iris_id):
@@ -112,7 +112,7 @@ def test_pipeline_end_to_end_iris(registry, iris_id):
     out = run_pipeline(iris_id, plan, registry)
     assert out["status"] == "ok", out
     assert out["recommendation"]["chart_type"] == "bar"
-    assert out["vega_lite_spec"]["mark"] == "bar"
+    assert primary_layer(out["vega_lite_spec"])["mark"] == "bar"
     assert out["result"]["row_count"] == 3
 
 
@@ -127,7 +127,7 @@ def test_pipeline_coded_category_group_by_renders_nominal(registry, titanic_id):
     }
     out = run_pipeline(titanic_id, plan, registry)
     assert out["status"] == "ok", out
-    enc = out["vega_lite_spec"]["encoding"]
+    enc = primary_layer(out["vega_lite_spec"])["encoding"]
     assert enc["x"] == {"field": "pclass", "type": "nominal"}
     assert enc["y"]["field"] == "avg_fare"
     assert enc["y"]["type"] == "quantitative"

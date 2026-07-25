@@ -360,18 +360,49 @@ def validate_analysis_plan(
                     f"chart.{channel}: column '{col}' is not produced by the query "
                     f"(must come from select, group_by, derive, or an aggregation alias)"
                 )
+        agg_aliases = {a.as_ for a in plan.aggregations}  # always numeric
+
+        def _column_type(col: str) -> str | None:
+            return "number" if col in agg_aliases else effective.get(col)
+
         if plan.chart.type == "histogram":
             # Histogram bins one numeric column; y is a count, not a column.
             if plan.chart.y is not None:
                 errors.append("chart.y: histogram takes no y column (y is the binned count)")
-            agg_aliases = {a.as_ for a in plan.aggregations}  # always numeric
-            x_type = "number" if plan.chart.x in agg_aliases else effective.get(plan.chart.x)
+            x_type = _column_type(plan.chart.x)
             if plan.chart.x in produced and x_type != "number":
                 errors.append(
                     f"chart.x: histogram requires a numeric column, '{plan.chart.x}' is {x_type}"
                 )
         elif plan.chart.y is None:
             errors.append(f"chart.y: required for chart type '{plan.chart.type}'")
+        elif plan.chart.type == "boxplot":
+            # A box summarises a distribution, so it needs the raw rows. Over an
+            # aggregated result there is one value per group and no box to draw.
+            if plan.aggregations:
+                errors.append(
+                    "chart: boxplot needs the raw values to compute quartiles from, but "
+                    "this plan aggregates — drop the aggregations and select the column"
+                )
+            y_type = _column_type(plan.chart.y)
+            if plan.chart.y in produced and y_type != "number":
+                errors.append(
+                    f"chart.y: boxplot requires a numeric column, '{plan.chart.y}' is {y_type}"
+                )
+        elif plan.chart.type in ("heatmap", "grouped_bar"):
+            if plan.chart.color is None:
+                errors.append(
+                    f"chart.color: required for chart type '{plan.chart.type}' "
+                    f"(it carries the {'measure' if plan.chart.type == 'heatmap' else 'series'})"
+                )
+            elif plan.chart.type == "heatmap":
+                # Heatmap is the one type whose colour is the measure.
+                color_type = _column_type(plan.chart.color)
+                if plan.chart.color in produced and color_type != "number":
+                    errors.append(
+                        f"chart.color: heatmap requires a numeric measure on colour, "
+                        f"'{plan.chart.color}' is {color_type}"
+                    )
 
     result: dict[str, Any] = {"valid": not errors, "errors": errors}
     if errors:
