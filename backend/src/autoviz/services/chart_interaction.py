@@ -25,6 +25,7 @@ from typing import Any
 HOVER_PARAM = "autoviz_hover"
 SERIES_PARAM = "autoviz_series"
 ZOOM_PARAM = "autoviz_zoom"
+BRUSH_PARAM = "autoviz_brush"
 
 # Opacity of the marks that are *not* hovered / not the selected series.
 DIM_OPACITY = 0.25
@@ -55,6 +56,19 @@ _COMPOSITE_TYPES = frozenset({"boxplot"})
 # Chart types whose axes can carry a continuous, zoomable scale.
 _ZOOMABLE_TYPES = frozenset({"scatter", "line", "area"})
 _CONTINUOUS = frozenset({"quantitative", "temporal"})
+
+# Types where a drag is better spent selecting marks than panning: both draw many
+# undifferentiated marks, and the reader's question is "which rows are those?"
+# rather than "show me a different range". The frontend reads the brush signal
+# and filters the widget's table view to the selection.
+#
+# Time series are deliberately absent — panning and zooming a range is the
+# natural gesture there, and `bind: "scales"` already claims the drag.
+_BRUSHABLE_TYPES = frozenset({"scatter", "histogram"})
+
+# Which axes the brush spans. A histogram's y is a derived count, so brushing it
+# would select on a value that is not in any row.
+_BRUSH_ENCODINGS = {"scatter": ["x", "y"], "histogram": ["x"]}
 
 # Encoding-level keys a tooltip entry inherits; anything else (scale, axis,
 # legend, sort) is chrome that means nothing in a tooltip.
@@ -117,20 +131,31 @@ def build_params(chart_type: str, encoding: dict[str, Any]) -> list[dict[str, An
     """
     params: list[dict[str, Any]] = []
     color = encoding.get("color")
-
     # Binding a point selection to the legend needs a *discrete* legend to click.
     # A heatmap's colour is the measure, so its legend is a continuous gradient
     # and there is nothing to select — it falls through to hover instead.
-    if (
+    has_series = (
         isinstance(color, dict)
         and "field" in color
         and color.get("type") != "quantitative"
-    ):
+    )
+
+    if has_series:
         params.append(
             {
                 "name": SERIES_PARAM,
                 "select": {"type": "point", "fields": [color["field"]]},
                 "bind": "legend",
+            }
+        )
+    elif chart_type in _BRUSHABLE_TYPES:
+        # Only without a series: legend filtering and brushing would both want to
+        # drive opacity, and on a multi-series chart isolating a series is the
+        # more valuable of the two.
+        params.append(
+            {
+                "name": BRUSH_PARAM,
+                "select": {"type": "interval", "encodings": _BRUSH_ENCODINGS[chart_type]},
             }
         )
     elif chart_type in _HOVER_SAFE_TYPES:
@@ -141,7 +166,9 @@ def build_params(chart_type: str, encoding: dict[str, Any]) -> list[dict[str, An
             }
         )
 
-    if _is_zoomable(chart_type, encoding):
+    # A brush and a scale-bound zoom both consume the drag gesture, so a brushed
+    # chart gets no zoom.
+    if _is_zoomable(chart_type, encoding) and not _has(params, BRUSH_PARAM):
         params.append(
             {
                 "name": ZOOM_PARAM,
@@ -150,6 +177,10 @@ def build_params(chart_type: str, encoding: dict[str, Any]) -> list[dict[str, An
             }
         )
     return params
+
+
+def _has(params: list[dict[str, Any]], name: str) -> bool:
+    return any(p["name"] == name for p in params)
 
 
 def build_opacity(params: list[dict[str, Any]], chart_type: str) -> dict[str, Any] | None:
@@ -161,7 +192,9 @@ def build_opacity(params: list[dict[str, Any]], chart_type: str) -> dict[str, An
     """
     names = {p["name"] for p in params}
     full = AREA_FULL_OPACITY if chart_type == "area" else FULL_OPACITY
-    for name in (SERIES_PARAM, HOVER_PARAM):
+    # At most one param drives opacity — a condition list resolves first-match,
+    # so combining two would silently make the second one dead.
+    for name in (BRUSH_PARAM, SERIES_PARAM, HOVER_PARAM):
         if name in names:
             return {"condition": {"param": name, "value": full}, "value": DIM_OPACITY}
     return None

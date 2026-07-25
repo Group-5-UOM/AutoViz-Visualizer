@@ -2,7 +2,13 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import embed from 'vega-embed';
 import { BarChart3, Table2, Trash2 } from 'lucide-react';
 import type { ChartWidget } from '../../types/dashboard';
-import { specRows } from '../../lib/specData';
+import {
+  BRUSH_SIGNAL,
+  hasBrush,
+  rowsInBrush,
+  specRows,
+  type BrushExtent,
+} from '../../lib/specData';
 import { DataTable } from './DataTable';
 import './ChartWidget.css';
 
@@ -25,7 +31,10 @@ export function ChartWidgetCard({
 }: ChartWidgetCardProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const [showTable, setShowTable] = useState(false);
+  const [brush, setBrush] = useState<BrushExtent | null>(null);
   const rows = useMemo(() => specRows(widget.vegaLiteSpec), [widget.vegaLiteSpec]);
+  // Brushing the chart narrows its table view to the selected rows.
+  const tableRows = useMemo(() => rowsInBrush(rows ?? [], brush), [rows, brush]);
   const dragRef = useRef<{
     mode: 'move' | 'resize';
     startX: number;
@@ -59,6 +68,14 @@ export function ChartWidgetCard({
           return;
         }
         view = result;
+        // Only brushable charts carry this signal; asking for it elsewhere throws.
+        try {
+          result.view.addSignalListener(BRUSH_SIGNAL, (_name, value) => {
+            setBrush(value as BrushExtent);
+          });
+        } catch {
+          /* chart has no brush — nothing to listen to */
+        }
       } catch (err) {
         if (!cancelled) {
           el.innerHTML = `<p class="chart-error">Could not render chart</p>`;
@@ -176,10 +193,17 @@ export function ChartWidgetCard({
 
       {showTable && rows ? (
         <div className="chart-widget-body is-table">
-          <DataTable rows={rows} caption={`Data for ${widget.title}`} />
+          <DataTable rows={tableRows} caption={`Data for ${widget.title}`} />
         </div>
       ) : (
         <div className="chart-widget-body" ref={chartRef} />
+      )}
+
+      {hasBrush(brush) && rows && (
+        <p className="chart-brush-status">
+          {tableRows.length.toLocaleString()} of {rows.length.toLocaleString()} rows
+          selected{showTable ? '' : ' — open the table to read them'}
+        </p>
       )}
 
       {selected && (

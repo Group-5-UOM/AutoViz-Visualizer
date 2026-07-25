@@ -130,9 +130,12 @@ def test_line_with_color_still_gets_legend_filtering():
 # --- A4 pan / zoom -----------------------------------------------------------
 
 
-def test_scatter_on_continuous_axes_binds_zoom_to_scales():
-    table = [{"a": 1.0, "b": 2.0}, {"a": 3.0, "b": 4.0}]
-    spec = _spec(table, {"type": "scatter", "x": "a", "y": "b"})
+def test_line_on_continuous_axes_binds_zoom_to_scales():
+    table = [{"d": "2024-01-01", "v": 1.0}, {"d": "2024-02-01", "v": 3.0}]
+    spec = _spec(
+        table,
+        {"type": "line", "x": "d", "y": "v", "column_types": {"d": "datetime", "v": "number"}},
+    )
     zoom = next(p for p in primary_layer(spec)["params"] if p["name"] == ZOOM_PARAM)
     assert zoom["bind"] == "scales"
     assert zoom["select"]["type"] == "interval"

@@ -154,6 +154,56 @@ function inlineRowsCheck(spec) {
   return null;
 }
 
+/**
+ * Brushable charts (Docs/13 A6) must expose the signal the frontend listens to,
+ * and dragging it must actually dim what falls outside. Driving the extent
+ * signals is what a real drag does, so this exercises the same path.
+ */
+const BRUSHABLE = {
+  scatter: { mark: 'symbol', fields: { a: [2, 5], b: [0, 12] } },
+  histogram: { mark: 'rect', fields: { price: [90, 210] } },
+};
+
+async function brushCheck(name, spec) {
+  const expected = BRUSHABLE[name];
+  if (!expected) return null;
+
+  const { spec: vgSpec } = compile({ ...spec, width: 400, height: 300 });
+  const view = new vega.View(vega.parse(vgSpec), { renderer: 'none' });
+  await view.runAsync();
+
+  // A spec with no interaction at all compiles without a signals array.
+  const signals = new Set((vgSpec.signals ?? []).map((s) => s.name));
+  if (!signals.has('autoviz_brush')) { view.finalize(); return 'no autoviz_brush signal — the table view could not follow a selection'; }
+
+  const marksOf = () => {
+    const found = [];
+    (function walk(item) {
+      if (!item) return;
+      if (item.marktype === expected.mark && item.items) found.push(...item.items);
+      (item.items || []).forEach(walk);
+    })(view.scenegraph().root);
+    return found;
+  };
+
+  const before = marksOf().length;
+  for (const [field, [lo, hi]] of Object.entries(expected.fields)) {
+    if (!signals.has(`autoviz_brush_${field}`)) {
+      view.finalize();
+      return `brush does not span '${field}' — its extent would not name a column the table can index`;
+    }
+    view.signal(`autoviz_brush_${field}`, [lo, hi]);
+  }
+  await view.runAsync();
+
+  const dimmed = marksOf().filter((m) => m.opacity !== undefined && m.opacity < 1).length;
+  view.finalize();
+  if (!before) return 'nothing drawn to brush';
+  if (!dimmed) return 'brushing dimmed nothing — the selection has no visible effect';
+  if (dimmed === before) return 'brushing dimmed everything — nothing reads as selected';
+  return null;
+}
+
 /** Every chart must use the palette, not Vega's stock tableau10. */
 const TABLEAU = ['#4c78a8', '#f58518', '#e45756', '#72b7b2', '#54a24b'];
 function paletteCheck({ byType }) {
@@ -185,6 +235,8 @@ for (const [name, spec] of Object.entries(specs)) {
     if (lbl) problems.push(lbl);
     const rows = inlineRowsCheck(spec);
     if (rows) problems.push(rows);
+    const brush = await brushCheck(name, spec);
+    if (brush) problems.push(brush);
     const extra = CHECKS[name]?.(result);
     if (extra) problems.push(extra);
 

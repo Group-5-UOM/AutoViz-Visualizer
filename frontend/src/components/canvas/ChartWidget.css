@@ -108,6 +108,18 @@
   font-size: 13px;
 }
 
+/* Says what a brush selected, so the count is visible without opening the table. */
+.chart-brush-status {
+  flex: none;
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-top: 1px solid var(--border-subtle);
+}
+
 .chart-explanation {
   flex: none;
   margin: 0;
