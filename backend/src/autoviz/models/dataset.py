@@ -23,6 +23,8 @@ class UserDataset(Base):
     file_path = Column(String, nullable=False)  # path inside uploads/
     status = Column(String, default="ready", nullable=False)
     size_bytes = Column(Integer, nullable=True)
+    row_count = Column(Integer, nullable=True)
+    column_count = Column(Integer, nullable=True)
     created_at = Column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

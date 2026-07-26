@@ -16,6 +16,10 @@ class DatasetRecord:
     # Logical column types: name -> "number" | "boolean" | "datetime" | "string"
     schema: dict[str, str]
     profile: dict[str, Any] = field(default_factory=dict)
+    # Numeric columns whose values are coded categories (low-cardinality whole
+    # numbers, e.g. pclass 1/2/3, survived 0/1). Dimensions to group and colour
+    # by — not measures — even though their stored dtype stays "number".
+    categorical_numeric: list[str] = field(default_factory=list)
 
 
 class DatasetRegistry:

@@ -1,4 +1,4 @@
-import { Download, Menu, PanelLeft, Save, Share2 } from 'lucide-react';
+import { Download, LogOut, Menu, PanelLeft, Save, Share2 } from 'lucide-react';
 import './TopBar.css';
 
 interface TopBarProps {
@@ -6,8 +6,10 @@ interface TopBarProps {
   sidebarCollapsed: boolean;
   chatOpen: boolean;
   widgetCount: number;
+  userEmail?: string;
   onToggleSidebar: () => void;
   onToggleChat: () => void;
+  onLogout?: () => void | Promise<void>;
 }
 
 export function TopBar({
@@ -15,8 +17,10 @@ export function TopBar({
   sidebarCollapsed,
   chatOpen,
   widgetCount,
+  userEmail,
   onToggleSidebar,
   onToggleChat,
+  onLogout,
 }: TopBarProps) {
   return (
     <header className="board-topbar">
@@ -66,6 +70,25 @@ export function TopBar({
           <Download size={15} />
           Export
         </button>
+
+        {userEmail && (
+          <div className="topbar-user">
+            <span className="topbar-user-email" title={userEmail}>
+              {userEmail}
+            </span>
+            {onLogout && (
+              <button
+                type="button"
+                className="topbar-icon-btn"
+                onClick={onLogout}
+                title="Sign out"
+                aria-label="Sign out"
+              >
+                <LogOut size={16} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </header>
   );

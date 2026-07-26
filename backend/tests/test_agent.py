@@ -177,7 +177,7 @@ def test_chart_failure_keeps_partial_result(registry, iris_id):
     assert out["status"] == "completed", out
     chart = out["charts"][0]
     assert chart["status"] == "partial"
-    assert chart["result"]["row_count"] == 100  # default plan limit
+    assert chart["result"]["row_count"] == 150  # all iris rows (no limit -> full column)
     assert chart.get("vega_lite_spec") is None
     assert any("recommend_chart_type" in e for e in chart["errors"])
 

@@ -9,6 +9,7 @@ paused clarification runs.
 import uuid
 from typing import Any
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.types import Command
 
 from autoviz.agent.graph import build_graph
@@ -32,9 +33,12 @@ class AgentService:
         self,
         planner: PlannerLLM | None = None,
         registry: DatasetRegistry = REGISTRY,
+        checkpointer: BaseCheckpointSaver | None = None,
     ):
         self._registry = registry
-        self._graph = build_graph(planner=planner, registry=registry)
+        # checkpointer=None -> build_graph defaults to InMemorySaver (unchanged
+        # behaviour). Pass a PostgresSaver for durable, cross-restart threads.
+        self._graph = build_graph(planner=planner, registry=registry, checkpointer=checkpointer)
 
     def run(
         self,
@@ -64,6 +68,9 @@ class AgentService:
             "clarification_answer": None,
             "clarification_count": 0,
             "clarification": None,
+            "pending_ambiguities": [],
+            "resolved_slots": {},
+            "clarify_source": None,
             "errors": [],
             "final_response": None,
             "status": "running",

@@ -1,22 +1,160 @@
-"""Dataset routes — thin adapters over ``services.dataset``.
+"""Dataset routes — thin adapters over services.dataset, scoped to the
+authenticated user (MCP tools 1-6 plus a multipart upload the frontend needs).
 
-Thin adapters over `services.dataset`, identical behavior to MCP tools 1-6:
+    POST   /datasets/upload               multipart CSV -> session dir -> register (owned)
+    POST   /datasets                       register by file_ref (owned)
+    GET    /datasets                       list the caller's datasets
+    DELETE /datasets/{dataset_id}          unregister + delete file (owner only)
+    GET    /datasets/{dataset_id}/schema   column schema
+    GET    /datasets/{dataset_id}/profile  profile
+    GET    /datasets/{dataset_id}/preview  first rows (limit)
 
-    POST   /datasets                      register_dataset(file_ref)
-    POST   /datasets/upload               multipart CSV upload -> save under an
-                                          approved data root -> register (the one
-                                          route with no MCP equivalent; needed by
-                                          the frontend file picker)
-    GET    /datasets                      list_datasets()
-    DELETE /datasets/{dataset_id}         unregister_dataset()
-    GET    /datasets/{dataset_id}/schema  get_dataset_schema()
-    GET    /datasets/{dataset_id}/profile get_dataset_profile()
-    GET    /datasets/{dataset_id}/preview preview_dataset(limit)
-
-Errors keep the services' structured ``{error, hint?}`` shape with an appropriate
-HTTP status (404 unknown id, 400 bad file) — never a raised exception.
+Ownership is enforced on every id: a caller can only see/act on their own
+datasets (403 otherwise, 404 for an unknown id).
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-router = APIRouter(tags=["datasets"])
+from autoviz.api.deps import get_current_user, get_db, get_registry
+from autoviz.api.errors import respond
+from autoviz.models import User
+from autoviz.services import dataset as dataset_service
+from autoviz.services.registry import DatasetRegistry
+from autoviz.storage import repository, uploads
+
+router = APIRouter()
+
+
+class RegisterRequest(BaseModel):
+    file_ref: str
+
+
+def _persist_meta(db: Session, user: User, res: dict, filename: str, file_path: str):
+    repository.add_dataset_meta(
+        db,
+        dataset_id=res["dataset_id"],
+        user_id=user.id,
+        filename=filename,
+        file_path=file_path,
+        row_count=res["row_count"],
+        column_count=res["column_count"],
+    )
+    return {**res, "logical_name": filename}
+
+
+@router.post("/upload", status_code=201)
+async def upload(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    registry: DatasetRegistry = Depends(get_registry),
+):
+    uploads.sweep_stale()  # opportunistic TTL cleanup
+    data = await file.read()
+    path = uploads.save_upload(user.id, file.filename or "upload.csv", data)
+    res = dataset_service.register_dataset(str(path), registry)
+    if "error" in res:  # e.g. RESOURCE_LIMIT (413) or unreadable CSV (400)
+        path.unlink(missing_ok=True)
+        return respond(res)
+    body = _persist_meta(db, user, res, file.filename or path.name, str(path))
+    return respond(body, ok_status=201)
+
+
+@router.post("", status_code=201)
+def register(
+    body: RegisterRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    registry: DatasetRegistry = Depends(get_registry),
+):
+    res = dataset_service.register_dataset(body.file_ref, registry)
+    if "error" in res:
+        return respond(res)
+    logical = body.file_ref.replace("\\", "/").rsplit("/", 1)[-1]
+    return respond(_persist_meta(db, user, res, logical, body.file_ref), ok_status=201)
+
+
+@router.get("")
+def list_datasets(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return {
+        "datasets": [
+            {
+                "dataset_id": m.dataset_id,
+                "logical_name": m.filename,
+                "row_count": m.row_count,
+                "column_count": m.column_count,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in repository.list_dataset_meta(db, user.id)
+        ]
+    }
+
+
+def _owned_meta(db: Session, dataset_id: str, user: User):
+    meta = repository.get_dataset_meta(db, dataset_id)
+    if meta is None:
+        raise HTTPException(status_code=404, detail=f"Unknown dataset_id: {dataset_id}")
+    if meta.user_id != user.id:
+        raise HTTPException(status_code=403, detail="You do not own this dataset")
+    return meta
+
+
+@router.delete("/{dataset_id}")
+def delete_dataset(
+    dataset_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    registry: DatasetRegistry = Depends(get_registry),
+):
+    meta = _owned_meta(db, dataset_id, user)
+    registry.remove(dataset_id)
+    from pathlib import Path
+
+    Path(meta.file_path).unlink(missing_ok=True)
+    repository.delete_dataset_meta(db, dataset_id)
+    return {"removed": True, "dataset_id": dataset_id}
+
+
+def _resolve(db: Session, registry: DatasetRegistry, dataset_id: str, user: User):
+    """Ownership + lazy reload; raises the right HTTP error, or returns the record."""
+    record, error = repository.resolve_dataset(db, registry, dataset_id, user.id)
+    if error is not None:
+        status = 403 if error.get("error_code") == repository.FORBIDDEN else 404
+        raise HTTPException(status_code=status, detail=error["error"])
+    return record
+
+
+@router.get("/{dataset_id}/schema")
+def schema(
+    dataset_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    registry: DatasetRegistry = Depends(get_registry),
+):
+    _resolve(db, registry, dataset_id, user)
+    return respond(dataset_service.get_dataset_schema(dataset_id, registry))
+
+
+@router.get("/{dataset_id}/profile")
+def profile(
+    dataset_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    registry: DatasetRegistry = Depends(get_registry),
+):
+    _resolve(db, registry, dataset_id, user)
+    return respond(dataset_service.get_dataset_profile(dataset_id, registry))
+
+
+@router.get("/{dataset_id}/preview")
+def preview(
+    dataset_id: str,
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    registry: DatasetRegistry = Depends(get_registry),
+):
+    _resolve(db, registry, dataset_id, user)
+    return respond(dataset_service.preview_dataset(dataset_id, limit, registry))

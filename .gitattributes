@@ -1,0 +1,7 @@
+# Files consumed inside Linux containers must keep LF endings, regardless of
+# the checkout platform (core.autocrlf=true would otherwise inject CRLF and
+# break `sh`/shebang parsing at runtime).
+*.sh              text eol=lf
+Dockerfile        text eol=lf
+docker-entrypoint.sh text eol=lf
+.dockerignore     text eol=lf

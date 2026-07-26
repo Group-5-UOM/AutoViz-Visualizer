@@ -84,6 +84,92 @@ def test_classify_outcome_on_non_dict():
     assert classify_outcome("anything")["outcome"] == "ok"
 
 
+def test_outcome_error_captures_error_code(cap):
+    @observed
+    def tool() -> dict:
+        return {"error": "no such dataset", "error_code": "UNKNOWN_DATASET", "retryable": False}
+
+    tool()
+    rec = _records(cap)[-1]
+    assert rec["outcome"] == "error"
+    assert rec["error_code"] == "UNKNOWN_DATASET"
+
+
+def test_outcome_invalid_captures_error_code(cap):
+    @observed
+    def tool() -> dict:
+        return {"valid": False, "errors": ["x"], "error_code": "TYPE_MISMATCH"}
+
+    tool()
+    rec = _records(cap)[-1]
+    assert rec["outcome"] == "invalid"
+    assert rec["error_code"] == "TYPE_MISMATCH"
+
+
+def test_outcome_failed_captures_error_code(cap):
+    @observed
+    def tool() -> dict:
+        return {"status": "error", "failed_step": "execute_analysis", "error_code": "EXECUTION_ERROR"}
+
+    tool()
+    rec = _records(cap)[-1]
+    assert rec["outcome"] == "failed"
+    assert rec["failed_step"] == "execute_analysis"
+    assert rec["error_code"] == "EXECUTION_ERROR"
+
+
+def test_ok_record_has_no_error_code(cap):
+    @observed
+    def tool() -> dict:
+        return {"rows": []}
+
+    tool()
+    assert "error_code" not in _records(cap)[-1]
+
+
+def test_observes_real_service_success_end_to_end(cap, registry):
+    """Full record — name, hash, latency, size, outcome — over a real service."""
+    from autoviz.services.dataset import register_dataset
+    from tests.conftest import data_path
+
+    wrapped = observed(register_dataset)
+    wrapped(data_path("general-testing", "iris.csv"), registry)
+    rec = _records(cap)[-1]
+    assert rec["tool"] == "register_dataset"
+    assert len(rec["input_hash"]) == 12
+    assert isinstance(rec["ms"], (int, float)) and rec["ms"] >= 0
+    assert rec["out_bytes"] > 0
+    assert rec["outcome"] == "ok"
+
+
+def test_observes_real_service_error_code_end_to_end(cap, registry):
+    """A real taxonomy error_code propagates all the way into the log record."""
+    from autoviz.services.execution import execute_analysis
+
+    wrapped = observed(execute_analysis)
+    wrapped("ds_missing", {"dataset_id": "ds_missing", "intent": "comparison"}, registry)
+    rec = _records(cap)[-1]
+    assert rec["tool"] == "execute_analysis"
+    assert rec["outcome"] == "error"
+    assert rec["error_code"] == "UNKNOWN_DATASET"
+
+
+def test_every_server_tool_is_observed():
+    """Guard against a future tool being added without the @observed wrapper."""
+    import autoviz.mcp.server as server
+
+    tool_names = [
+        "register_dataset", "list_datasets", "unregister_dataset", "get_dataset_schema",
+        "get_dataset_profile", "preview_dataset", "validate_analysis_plan", "execute_analysis",
+        "recommend_chart_type", "generate_chart", "run_analysis_pipeline", "export_chart",
+        "analyze", "answer_clarification",
+    ]
+    for name in tool_names:
+        fn = getattr(server, name)
+        # @observed uses functools.wraps, which sets __wrapped__ on the wrapper.
+        assert hasattr(fn, "__wrapped__"), f"{name} is not wrapped by @observed"
+
+
 def test_input_is_hashed_not_logged(cap):
     @observed
     def tool(secret: str) -> dict:

@@ -2,17 +2,32 @@
 
 from langgraph.types import Send
 
-from autoviz.agent.nodes import CHART_FALLBACK_STEPS, PLAN_REPAIR_STEPS
+from autoviz.agent.ambiguity import apply_resolutions
+from autoviz.agent.nodes import CHART_FALLBACK_STEPS
 from autoviz.agent.state import (
     MAX_CLARIFICATIONS,
     MAX_PLAN_ATTEMPTS,
     AutoVizState,
     WorkerState,
 )
+from autoviz.errors import PLAN_REPAIRABLE
 
 
 def route_after_context(state: AutoVizState) -> str:
-    return "record_failure" if state.get("status") == "failed" else "classify_intent"
+    return "record_failure" if state.get("status") == "failed" else "detect_ambiguity"
+
+
+def route_after_detect(state: AutoVizState) -> str:
+    """Ask about a detected ambiguity if the round budget allows; else plan."""
+    pending = state.get("pending_ambiguities") or []
+    if pending and state.get("clarification_count", 0) < MAX_CLARIFICATIONS:
+        return "clarify"
+    return "classify_intent"
+
+
+def route_after_clarify(state: AutoVizState) -> str:
+    """A deterministic answer re-detects (queue may shrink); an LLM answer re-classifies."""
+    return "classify_intent" if state.get("clarify_source") == "llm" else "detect_ambiguity"
 
 
 def route_after_classify(state: AutoVizState) -> str | list[Send]:
@@ -20,6 +35,7 @@ def route_after_classify(state: AutoVizState) -> str | list[Send]:
     if wants_clarification and state.get("clarification_count", 0) < MAX_CLARIFICATIONS:
         return "clarify"
     tasks = state.get("tasks") or [state["user_request"]]
+    resolved = state.get("resolved_slots") or {}
     prior_plan = None
     if state.get("intent") == "refinement":
         for entry in reversed(state.get("history", [])):
@@ -30,7 +46,8 @@ def route_after_classify(state: AutoVizState) -> str | list[Send]:
         Send(
             "analysis_worker",
             {
-                "task": task,
+                # Bound clarification answers become explicit task constraints.
+                "task": apply_resolutions(task, resolved),
                 "dataset_id": state["dataset_id"],
                 "schema": state["schema"],
                 "profile": state["profile"],
@@ -56,9 +73,14 @@ def route_after_execute(state: WorkerState) -> str:
     out = state["pipeline_output"]
     if out["status"] == "ok":
         return "finalize"
-    step = out.get("failed_step")
-    if step in PLAN_REPAIR_STEPS and _can_replan(state):
+    # The shared pipeline paused for large-row-removal confirmation; ask the user.
+    if out["status"] == "confirmation_required":
+        return "confirm_preprocessing"
+    # Replan only for a genuinely plan-repairable failure — never for an
+    # infrastructure fault (those were already retried in execute_node) or a
+    # missing dataset, which no amount of replanning can fix.
+    if out.get("error_code") in PLAN_REPAIRABLE and _can_replan(state):
         return "plan"
-    if step in CHART_FALLBACK_STEPS:
+    if out.get("failed_step") in CHART_FALLBACK_STEPS:
         return "chart_fallback"
     return "finalize"

@@ -22,7 +22,7 @@ from autoviz.schema.plan_guide import PLAN_GUIDE
 
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
-DEFAULT_MODEL = "google_genai:gemini-2.5-flash"
+DEFAULT_MODEL = "google_genai:gemini-3.5-flash"
 
 _FENCE = re.compile(r"^```[a-zA-Z]*\n|\n?```$")
 
@@ -200,6 +200,9 @@ class GeminiPlanner:
             "dataset_id": dataset_id,
             "schema": schema,
             "column_cardinality": profile.get("cardinality", {}),
+            # Numeric columns that are really coded categories (pclass, survived) —
+            # group and colour by these, do not treat them as continuous measures.
+            "categorical_numeric_columns": profile.get("categorical_numeric", []),
         }
         if prior_plan:
             payload["previous_plan_to_refine"] = prior_plan

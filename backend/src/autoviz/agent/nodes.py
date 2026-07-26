@@ -4,25 +4,33 @@ Deterministic nodes call the shared services unchanged — run_pipeline() stays
 the single source of truth for validate -> execute -> chart.
 """
 
+import time
 from typing import Any
 
 from langgraph.types import interrupt
 
+from autoviz import observability
+from autoviz.agent.ambiguity import detect_ambiguities
 from autoviz.agent.state import (
     MAX_TASKS,
     AutoVizState,
     ChartResult,
     WorkerState,
 )
+from autoviz.errors import PLAN_REPAIRABLE, RETRYABLE
 from autoviz.llm.client import IntentDecision, PlannerError, PlannerLLM
+from autoviz.schema.clarification import Ambiguity, bind_answer
 from autoviz.services import charts, dataset
 from autoviz.services.orchestrator import run_pipeline
 from autoviz.services.registry import REGISTRY, DatasetRegistry
 
-# failed_step values that mean "the plan is wrong" -> repairable by the LLM.
-PLAN_REPAIR_STEPS = {"validate_analysis_plan", "execute_analysis"}
-# failed_step values after a successful execution -> deterministic fallback.
+# failed_step values after a successful execution -> deterministic chart fallback.
 CHART_FALLBACK_STEPS = {"recommend_chart_type", "generate_chart"}
+
+# Bounded retry for infrastructure faults (EXECUTION_ERROR / TIMEOUT). The plan
+# is already validated, so replanning would be wrong; a short backoff instead.
+MAX_EXEC_RETRIES = 1
+EXEC_RETRY_BACKOFF_S = 0.25
 
 
 # --- main-graph nodes ---------------------------------------------------------
@@ -60,15 +68,56 @@ def classify_intent(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, An
     }
 
 
+def detect_ambiguity(state: AutoVizState) -> dict[str, Any]:
+    """Deterministic pre-check: queue the request's ambiguities (minus resolved ones).
+
+    Runs before the planner LLM so 'should we ask?' is a computed signal, not a
+    prompt guess. Re-runs after each answer (via the clarify loop) so answered
+    slots drop out and the queue shrinks toward empty.
+    """
+    ambs = detect_ambiguities(
+        state["user_request"],
+        state.get("schema") or [],
+        state.get("profile") or {},
+        resolved=state.get("resolved_slots") or {},
+    )
+    return {"pending_ambiguities": [a.model_dump() for a in ambs]}
+
+
 def clarify(state: AutoVizState) -> dict[str, Any]:
-    payload = state.get("clarification") or {
-        "question": "Could you clarify your request?",
-        "options": [],
-    }
+    """Ask one clarifying question and bind the answer.
+
+    Prefers a deterministic ambiguity (grounded options, answer bound to its slot);
+    falls back to an LLM-authored clarification when the detectors found nothing.
+    """
+    pending = state.get("pending_ambiguities") or []
+    if pending:
+        amb = Ambiguity.model_validate(pending[0])
+        answer = interrupt(amb.to_wire())  # pause; resumes here with the user's answer
+        resolution = bind_answer(amb, str(answer))
+        observability.log_event(
+            "clarification", source="detector", amb_type=amb.type, slot=amb.slot,
+            n_options=len(amb.options), resolution=resolution.source,
+            round=state.get("clarification_count", 0) + 1,
+        )
+        return {
+            "resolved_slots": {**(state.get("resolved_slots") or {}), resolution.slot: resolution.value},
+            "clarification_count": state.get("clarification_count", 0) + 1,
+            "clarify_source": "detector",
+            "clarification_answer": str(answer),
+        }
+
+    # LLM-authored clarification (detectors found nothing structural).
+    payload = state.get("clarification") or {"question": "Could you clarify your request?", "options": []}
     answer = interrupt(payload)
+    observability.log_event(
+        "clarification", source="llm", n_options=len(payload.get("options", [])),
+        round=state.get("clarification_count", 0) + 1,
+    )
     return {
         "clarification_answer": str(answer),
         "clarification_count": state.get("clarification_count", 0) + 1,
+        "clarify_source": "llm",
         "clarification": None,
     }
 
@@ -130,12 +179,65 @@ def plan_node(state: WorkerState, *, planner: PlannerLLM) -> dict[str, Any]:
 
 
 def execute_node(state: WorkerState, *, registry: DatasetRegistry = REGISTRY) -> dict[str, Any]:
-    out = run_pipeline(state["dataset_id"], state["analysis_plan"], registry)
+    # Retry transient infrastructure faults in place with backoff; only a
+    # plan-repairable code sends us back to the planner (handled in routing).
+    attempts = 0
+    while True:
+        out = run_pipeline(
+            state["dataset_id"],
+            state["analysis_plan"],
+            registry,
+            approved_preprocessing_hash=state.get("approved_preprocessing_hash"),
+        )
+        if (
+            out["status"] == "ok"
+            or out.get("error_code") not in RETRYABLE
+            or attempts >= MAX_EXEC_RETRIES
+        ):
+            break
+        attempts += 1
+        time.sleep(EXEC_RETRY_BACKOFF_S * attempts)
+
     update: dict[str, Any] = {"pipeline_output": out}
-    if out["status"] == "error" and out.get("failed_step") in PLAN_REPAIR_STEPS:
+    if out["status"] == "error" and out.get("error_code") in PLAN_REPAIRABLE:
         update["rejected_plan"] = state["analysis_plan"]
         update["validation_errors"] = [str(e) for e in out.get("errors", [])]
     return update
+
+
+def confirm_preprocessing(state: WorkerState) -> dict[str, Any]:
+    """Present the shared pipeline's large-row-removal gate and bind the answer.
+
+    run_pipeline (the single enforcer) returned status "confirmation_required". We
+    surface its question, then deterministically map the answer: "proceed" approves
+    this exact preprocessing block (by hash) and re-executes; anything else skips the
+    row-dropping steps (keeping any fill_nulls) and runs on the full data.
+    """
+    out = state.get("pipeline_output") or {}
+    conf = out.get("confirmation") or {}
+    answer = interrupt({"question": conf.get("question"), "options": conf.get("options", [])})
+    norm = str(answer).strip().casefold()
+    proceed = "proceed" in norm or norm in ("y", "yes", "ok", "confirm")
+
+    observability.log_event(
+        "preprocessing_confirmation",
+        proceed=proceed,
+        dropped=(conf.get("impact") or {}).get("dropped"),
+        input_rows=(conf.get("impact") or {}).get("input_rows"),
+    )
+
+    if proceed:
+        return {"approved_preprocessing_hash": conf.get("preprocessing_hash")}
+
+    # Skip: strip only the row-dropping ops, keep fill_nulls (R3). The trimmed plan
+    # has no row-dropping preprocessing, so it will not gate again.
+    plan = dict(state["analysis_plan"] or {})
+    plan["preprocessing"] = [
+        op
+        for op in plan.get("preprocessing", [])
+        if op.get("op") not in ("drop_nulls", "drop_exact_duplicates")
+    ]
+    return {"analysis_plan": plan, "approved_preprocessing_hash": None}
 
 
 def chart_fallback(state: WorkerState) -> dict[str, Any]:

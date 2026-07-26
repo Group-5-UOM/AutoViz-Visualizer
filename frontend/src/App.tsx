@@ -1,77 +1,68 @@
 import { useState } from 'react';
-import { Sidebar } from './components/layout/Sidebar';
-import { TopBar } from './components/layout/TopBar';
-import { ChatPanel } from './components/chat/ChatPanel';
-import { DashboardCanvas } from './components/canvas/DashboardCanvas';
-import { useDashboard } from './hooks/useDashboard';
-import type { SidebarItemId } from './types/dashboard';
-import './App.css';
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { LoginPage } from './pages/LoginPage';
+import { BoardPage } from './pages/BoardPage';
+import { clearSession, getAccessToken, getStoredEmail } from './lib/api';
+import { logoutUser } from './lib/auth';
+
+function LoginRoute({ onLogin }: { onLogin: (email: string) => void }) {
+  const navigate = useNavigate();
+  return (
+    <LoginPage
+      onLogin={(email) => {
+        onLogin(email);
+        navigate('/dashboard', { replace: true });
+      }}
+    />
+  );
+}
 
 function App() {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [chatOpen, setChatOpen] = useState(true);
-  const [activeItem, setActiveItem] = useState<SidebarItemId | null>('ai-chat');
+  const [userEmail, setUserEmail] = useState<string | null>(() => {
+    const email = getStoredEmail();
+    const token = getAccessToken();
+    return email && token ? email : null;
+  });
 
-  const {
-    dashboard,
-    messages,
-    isThinking,
-    selectWidget,
-    updateWidget,
-    deleteWidget,
-    sendMessage,
-  } = useDashboard();
+  const handleLogin = (email: string) => {
+    setUserEmail(email);
+  };
 
-  const handleSidebarSelect = (id: SidebarItemId) => {
-    setActiveItem(id);
-    if (id === 'ai-chat') {
-      setChatOpen(true);
-    }
+  const handleLogout = async () => {
+    await logoutUser();
+    clearSession();
+    setUserEmail(null);
   };
 
   return (
-    <div className="board-app">
-      <TopBar
-        title="Untitled dashboard"
-        sidebarCollapsed={sidebarCollapsed}
-        chatOpen={chatOpen}
-        widgetCount={dashboard.widgets.length}
-        onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
-        onToggleChat={() => {
-          setChatOpen((v) => {
-            const next = !v;
-            if (next) setActiveItem('ai-chat');
-            return next;
-          });
-        }}
-      />
-
-      <div className="board-body">
-        <Sidebar
-          collapsed={sidebarCollapsed}
-          activeItem={activeItem}
-          onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
-          onSelect={handleSidebarSelect}
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            userEmail ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <LoginRoute onLogin={handleLogin} />
+            )
+          }
         />
-
-        <ChatPanel
-          open={chatOpen}
-          messages={messages}
-          isThinking={isThinking}
-          onClose={() => setChatOpen(false)}
-          onSend={sendMessage}
-          onFocusChart={(chartId) => selectWidget(chartId)}
+        <Route
+          path="/dashboard"
+          element={
+            userEmail ? (
+              <BoardPage userEmail={userEmail} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
         />
-
-        <DashboardCanvas
-          widgets={dashboard.widgets}
-          selectedWidgetId={dashboard.selectedWidgetId}
-          onSelect={selectWidget}
-          onUpdate={updateWidget}
-          onDelete={deleteWidget}
+        <Route
+          path="*"
+          element={<Navigate to={userEmail ? '/dashboard' : '/login'} replace />}
         />
-      </div>
-    </div>
+      </Routes>
+    </BrowserRouter>
   );
 }
 
