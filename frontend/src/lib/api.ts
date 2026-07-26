@@ -33,6 +33,14 @@ export function clearSession() {
   sessionStorage.removeItem(TOKEN_KEY);
 }
 
+/**
+ * Fired when the server rejects a token we thought was good (expired, or
+ * revoked by a logout elsewhere). App listens and drops back to the login
+ * screen, so an expired session shows a sign-in page instead of every action
+ * failing with "Invalid or expired token".
+ */
+export const SESSION_EXPIRED_EVENT = 'autoviz:session-expired';
+
 function formatDetail(data: unknown, status: number): string {
   if (data && typeof data === 'object') {
     const obj = data as Record<string, unknown>;
@@ -97,6 +105,10 @@ export async function apiRequest<T>(
   }
 
   if (!res.ok) {
+    if (res.status === 401 && auth) {
+      clearSession();
+      window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
+    }
     throw new ApiError(formatDetail(data, res.status), res.status);
   }
 

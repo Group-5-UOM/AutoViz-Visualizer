@@ -1,26 +1,42 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { ChartWidget, ChatMessage, DashboardState } from '../types/dashboard';
-import { assistantReplyForChart, createMockChartFromPrompt } from '../lib/mockCharts';
+import { analyze, answerClarification, type AgentResponse } from '../lib/agent';
+import { widgetsFromAgent } from '../lib/chartWidgets';
+import { ApiError } from '../lib/api';
+
+const WELCOME =
+  'Hi! Ask me a question about your dataset — for example “average price by category” or “how has revenue changed over time”. I run the query on your data and put the chart on the canvas.';
 
 function uid(prefix: string) {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
-export function useDashboard() {
+function errorText(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error) return err.message;
+  return 'Something went wrong talking to the server.';
+}
+
+export function useDashboard(datasetId: string | null) {
   const [dashboard, setDashboard] = useState<DashboardState>({
     widgets: [],
     selectedWidgetId: null,
   });
   const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: uid('msg'),
-      role: 'assistant',
-      content:
-        'Hi! Ask me to visualize your data — for example “show sales by category” or “trend of revenue over time”. Charts will appear on the canvas.',
-      timestamp: Date.now(),
-    },
+    { id: uid('msg'), role: 'assistant', content: WELCOME, timestamp: Date.now() },
   ]);
   const [isThinking, setIsThinking] = useState(false);
+
+  // Conversation continuity: the backend keys refinements ("make it a bar
+  // chart") and paused clarification runs off thread_id.
+  const threadId = useRef<string | null>(null);
+  // Set while a run is paused on a question — the next message resumes that run
+  // via /agent/answer instead of starting a new analysis.
+  const awaitingAnswer = useRef(false);
+  // Monotonic slot counter for canvas placement. It deliberately does not
+  // decrease when a widget is deleted, so a new chart lands in a free slot
+  // rather than on top of one the user kept.
+  const placedCount = useRef(0);
 
   const selectWidget = useCallback((id: string | null) => {
     setDashboard((prev) => ({ ...prev, selectedWidgetId: id }));
@@ -40,40 +56,101 @@ export function useDashboard() {
     }));
   }, []);
 
-  const sendMessage = useCallback(async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
+  const pushAssistant = useCallback((message: Omit<ChatMessage, 'id' | 'role' | 'timestamp'>) => {
+    setMessages((prev) => [
+      ...prev,
+      { ...message, id: uid('msg'), role: 'assistant', timestamp: Date.now() },
+    ]);
+  }, []);
 
-    const userMsg: ChatMessage = {
-      id: uid('msg'),
-      role: 'user',
-      content: trimmed,
-      timestamp: Date.now(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setIsThinking(true);
+  /** Turn one agent envelope into chat messages and (on success) canvas widgets. */
+  const applyResponse = useCallback(
+    (res: AgentResponse) => {
+      threadId.current = res.thread_id ?? threadId.current;
 
-    await new Promise((r) => setTimeout(r, 650));
+      if (res.status === 'waiting_for_user') {
+        awaitingAnswer.current = true;
+        pushAssistant({
+          content:
+            res.question ??
+            (res.pause_kind === 'confirmation'
+              ? 'Please confirm before I continue.'
+              : 'Could you clarify your request?'),
+          options: res.options ?? [],
+        });
+        return;
+      }
 
-    setDashboard((prev) => {
-      const chart = createMockChartFromPrompt(trimmed, prev.widgets.length);
-      const widget: ChartWidget = { ...chart, id: uid('chart') };
+      awaitingAnswer.current = false;
 
-      const assistantMsg: ChatMessage = {
-        id: uid('msg'),
-        role: 'assistant',
-        content: assistantReplyForChart(widget.title),
-        chartId: widget.id,
-        timestamp: Date.now(),
-      };
-      setMessages((msgs) => [...msgs, assistantMsg]);
-      setIsThinking(false);
+      if (res.status === 'failed') {
+        const detail = res.errors?.length
+          ? res.errors.join(' ')
+          : (res.answer ?? 'The request could not be processed.');
+        pushAssistant({ content: `I couldn't complete that. ${detail}` });
+        return;
+      }
 
-      return {
-        widgets: [...prev.widgets, widget],
-        selectedWidgetId: widget.id,
-      };
-    });
+      // Built outside the state updater: updaters must stay pure (StrictMode
+      // invokes them twice, which would post every reply to the chat twice).
+      const created = widgetsFromAgent(res.charts ?? [], placedCount.current, () => uid('chart'));
+      placedCount.current += created.length;
+
+      pushAssistant({
+        content: res.answer ?? 'Done.',
+        // Link the reply to the first chart it produced, so "View on canvas"
+        // has somewhere to go.
+        chartId: created[0]?.id,
+      });
+
+      if (created.length === 0) return;
+      setDashboard((prev) => ({
+        widgets: [...prev.widgets, ...created],
+        selectedWidgetId: created[0].id,
+      }));
+    },
+    [pushAssistant],
+  );
+
+  const sendMessage = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      if (!datasetId) {
+        pushAssistant({ content: 'Upload a CSV file first, then ask me about it.' });
+        return;
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        { id: uid('msg'), role: 'user', content: trimmed, timestamp: Date.now() },
+      ]);
+      setIsThinking(true);
+
+      try {
+        const res =
+          awaitingAnswer.current && threadId.current
+            ? await answerClarification(threadId.current, trimmed)
+            : await analyze(trimmed, datasetId, threadId.current);
+        applyResponse(res);
+      } catch (err) {
+        // A paused run is left paused on transport failure, so a retry resumes
+        // it rather than silently starting a fresh analysis.
+        pushAssistant({ content: errorText(err) });
+      } finally {
+        setIsThinking(false);
+      }
+    },
+    [datasetId, applyResponse, pushAssistant],
+  );
+
+  /** Drop canvas + conversation state when a different dataset is uploaded. */
+  const resetForDataset = useCallback(() => {
+    threadId.current = null;
+    awaitingAnswer.current = false;
+    placedCount.current = 0;
+    setDashboard({ widgets: [], selectedWidgetId: null });
+    setMessages([{ id: uid('msg'), role: 'assistant', content: WELCOME, timestamp: Date.now() }]);
   }, []);
 
   return {
@@ -84,5 +161,6 @@ export function useDashboard() {
     updateWidget,
     deleteWidget,
     sendMessage,
+    resetForDataset,
   };
 }

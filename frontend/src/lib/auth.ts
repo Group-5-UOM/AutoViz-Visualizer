@@ -6,8 +6,13 @@ export interface LoginResponse {
   expires_at: string;
 }
 
+/**
+ * `username` is collected by the sign-up form and sent along, but the backend
+ * has no username column yet — it accepts and ignores the field, and the
+ * response carries only the id and email.
+ */
 export async function registerUser(email: string, password: string, username: string) {
-  return apiRequest<{ id: string; email: string; username: string }>('/auth/register', {
+  return apiRequest<{ id: string; email: string }>('/auth/register', {
     method: 'POST',
     body: { email, password, username },
     auth: false,

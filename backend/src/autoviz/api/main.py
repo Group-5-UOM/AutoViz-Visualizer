@@ -30,6 +30,14 @@ async def _lifespan(app: FastAPI):
         init_db()
     except Exception as exc:  # pragma: no cover - depends on a live DB
         _log.warning("DB init skipped (%s); persistence routes will error until a DB is up", exc)
+
+    # Teach the shared registry how to restore a dataset it does not have cached
+    # — after an eviction or a restart. Injected here rather than imported by
+    # services/, which must not depend on the storage layer.
+    from autoviz.services.registry import REGISTRY
+    from autoviz.storage import blobs
+
+    REGISTRY.loader = blobs.make_loader()
     yield
 
 
@@ -37,7 +45,14 @@ def _cors_origins() -> list[str]:
     raw = os.environ.get("AUTOVIZ_CORS_ORIGINS", "").strip()
     if raw:
         return [o.strip() for o in raw.split(",") if o.strip()]
-    return ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # Vite's dev server (5173) first — the frontend's default. 3000 stays for
+    # anyone running it behind a different dev server.
+    return [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
 
 def create_app() -> FastAPI:
