@@ -131,16 +131,31 @@
 .topbar-user {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   margin-left: 4px;
   padding-left: 10px;
   border-left: 1px solid var(--border-subtle);
 }
 
-.topbar-user-email {
-  max-width: 160px;
+.topbar-user-avatar {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
   font-size: 12px;
-  color: var(--text-secondary);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.topbar-user-name {
+  max-width: 160px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -150,7 +165,7 @@
   .widget-count,
   .topbar-text-btn:nth-of-type(2),
   .topbar-text-btn:nth-of-type(3),
-  .topbar-user-email {
+  .topbar-user-name {
     display: none;
   }
 }

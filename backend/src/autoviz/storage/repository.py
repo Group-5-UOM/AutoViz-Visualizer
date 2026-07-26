@@ -36,8 +36,17 @@ def get_user_by_email(session: Session, email: str) -> User | None:
     return session.scalar(select(User).where(User.email == email))
 
 
-def create_user(session: Session, email: str, password_hash: str) -> User:
-    user = User(email=email, password_hash=password_hash)
+def get_user_by_username(session: Session, username: str) -> User | None:
+    return session.scalar(select(User).where(User.username == username))
+
+
+def create_user(
+    session: Session,
+    email: str,
+    password_hash: str,
+    username: str | None = None,
+) -> User:
+    user = User(email=email, password_hash=password_hash, username=username)
     session.add(user)
     session.commit()
     return user

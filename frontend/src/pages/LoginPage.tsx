@@ -5,7 +5,7 @@ import { loginUser, registerUser } from '../lib/auth';
 import './LoginPage.css';
 
 interface LoginPageProps {
-  onLogin: (email: string) => void;
+  onLogin: (user: { email: string; username: string }) => void;
 }
 
 function GoogleIcon() {
@@ -67,8 +67,15 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [showRegisterHint, setShowRegisterHint] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const emailInputRef = useRef<HTMLInputElement>(null);
+
+  const switchMode = (next: 'login' | 'register') => {
+    setMode(next);
+    setError('');
+    setShowRegisterHint(false);
+  };
 
   const handleOAuthClick = (providerId: (typeof OAUTH_PROVIDERS)[number]['id']) => {
     if (providerId === 'email') {
@@ -82,6 +89,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    setShowRegisterHint(false);
 
     const trimmedEmail = email.trim();
     const trimmedUsername = username.trim();
@@ -99,8 +107,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       if (mode === 'register') {
         await registerUser(trimmedEmail, password, trimmedUsername);
       }
-      await loginUser(trimmedEmail, password);
-      onLogin(trimmedEmail);
+      const session = await loginUser(trimmedEmail, password);
+      onLogin({
+        email: trimmedEmail,
+        username: session.username || trimmedEmail.split('@')[0],
+      });
     } catch (err) {
       const message =
         err instanceof ApiError
@@ -109,6 +120,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             ? err.message
             : 'Could not sign in.';
       setError(message);
+      // 401 covers both an unknown email and a wrong password, so point at
+      // registration without confirming whether the account exists.
+      if (mode === 'login' && err instanceof ApiError && err.status === 401) {
+        setShowRegisterHint(true);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -240,7 +256,25 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </button>
           </form>
 
-          {error && <p className="login-error" role="alert">{error}</p>}
+          {error && (
+            <p className="login-error" role="alert">
+              {error}
+              {showRegisterHint && (
+                <>
+                  {' '}
+                  If you have not signed up yet,{' '}
+                  <button
+                    type="button"
+                    className="login-link-btn"
+                    onClick={() => switchMode('register')}
+                  >
+                    create an account
+                  </button>
+                  .
+                </>
+              )}
+            </p>
+          )}
 
           <p className="login-footer">
             {mode === 'login' ? (
@@ -249,10 +283,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <button
                   type="button"
                   className="login-link-btn"
-                  onClick={() => {
-                    setMode('register');
-                    setError('');
-                  }}
+                  onClick={() => switchMode('register')}
                 >
                   Create one
                 </button>
@@ -263,10 +294,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <button
                   type="button"
                   className="login-link-btn"
-                  onClick={() => {
-                    setMode('login');
-                    setError('');
-                  }}
+                  onClick={() => switchMode('login')}
                 >
                   Sign in
                 </button>

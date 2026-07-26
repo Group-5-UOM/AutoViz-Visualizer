@@ -4,6 +4,8 @@ export interface LoginResponse {
   access_token: string;
   token_type: string;
   expires_at: string;
+  email: string;
+  username: string;
 }
 
 export async function registerUser(email: string, password: string, username: string) {
@@ -20,7 +22,7 @@ export async function loginUser(email: string, password: string) {
     body: { email, password },
     auth: false,
   });
-  setSession(email, data.access_token);
+  setSession(email, data.access_token, data.username);
   return data;
 }
 

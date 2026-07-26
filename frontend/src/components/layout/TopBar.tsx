@@ -7,6 +7,7 @@ interface TopBarProps {
   chatOpen: boolean;
   widgetCount: number;
   userEmail?: string;
+  username?: string;
   onToggleSidebar: () => void;
   onToggleChat: () => void;
   onLogout?: () => void | Promise<void>;
@@ -18,10 +19,12 @@ export function TopBar({
   chatOpen,
   widgetCount,
   userEmail,
+  username,
   onToggleSidebar,
   onToggleChat,
   onLogout,
 }: TopBarProps) {
+  const displayName = username || userEmail?.split('@')[0];
   return (
     <header className="board-topbar">
       <div className="topbar-left">
@@ -71,10 +74,13 @@ export function TopBar({
           Export
         </button>
 
-        {userEmail && (
+        {displayName && (
           <div className="topbar-user">
-            <span className="topbar-user-email" title={userEmail}>
-              {userEmail}
+            <span className="topbar-user-avatar" aria-hidden>
+              {displayName.charAt(0).toUpperCase()}
+            </span>
+            <span className="topbar-user-name" title={userEmail || displayName}>
+              {displayName}
             </span>
             {onLogout && (
               <button

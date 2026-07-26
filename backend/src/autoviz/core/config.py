@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # Default: backend/uploads/  (parents[3] from core/config.py → backend/)
     UPLOAD_DIR: Path = Path(__file__).resolve().parents[3] / "uploads"
 
+    # ── CORS (Vite default 5173; Next/other 3000) ─────────────────────────
+    AUTOVIZ_CORS_ORIGINS: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:3000,http://127.0.0.1:3000"
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

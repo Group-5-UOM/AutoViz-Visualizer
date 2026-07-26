@@ -7,7 +7,6 @@ Run: `uv --directory backend run uvicorn autoviz.api.main:app --reload`.
 
 import json
 import logging
-import os
 import time
 from contextlib import asynccontextmanager
 
@@ -15,6 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from autoviz.api.routes import agent, analysis, auth, charts, dashboards, datasets
+from autoviz.core.config import settings
 from autoviz.observability import configure_logging
 
 _log = logging.getLogger("autoviz.observability")
@@ -34,10 +34,16 @@ async def _lifespan(app: FastAPI):
 
 
 def _cors_origins() -> list[str]:
-    raw = os.environ.get("AUTOVIZ_CORS_ORIGINS", "").strip()
-    if raw:
-        return [o.strip() for o in raw.split(",") if o.strip()]
-    return ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # Loaded via pydantic Settings (.env), not bare os.environ — uvicorn does
+    # not load .env into the process environment on its own.
+    raw = (settings.AUTOVIZ_CORS_ORIGINS or "").strip()
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    return origins or [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
 
 def create_app() -> FastAPI:

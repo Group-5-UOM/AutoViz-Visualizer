@@ -21,7 +21,11 @@ def _app_with_registry():
 
 
 def _token(client: TestClient, email: str) -> str:
-    creds = {"email": email, "password": "pw12345678"}
+    creds = {
+        "email": email,
+        "password": "pw12345678",
+        "username": f"user-{email.split('@', 1)[0]}",
+    }
     client.post("/auth/register", json=creds)
     return client.post("/auth/login", json=creds).json()["access_token"]
 

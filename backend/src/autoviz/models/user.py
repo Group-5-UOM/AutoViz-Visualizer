@@ -14,6 +14,8 @@ class User(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     email = Column(String, unique=True, index=True, nullable=False)
+    # Nullable so accounts created before the username column keep working.
+    username = Column(String, unique=True, index=True, nullable=True)
     password_hash = Column(String, nullable=False)
     created_at = Column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

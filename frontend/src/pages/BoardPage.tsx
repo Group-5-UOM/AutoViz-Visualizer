@@ -11,6 +11,7 @@ import '../App.css';
 
 interface BoardPageProps {
   userEmail: string;
+  username: string;
   onLogout: () => void | Promise<void>;
 }
 
@@ -21,7 +22,7 @@ interface DatasetInfo {
   columnCount: number;
 }
 
-export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
+export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
   const [activeItem, setActiveItem] = useState<SidebarItemId | null>('ai-chat');
@@ -78,6 +79,7 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
         chatOpen={chatOpen}
         widgetCount={dashboard.widgets.length}
         userEmail={userEmail}
+        username={username}
         onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
         onToggleChat={() => {
           setChatOpen((v) => {
