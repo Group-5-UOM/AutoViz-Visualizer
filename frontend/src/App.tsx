@@ -1,8 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
-import { clearSession, getAccessToken, getStoredEmail } from './lib/api';
+import {
+  SESSION_EXPIRED_EVENT,
+  clearSession,
+  getAccessToken,
+  getStoredEmail,
+} from './lib/api';
 import { logoutUser } from './lib/auth';
 
 function LoginRoute({ onLogin }: { onLogin: (email: string) => void }) {
@@ -23,6 +28,13 @@ function App() {
     const token = getAccessToken();
     return email && token ? email : null;
   });
+
+  // The API layer clears the stored token on any 401 and announces it here.
+  useEffect(() => {
+    const onExpired = () => setUserEmail(null);
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, []);
 
   const handleLogin = (email: string) => {
     setUserEmail(email);

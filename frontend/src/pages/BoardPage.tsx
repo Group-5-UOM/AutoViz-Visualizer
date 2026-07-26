@@ -37,7 +37,8 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
     updateWidget,
     deleteWidget,
     sendMessage,
-  } = useDashboard();
+    resetForDataset,
+  } = useDashboard(dataset?.datasetId ?? null);
 
   const handleSidebarSelect = (id: SidebarItemId) => {
     setActiveItem(id);
@@ -51,6 +52,11 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
     setUploading(true);
     try {
       const result = await uploadDataset(file);
+      // Charts and the agent thread belong to the previous dataset — the new
+      // CSV has different columns, so carrying either forward is wrong.
+      if (result.dataset_id !== dataset?.datasetId) {
+        resetForDataset();
+      }
       setDataset({
         datasetId: result.dataset_id,
         fileName: result.logical_name || file.name,

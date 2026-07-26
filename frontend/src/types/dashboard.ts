@@ -13,6 +13,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   chartId?: string;
+  /** Grounded answers offered with a clarification question; picking one replies. */
+  options?: string[];
   timestamp: number;
 }
 

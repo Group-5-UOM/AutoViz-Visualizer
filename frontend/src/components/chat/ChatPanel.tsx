@@ -14,11 +14,13 @@ interface ChatPanelProps {
   onFocusChart?: (chartId: string) => void;
 }
 
+// Deliberately generic: the agent answers against whatever CSV was uploaded,
+// so these have to read as prompts rather than promises about the data.
 const SUGGESTIONS = [
-  'Show sales by category',
-  'Trend of revenue over time',
-  'Sales share as a pie chart',
-  'Correlation of advertising and sales',
+  'Summarize this dataset',
+  'Show the distribution of the main numeric column',
+  'Compare the categories by average value',
+  'How do the two most related columns compare?',
 ];
 
 export function ChatPanel({
@@ -75,6 +77,21 @@ export function ChatPanel({
             className={`chat-bubble chat-bubble--${msg.role}`}
           >
             <p>{msg.content}</p>
+            {msg.options && msg.options.length > 0 && (
+              <div className="chat-options">
+                {msg.options.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    className="suggestion-chip"
+                    disabled={isThinking || disabled}
+                    onClick={() => onSend(option)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            )}
             {msg.chartId && onFocusChart && (
               <button
                 type="button"

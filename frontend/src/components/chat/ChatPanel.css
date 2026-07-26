@@ -150,10 +150,23 @@
   transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
-.suggestion-chip:hover {
+.suggestion-chip:hover:not(:disabled) {
   border-color: #b8c7ef;
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.suggestion-chip:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Grounded answers offered alongside a clarification question. */
+.chat-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
 }
 
 .chat-composer {
