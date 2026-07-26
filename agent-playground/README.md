@@ -52,8 +52,12 @@ AUTOVIZ_CORS_ORIGINS="http://localhost:5500,http://localhost:3000" \
 
 ## Notes
 
-- The Vega runtime loads from jsDelivr (CDN) — fine for local dev; there are no other
-  external calls.
+- The Vega runtime loads from jsDelivr and DM Sans from Google Fonts (CDN) — fine for
+  local dev; there are no other external calls. The Vega majors must match
+  `backend/src/autoviz/vega.py`, which owns them.
+- Generated specs are stamped `width`/`height: "container"`, so `.chart-card` sets an
+  explicit height and the embed chain fills it. Drop that height and charts render
+  zero pixels tall.
 - `/agent` routes require `GOOGLE_API_KEY`. Without it, analyze requests come back as
   a `failed` envelope (shown as a red bubble), while auth/upload still work.
 - Requests are stateless per token; uploads land in the backend's session-isolated

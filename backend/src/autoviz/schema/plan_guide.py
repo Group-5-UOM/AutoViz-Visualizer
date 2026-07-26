@@ -26,8 +26,9 @@ analysis_plan JSON structure (lists may be empty/omitted; dataset_id and intent 
                     "as": "alias"}],
   "sort": [{"by": "col", "dir": "asc"|"desc"}],
   "limit": <int, optional>,
-  "chart": {"type": "bar"|"line"|"scatter"|"pie"|"area"|"histogram", "x": "col", "y": "col",
-            "color": "col"}
+  "chart": {"type": "bar"|"line"|"scatter"|"pie"|"area"|"histogram"|"heatmap"|"boxplot"
+                    |"grouped_bar"|"donut",
+            "x": "col", "y": "col", "color": "col"}
 }
 Preprocessing (explicit, never silent — the source CSV is never modified):
 - Order of execution: preprocessing -> filters -> derive -> group/aggregate. Preprocessing
@@ -48,7 +49,7 @@ Preprocessing (explicit, never silent — the source CSV is never modified):
   >30% removing rows needs user confirmation (run_analysis_pipeline returns confirmation_required —
   re-call with approved_preprocessing_hash to proceed); 100% the column is unusable, do not select it.
 
-Rules: group_by max 2 columns; limit max 1000; no other fields or op/fn values are accepted.
+Rules: group_by max 2 columns; limit max 100000; no other fields or op/fn values are accepted.
 is_null/is_not_null take no value and work on any column type.
 Omit limit for distribution/relationship plans — the full column is needed to bin the
 histogram / plot every point; a limit truncates the data. Use limit only to cap ranking/top-N.
@@ -61,8 +62,18 @@ Every column must exist in the dataset schema (call get_dataset_schema first).
 sum/mean/min/max/median need a numeric column; month/year/day/weekday derives need a
 datetime column. chart is optional (omit it to auto-recommend); chart.x/y/color may only
 reference columns the query produces: group_by columns and aggregation "as" aliases (or
-select/derive names when there is no grouping). "histogram" bins one numeric x column and
-takes NO y (y is the count).
+select/derive names when there is no grouping). Prefer omitting chart unless the user asked
+for a specific type by name — the recommender picks from the result shape.
+Chart types with extra requirements:
+- "histogram" bins one numeric x column and takes NO y (y is the count).
+- "heatmap" is a grid of two categories: x and y are both categorical and color is REQUIRED
+  and must be the numeric measure (this is the only type whose color is a number, not a series).
+- "grouped_bar" puts series side by side and REQUIRES color. Plain "bar" with a color column
+  stacks instead — use bar for part-to-whole, grouped_bar to compare series.
+- "boxplot" needs the RAW values to compute quartiles from: select the numeric column with NO
+  aggregations, x = the category to split by, y = the numeric column.
+- "donut" and "pie" are both part-to-whole over one category (x) and a measure (y); donut is
+  the better default. Both warn above 6 categories.
 
 Example — average sepal length per species, largest first:
 {"dataset_id": "ds_abc123", "intent": "comparison", "group_by": ["species"],

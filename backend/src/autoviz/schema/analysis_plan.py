@@ -20,7 +20,18 @@ AggFn = Literal["sum", "mean", "min", "max", "count", "median", "count_distinct"
 DeriveFn = Literal[
     "month", "year", "day", "weekday", "lower", "upper", "trim", "round", "abs"
 ]
-ChartType = Literal["bar", "line", "scatter", "pie", "area", "histogram"]
+ChartType = Literal[
+    "bar",
+    "line",
+    "scatter",
+    "pie",
+    "area",
+    "histogram",
+    "heatmap",
+    "boxplot",
+    "grouped_bar",
+    "donut",
+]
 Intent = Literal[
     "comparison", "trend", "distribution", "relationship", "composition", "ranking"
 ]

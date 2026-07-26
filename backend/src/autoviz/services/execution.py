@@ -14,6 +14,7 @@ from typing import Any
 import duckdb
 
 from autoviz.errors import (
+    CANCELLED,
     EXECUTION_ERROR,
     INVALID_PLAN,
     TIMEOUT,
@@ -47,6 +48,9 @@ def _env_float(name: str, default: float) -> float:
 DUCKDB_MEMORY_LIMIT = _env_value("AUTOVIZ_DUCKDB_MEMORY_LIMIT", "1GB")
 DUCKDB_THREADS = _env_value("AUTOVIZ_DUCKDB_THREADS", "2")
 EXECUTION_TIMEOUT_S = _env_float("AUTOVIZ_EXECUTION_TIMEOUT_S", 30.0)
+# How often the cancellation watcher checks its event. Short enough that Cancel
+# feels immediate, long enough that the extra thread costs nothing.
+_CANCEL_POLL_S = 0.05
 
 _DERIVE_SQL = {
     "month": "date_part('month', {col})",
@@ -157,7 +161,7 @@ def build_sql(
     return sql, params
 
 
-class _PreprocessError(Exception):
+class PreprocessError(Exception):
     """A preprocessing step cannot be computed (e.g. median of an all-null column).
 
     Treated as plan-repairable (INVALID_PLAN) so the agent can drop/replace the step
@@ -208,7 +212,7 @@ def _apply_preprocessing(
 
     Returns (cte_defs, params, final_relation, report, input_rows, output_rows). Row
     counts are taken over each CTE prefix so every op reports its exact effect. The
-    source frame is never mutated — this only builds views. Raises _PreprocessError
+    source frame is never mutated — this only builds views. Raises PreprocessError
     when an imputation value cannot be computed.
     """
     input_rows = con.execute("SELECT count(*) FROM df_raw").fetchone()[0]
@@ -248,7 +252,7 @@ def _apply_preprocessing(
             ).fetchone()[0]
             value = _fill_value(con, cte_defs, params, current, op)
             if value is None and op.strategy in ("median", "mode"):
-                raise _PreprocessError(
+                raise PreprocessError(
                     f"cannot compute {op.strategy} for column '{op.column}': "
                     "it is entirely null at this stage"
                 )
@@ -324,7 +328,16 @@ def execute_analysis(
     dataset_id: str,
     analysis_plan: dict[str, Any],
     registry: DatasetRegistry = REGISTRY,
+    cancel_event: threading.Event | None = None,
 ) -> dict[str, Any]:
+    """Run a validated plan against DuckDB and return the result with provenance.
+
+    ``cancel_event`` lets a caller abort a query that is already running: a
+    watcher interrupts the connection the moment it is set, the same mechanism
+    the timeout watchdog uses. The MCP layer wires it to request cancellation so
+    a user pressing Cancel actually stops the query instead of leaving it to run
+    to completion unobserved.
+    """
     record = registry.get(dataset_id)
     if record is None:
         return make_error(UNKNOWN_DATASET, f"Unknown dataset_id: {dataset_id}")
@@ -343,9 +356,25 @@ def execute_analysis(
 
     started = time.perf_counter()
     timed_out = threading.Event()
+    cancelled = threading.Event()
+    finished = threading.Event()
     con = duckdb.connect()
     watchdog = threading.Timer(
         EXECUTION_TIMEOUT_S, lambda: (timed_out.set(), _interrupt(con))
+    )
+
+    def _watch_cancel() -> None:
+        # Poll rather than block forever so the thread exits with the query.
+        while not finished.is_set():
+            if cancel_event.wait(_CANCEL_POLL_S):  # type: ignore[union-attr]
+                cancelled.set()
+                _interrupt(con)
+                return
+
+    cancel_watcher = (
+        threading.Thread(target=_watch_cancel, daemon=True)
+        if cancel_event is not None
+        else None
     )
     sql = ""
     try:
@@ -355,6 +384,8 @@ def execute_analysis(
         # preprocessing working view over it — record.df is never modified.
         con.register("df_raw", record.df)
         watchdog.start()
+        if cancel_watcher is not None:
+            cancel_watcher.start()
         pp_ctes, pp_params, source_rel, pp_report, input_rows, output_rows = _apply_preprocessing(
             con, plan, record.schema
         )
@@ -363,9 +394,14 @@ def execute_analysis(
         null_notes = _implicit_null_exclusions(
             con, pp_ctes, pp_params, source_rel, plan, record.schema
         )
-    except _PreprocessError as exc:
+    except PreprocessError as exc:
         return make_error(INVALID_PLAN, str(exc))
     except Exception as exc:
+        # Both a timeout and a cancellation surface as the same DuckDB interrupt,
+        # so the events are what distinguish them — reporting a user-cancelled
+        # query as a TIMEOUT would send the caller off narrowing a fine query.
+        if cancelled.is_set():
+            return make_error(CANCELLED, "Execution was cancelled by the caller.", sql=sql)
         if timed_out.is_set():
             return make_error(
                 TIMEOUT,
@@ -374,11 +410,20 @@ def execute_analysis(
             )
         return make_error(EXECUTION_ERROR, f"Execution failed: {exc}", sql=sql)
     finally:
+        finished.set()
         watchdog.cancel()
         try:
             con.close()
         except Exception:
             pass
+
+    # con.interrupt() only aborts a query that is already in flight, so a short
+    # query can finish in the gap between the cancel and the interrupt landing.
+    # Honour the caller's intent either way: once cancellation is requested, no
+    # result is returned.
+    if cancelled.is_set():
+        return make_error(CANCELLED, "Execution was cancelled by the caller.", sql=sql)
+
     elapsed_ms = (time.perf_counter() - started) * 1000
 
     return {

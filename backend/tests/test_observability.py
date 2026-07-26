@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import json
 import logging
@@ -155,19 +156,54 @@ def test_observes_real_service_error_code_end_to_end(cap, registry):
 
 
 def test_every_server_tool_is_observed():
-    """Guard against a future tool being added without the @observed wrapper."""
+    """Guard against a future tool being added without the @observed wrapper.
+
+    Driven off the registration profiles rather than a hardcoded list, so a new
+    tool cannot be added in one place and forgotten here.
+    """
     import autoviz.mcp.server as server
 
-    tool_names = [
-        "register_dataset", "list_datasets", "unregister_dataset", "get_dataset_schema",
-        "get_dataset_profile", "preview_dataset", "validate_analysis_plan", "execute_analysis",
-        "recommend_chart_type", "generate_chart", "run_analysis_pipeline", "export_chart",
-        "analyze", "answer_clarification",
-    ]
-    for name in tool_names:
-        fn = getattr(server, name)
+    registered = [fn for fn, _desc in server.PROFILES["advanced"]]
+    assert len(registered) == 14
+    for fn in registered:
         # @observed uses functools.wraps, which sets __wrapped__ on the wrapper.
-        assert hasattr(fn, "__wrapped__"), f"{name} is not wrapped by @observed"
+        assert hasattr(fn, "__wrapped__"), f"{fn.__name__} is not wrapped by @observed"
+
+
+def test_default_profile_is_a_subset_of_advanced():
+    import autoviz.mcp.server as server
+
+    default = {fn.__name__ for fn, _ in server.PROFILES["default"]}
+    advanced = {fn.__name__ for fn, _ in server.PROFILES["advanced"]}
+    assert default < advanced
+    # The default profile must still cover a whole workflow on its own.
+    assert {"register_dataset", "run_analysis_pipeline", "export_chart"} <= default
+
+
+def test_observed_preserves_async_so_fastmcp_awaits_it():
+    """A sync wrapper around an async tool makes FastMCP read is_async=False, so
+    it never awaits and the coroutine leaks unexecuted. Progress reporting and
+    cancellation both depend on this staying true."""
+    from mcp.server.fastmcp.tools.base import Tool
+
+    async def sample(dataset_id: str) -> dict:
+        return {"ok": True}
+
+    wrapped = observed(sample)
+    assert inspect.iscoroutinefunction(wrapped)
+    assert Tool.from_function(wrapped).is_async is True
+    assert asyncio.run(wrapped("ds_1")) == {"ok": True}
+
+
+def test_observed_logs_async_calls(cap):
+    async def sample(dataset_id: str) -> dict:
+        return {"error": "boom", "error_code": "UNKNOWN_DATASET"}
+
+    asyncio.run(observed(sample)("ds_1"))
+    rec = _records(cap)[-1]
+    assert rec["tool"] == "sample"
+    assert rec["outcome"] == "error"
+    assert rec["error_code"] == "UNKNOWN_DATASET"
 
 
 def test_input_is_hashed_not_logged(cap):

@@ -12,6 +12,7 @@ protocol handshake.
 
 import functools
 import hashlib
+import inspect
 import json
 import logging
 import sys
@@ -19,6 +20,8 @@ import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Callable
+
+from autoviz.errors import is_failure
 
 LOGGER_NAME = "autoviz.observability"
 _logger = logging.getLogger(LOGGER_NAME)
@@ -87,7 +90,7 @@ def classify_outcome(result: Any) -> dict[str, Any]:
     ``error_code`` (autoviz.errors), it is echoed into the record so the log
     distinguishes a plan defect from an infrastructure fault at a glance.
     """
-    if not isinstance(result, dict):
+    if not isinstance(result, dict) or not is_failure(result):
         return {"outcome": "ok"}
     code = result.get("error_code")
     if "error" in result:
@@ -116,9 +119,46 @@ def log_event(event: str, **fields: Any) -> None:
         pass
 
 
+def _record(fn: Callable, args: tuple, kwargs: dict, started: float, result: Any, outcome: dict) -> None:
+    _logger.info(
+        json.dumps(
+            {
+                "tool": fn.__name__,
+                "input_hash": _input_hash(args, kwargs),
+                "ms": round((time.perf_counter() - started) * 1000, 2),
+                "out_bytes": _output_size(result),
+                **outcome,
+            }
+        )
+    )
+
+
 def observed(fn: Callable) -> Callable:
-    """Log one structured record per call. ``functools.wraps`` keeps the original
-    signature so FastMCP's schema introspection is unaffected."""
+    """Log one structured record per call.
+
+    ``functools.wraps`` keeps the original signature so FastMCP's schema
+    introspection — and its ``Context`` parameter detection — is unaffected.
+
+    An async tool needs an async wrapper: wrapping a coroutine function in a
+    plain ``def`` makes FastMCP read ``is_async=False``, so it never awaits the
+    result and the coroutine leaks unexecuted. The branch below is what lets the
+    long-running tools take a ``ctx: Context`` and report progress.
+    """
+    if inspect.iscoroutinefunction(fn):
+
+        @functools.wraps(fn)
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+            started = time.perf_counter()
+            outcome: dict[str, Any] = {"outcome": "exception"}
+            result: Any = None
+            try:
+                result = await fn(*args, **kwargs)
+                outcome = classify_outcome(result)
+                return result
+            finally:
+                _record(fn, args, kwargs, started, result, outcome)
+
+        return async_wrapper
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -130,13 +170,6 @@ def observed(fn: Callable) -> Callable:
             outcome = classify_outcome(result)
             return result
         finally:
-            record = {
-                "tool": fn.__name__,
-                "input_hash": _input_hash(args, kwargs),
-                "ms": round((time.perf_counter() - started) * 1000, 2),
-                "out_bytes": _output_size(result),
-                **outcome,
-            }
-            _logger.info(json.dumps(record))
+            _record(fn, args, kwargs, started, result, outcome)
 
     return wrapper

@@ -5,10 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AutoViz · Agent Playground</title>
 
-  <!-- Vega stack for rendering the agent's Vega-Lite specs (CDN; local dev only). -->
-  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  <!-- Vega stack for rendering the agent's Vega-Lite specs (CDN; local dev only).
+       Majors are owned by backend/src/autoviz/vega.py — bump them together or the
+       playground renders specs through a different Vega than the backend targets. -->
+  <script src="https://cdn.jsdelivr.net/npm/vega@6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@7"></script>
+  <!-- The chart theme asks for DM Sans; without it every label falls back. -->
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
 
   <style>
     :root {
@@ -73,7 +77,16 @@
     .bubble.err { border-color: #4b2424; color: var(--err); }
     .options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
     .options button { background: var(--bg); }
-    .chart-card { margin-top: 12px; background: #fff; border-radius: 8px; padding: 10px; overflow-x: auto; }
+    /* Specs are stamped width/height "container" (services/charts.py), so the card
+       needs a definite height and the embed chain needs to fill it — otherwise the
+       chart renders zero pixels tall. Same fix as the export template. */
+    .chart-card { margin-top: 12px; background: #fff; border-radius: 8px; padding: 10px; height: 340px; }
+    .chart-card .plot,
+    .chart-card .vega-embed,
+    .chart-card .vega-embed .chart-wrapper { width: 100%; height: 100%; }
+    /* The theme paints a transparent background and light-on-white text, so the
+       card stays white regardless of the surrounding dark chrome. */
+    .chart-card .vega-embed details { color: #1c1f26; }
     .chart-meta { font-size: 11px; color: var(--muted); margin: 8px 4px 0; }
     details.raw { margin-top: 10px; }
     details.raw summary { cursor: pointer; font-size: 11px; color: var(--muted); }
@@ -246,11 +259,16 @@
           const card = document.createElement("div");
           card.className = "chart-card";
           const target = document.createElement("div");
-          target.id = "vg-" + Date.now() + "-" + i;
+          target.className = "plot";
           card.appendChild(target);
+          // Append before embedding: "container" sizing is measured off the live
+          // parent, so an off-document target would measure zero.
           container.appendChild(card);
-          vegaEmbed("#" + target.id, c.vega_lite_spec, { actions: { export: true, source: false, editor: false, compiled: false } })
-            .catch((err) => { target.textContent = "Chart render error: " + err; });
+          vegaEmbed(target, c.vega_lite_spec, {
+            actions: { export: true, source: false, editor: false, compiled: false },
+            renderer: "svg",
+            tooltip: true,
+          }).catch((err) => { target.textContent = "Chart render error: " + err; });
         }
         const meta = document.createElement("div");
         meta.className = "chart-meta";

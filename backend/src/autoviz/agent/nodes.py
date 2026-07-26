@@ -93,7 +93,11 @@ def clarify(state: AutoVizState) -> dict[str, Any]:
     pending = state.get("pending_ambiguities") or []
     if pending:
         amb = Ambiguity.model_validate(pending[0])
-        answer = interrupt(amb.to_wire())  # pause; resumes here with the user's answer
+        # pause_kind lets an MCP host tell a clarification apart from a preprocessing
+        # confirmation — both surface as status "waiting_for_user".
+        answer = interrupt(  # pause; resumes here with the user's answer
+            {**amb.to_wire(), "pause_kind": "clarification"}
+        )
         resolution = bind_answer(amb, str(answer))
         observability.log_event(
             "clarification", source="detector", amb_type=amb.type, slot=amb.slot,
@@ -109,7 +113,7 @@ def clarify(state: AutoVizState) -> dict[str, Any]:
 
     # LLM-authored clarification (detectors found nothing structural).
     payload = state.get("clarification") or {"question": "Could you clarify your request?", "options": []}
-    answer = interrupt(payload)
+    answer = interrupt({**payload, "pause_kind": "clarification"})
     observability.log_event(
         "clarification", source="llm", n_options=len(payload.get("options", [])),
         round=state.get("clarification_count", 0) + 1,
@@ -215,7 +219,17 @@ def confirm_preprocessing(state: WorkerState) -> dict[str, Any]:
     """
     out = state.get("pipeline_output") or {}
     conf = out.get("confirmation") or {}
-    answer = interrupt({"question": conf.get("question"), "options": conf.get("options", [])})
+    # preprocessing_hash travels with the pause so a host can show what it is
+    # approving; pause_kind distinguishes this from a clarification question.
+    answer = interrupt(
+        {
+            "question": conf.get("question"),
+            "options": conf.get("options", []),
+            "pause_kind": "confirmation",
+            "preprocessing_hash": conf.get("preprocessing_hash"),
+            "impact": conf.get("impact"),
+        }
+    )
     norm = str(answer).strip().casefold()
     proceed = "proceed" in norm or norm in ("y", "yes", "ok", "confirm")
 

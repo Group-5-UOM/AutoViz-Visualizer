@@ -11,7 +11,7 @@ from typing import Any
 
 import pandas as pd
 
-from autoviz.errors import RESOURCE_LIMIT, UNKNOWN_DATASET, make_error
+from autoviz.errors import FILE_ERROR, RESOURCE_LIMIT, UNKNOWN_DATASET, make_error
 from autoviz.services.registry import REGISTRY, DatasetRecord, DatasetRegistry
 from autoviz.services.safety import neutralize_text
 
@@ -204,18 +204,19 @@ def register_dataset(
 ) -> dict[str, Any]:
     path = _resolve_file_ref(file_ref)
     if path is None:
-        return {
-            "error": f"File not found: {file_ref}",
-            "hint": "Use an absolute path, or a path relative to an approved data root: "
+        return make_error(
+            FILE_ERROR,
+            f"File not found: {file_ref}",
+            hint="Use an absolute path, or a path relative to an approved data root: "
             + "; ".join(str(r) for r in DATA_ROOTS),
-        }
+        )
 
     # Pre-read guards: reject oversized files before loading them into memory,
     # and reject too-wide files from the header alone (a cheap read).
     try:
         size = path.stat().st_size
     except OSError as exc:
-        return {"error": f"Could not stat file: {exc}"}
+        return make_error(FILE_ERROR, f"Could not stat file: {exc}")
     if size > MAX_FILE_BYTES:
         return make_error(
             RESOURCE_LIMIT,
@@ -224,7 +225,7 @@ def register_dataset(
     try:
         column_count = len(pd.read_csv(path, nrows=0).columns)
     except Exception as exc:
-        return {"error": f"Could not read CSV: {exc}"}
+        return make_error(FILE_ERROR, f"Could not read CSV: {exc}")
     if column_count > MAX_COLUMNS:
         return make_error(
             RESOURCE_LIMIT,
@@ -234,9 +235,12 @@ def register_dataset(
     try:
         df = pd.read_csv(path)
     except Exception as exc:
-        return {"error": f"Could not read CSV: {exc}"}
+        return make_error(FILE_ERROR, f"Could not read CSV: {exc}")
     if df.shape[0] == 0 or df.shape[1] == 0:
-        return {"error": "CSV has no data rows (an empty or header-only file is not analysable)."}
+        return make_error(
+            FILE_ERROR,
+            "CSV has no data rows (an empty or header-only file is not analysable).",
+        )
     if len(df) > MAX_ROWS:
         return make_error(
             RESOURCE_LIMIT,

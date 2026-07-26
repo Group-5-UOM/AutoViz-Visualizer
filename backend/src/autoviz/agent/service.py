@@ -99,12 +99,20 @@ class AgentService:
     def _shape(self, state: dict[str, Any], thread_id: str) -> dict[str, Any]:
         pending = _interrupt_payload(state)
         if pending is not None:
-            return {
+            shaped = {
                 "status": "waiting_for_user",
                 "question": pending.get("question"),
                 "options": pending.get("options", []),
+                # Both a clarification and a preprocessing confirmation pause here;
+                # without this a caller cannot tell which decision it is making.
+                "pause_kind": pending.get("pause_kind", "clarification"),
                 "thread_id": thread_id,
             }
+            if pending.get("preprocessing_hash") is not None:
+                shaped["preprocessing_hash"] = pending["preprocessing_hash"]
+            if pending.get("impact") is not None:
+                shaped["impact"] = pending["impact"]
+            return shaped
         final = state.get("final_response") or {
             "status": state.get("status", "failed"),
             "errors": state.get("errors", []),

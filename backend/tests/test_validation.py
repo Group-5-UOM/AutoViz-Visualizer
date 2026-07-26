@@ -68,7 +68,7 @@ def test_group_by_capped_at_two(registry, iris_id):
 def test_limit_clamped_via_repaired_plan(registry, iris_id):
     verdict = validate_analysis_plan(iris_id, _iris_plan(limit=999999), registry)
     assert verdict["valid"]
-    assert verdict["repaired_plan"]["limit"] == 1000
+    assert verdict["repaired_plan"]["limit"] == 100000
 
 
 def test_chart_channel_must_be_produced(registry, iris_id):

@@ -1,7 +1,15 @@
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import embed from 'vega-embed';
-import { Trash2 } from 'lucide-react';
+import { BarChart3, Table2, Trash2 } from 'lucide-react';
 import type { ChartWidget } from '../../types/dashboard';
+import {
+  BRUSH_SIGNAL,
+  hasBrush,
+  rowsInBrush,
+  specRows,
+  type BrushExtent,
+} from '../../lib/specData';
+import { DataTable } from './DataTable';
 import './ChartWidget.css';
 
 interface ChartWidgetCardProps {
@@ -22,6 +30,11 @@ export function ChartWidgetCard({
   onResize,
 }: ChartWidgetCardProps) {
   const chartRef = useRef<HTMLDivElement>(null);
+  const [showTable, setShowTable] = useState(false);
+  const [brush, setBrush] = useState<BrushExtent | null>(null);
+  const rows = useMemo(() => specRows(widget.vegaLiteSpec), [widget.vegaLiteSpec]);
+  // Brushing the chart narrows its table view to the selected rows.
+  const tableRows = useMemo(() => rowsInBrush(rows ?? [], brush), [rows, brush]);
   const dragRef = useRef<{
     mode: 'move' | 'resize';
     startX: number;
@@ -32,18 +45,37 @@ export function ChartWidgetCard({
     originH: number;
   } | null>(null);
 
+  // The spec sizes itself from the container, so vega-embed's ResizeObserver
+  // handles resizing — re-embedding on every drag frame would throw away the
+  // view's interaction state (legend filter, zoom) mid-gesture.
   useEffect(() => {
     const el = chartRef.current;
-    if (!el) return;
+    // Nothing to embed into while the table is showing; re-runs when it closes.
+    if (!el || showTable) return;
 
     let cancelled = false;
+    let view: { finalize: () => void } | null = null;
+
     const run = async () => {
       try {
-        await embed(el, widget.vegaLiteSpec as never, {
+        const result = await embed(el, widget.vegaLiteSpec as never, {
           actions: false,
           renderer: 'svg',
           tooltip: true,
         });
+        if (cancelled) {
+          result.finalize();
+          return;
+        }
+        view = result;
+        // Only brushable charts carry this signal; asking for it elsewhere throws.
+        try {
+          result.view.addSignalListener(BRUSH_SIGNAL, (_name, value) => {
+            setBrush(value as BrushExtent);
+          });
+        } catch {
+          /* chart has no brush — nothing to listen to */
+        }
       } catch (err) {
         if (!cancelled) {
           el.innerHTML = `<p class="chart-error">Could not render chart</p>`;
@@ -55,9 +87,10 @@ export function ChartWidgetCard({
 
     return () => {
       cancelled = true;
+      view?.finalize();
       el.innerHTML = '';
     };
-  }, [widget.vegaLiteSpec, widget.width, widget.height]);
+  }, [widget.vegaLiteSpec, showTable]);
 
   useEffect(() => {
     const onPointerMove = (e: PointerEvent) => {
@@ -125,22 +158,53 @@ export function ChartWidgetCard({
         onPointerDown={(e) => startDrag(e, 'move')}
       >
         <h3>{widget.title}</h3>
-        <button
-          type="button"
-          className="chart-delete-btn"
-          title="Delete chart"
-          aria-label="Delete chart"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-        >
-          <Trash2 size={14} />
-        </button>
+        <div className="chart-widget-actions">
+          {rows && (
+            <button
+              type="button"
+              className="chart-header-btn"
+              title={showTable ? 'Show chart' : 'Show data table'}
+              aria-label={showTable ? 'Show chart' : 'Show data table'}
+              aria-pressed={showTable}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowTable((on) => !on);
+              }}
+            >
+              {showTable ? <BarChart3 size={14} /> : <Table2 size={14} />}
+            </button>
+          )}
+          <button
+            type="button"
+            className="chart-header-btn is-danger"
+            title="Delete chart"
+            aria-label="Delete chart"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </header>
 
-      <div className="chart-widget-body" ref={chartRef} />
+      {showTable && rows ? (
+        <div className="chart-widget-body is-table">
+          <DataTable rows={tableRows} caption={`Data for ${widget.title}`} />
+        </div>
+      ) : (
+        <div className="chart-widget-body" ref={chartRef} />
+      )}
+
+      {hasBrush(brush) && rows && (
+        <p className="chart-brush-status">
+          {tableRows.length.toLocaleString()} of {rows.length.toLocaleString()} rows
+          selected{showTable ? '' : ' — open the table to read them'}
+        </p>
+      )}
 
       {selected && (
         <p className="chart-explanation">{widget.explanation}</p>

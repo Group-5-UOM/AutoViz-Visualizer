@@ -3,7 +3,7 @@ import json
 from autoviz.services.export import EXPORT_DIR, export_chart
 
 SPEC = {
-    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
     "data": {"values": [{"species": "setosa", "avg": 5.0}]},
     "mark": "bar",
     "encoding": {

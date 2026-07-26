@@ -5,7 +5,8 @@ returned as structured error content naming the step that failed, never a
 thrown exception, so the caller can reason about retry vs. escalation.
 """
 
-from typing import Any
+import threading
+from typing import Any, Callable
 
 from autoviz.errors import (
     CHART_ERROR,
@@ -20,9 +21,16 @@ from autoviz.schema.allowlists import (
 )
 from autoviz.schema.analysis_plan import AnalysisPlan
 from autoviz.services.charts import generate_chart, recommend_chart_type
-from autoviz.services.execution import execute_analysis, preprocessing_impact
+from autoviz.services.execution import (
+    PreprocessError,
+    execute_analysis,
+    preprocessing_impact,
+)
 from autoviz.services.registry import REGISTRY, DatasetRegistry
 from autoviz.services.validation import validate_analysis_plan
+
+
+TOTAL_STEPS = 5
 
 
 def run_pipeline(
@@ -30,7 +38,23 @@ def run_pipeline(
     analysis_plan: dict[str, Any],
     registry: DatasetRegistry = REGISTRY,
     approved_preprocessing_hash: str | None = None,
+    on_progress: Callable[[int, int, str], None] | None = None,
+    cancel_event: "threading.Event | None" = None,
 ) -> dict[str, Any]:
+    """Validate, execute, pick a chart, and build it — as one call.
+
+    ``on_progress(step, total, message)`` is invoked at each stage boundary so a
+    caller can show real progress instead of an opaque spinner; the MCP layer
+    forwards it to the host as a progress notification. ``cancel_event`` aborts
+    a running DuckDB query. Both are optional and default to today's behaviour,
+    so the FastAPI callers are unaffected.
+    """
+
+    def progress(step: int, message: str) -> None:
+        if on_progress is not None:
+            on_progress(step, TOTAL_STEPS, message)
+
+    progress(1, "Validating analysis plan")
     verdict = validate_analysis_plan(dataset_id, analysis_plan, registry)
     if not verdict["valid"]:
         return {
@@ -45,6 +69,7 @@ def run_pipeline(
     # including a bare MCP host — can bypass it). If a cleaning step would remove more
     # than the configured fraction of rows, pause unless this exact preprocessing block
     # was already approved (approval is bound to its content hash, not a boolean).
+    progress(2, "Checking data-cleaning impact")
     plan_model = AnalysisPlan.model_validate(effective_plan)
     if plan_model.has_row_dropping_preprocessing():
         record = registry.get(dataset_id)
@@ -57,7 +82,19 @@ def run_pipeline(
             }
         pp_hash = plan_model.preprocessing_hash()
         if approved_preprocessing_hash != pp_hash:
-            impact = preprocessing_impact(record, effective_plan)
+            # preprocessing_impact runs the cleaning stage to measure it, so it can
+            # raise on an unfillable column (all-null median/mode). execute_analysis
+            # already converts that to INVALID_PLAN; the gate must too, or the
+            # exception escapes run_pipeline as an unstructured crash.
+            try:
+                impact = preprocessing_impact(record, effective_plan)
+            except PreprocessError as exc:
+                return {
+                    "status": "error",
+                    "failed_step": "validate_analysis_plan",
+                    "error_code": INVALID_PLAN,
+                    "errors": [str(exc)],
+                }
             if impact["fraction"] > ROW_DROP_CONFIRM_FRACTION:
                 pct = round(impact["fraction"] * 100, 1)
                 return {
@@ -73,7 +110,8 @@ def run_pipeline(
                     },
                 }
 
-    executed = execute_analysis(dataset_id, effective_plan, registry)
+    progress(3, "Executing query")
+    executed = execute_analysis(dataset_id, effective_plan, registry, cancel_event=cancel_event)
     if "error" in executed:
         return {
             "status": "error",
@@ -113,6 +151,7 @@ def run_pipeline(
     for a in plan.aggregations:
         effective_types[a.as_] = "number"
 
+    progress(4, "Selecting chart type")
     if plan.chart is not None:
         chart_spec: dict[str, Any] = plan.chart.model_dump(exclude_none=True)
         recommendation = None
@@ -142,6 +181,10 @@ def run_pipeline(
     # particular coded categories go nominal (discrete legend/axis), not a
     # continuous quantitative scale. Applies to host-supplied charts too.
     chart_spec["column_types"] = {c: effective_types.get(c, "string") for c in result_columns}
+    # Same pattern: plan metadata the renderer needs but the chart grammar does
+    # not carry. Intent is what tells a bar chart it is a ranking and must sort.
+    chart_spec["intent"] = plan.intent
+    progress(5, "Building visualization")
     chart = generate_chart(result_table, chart_spec)
     if not chart["valid"]:
         return {

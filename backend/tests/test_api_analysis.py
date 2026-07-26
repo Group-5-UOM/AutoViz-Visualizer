@@ -6,6 +6,7 @@ from autoviz.api.deps import get_registry
 from autoviz.api.main import create_app
 from autoviz.services.dataset import register_dataset
 from autoviz.services.registry import DatasetRegistry
+from autoviz.services.charts import primary_layer
 from tests.conftest import data_path
 
 
@@ -34,7 +35,7 @@ def test_pipeline_ok_returns_chart():
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "ok"
-    assert body["vega_lite_spec"]["mark"]
+    assert primary_layer(body["vega_lite_spec"])["mark"]
     assert body["result"]["row_count"] == 3
 
 

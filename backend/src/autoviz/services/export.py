@@ -11,6 +11,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from autoviz.errors import FORBIDDEN_PATH, INVALID_SPEC, make_error
+from autoviz.vega import CDN_SCRIPT_TAGS
+
 # export.py sits at backend/src/autoviz/services/; parents[3] is backend/.
 EXPORT_DIR = Path(__file__).resolve().parents[3] / "exports"
 
@@ -21,14 +24,22 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <title>AutoViz chart</title>
-  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+{cdn_script_tags}
+  <style>
+    /* Specs size themselves from their container, so #chart needs a definite
+       height here — without one the chart would render zero pixels tall. */
+    html, body { height: 100%; margin: 0; }
+    body { padding: 24px; box-sizing: border-box;
+           font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    #chart, #chart .vega-embed, #chart .vega-embed .chart-wrapper {
+      width: 100%; height: 100%;
+    }
+  </style>
 </head>
 <body>
   <div id="chart"></div>
   <script>
-    vegaEmbed("#chart", {spec_json});
+    vegaEmbed("#chart", {spec_json}, {actions: false, tooltip: true});
   </script>
 </body>
 </html>
@@ -43,16 +54,26 @@ def _slugify(filename: str) -> str:
 def export_chart(
     vega_lite_spec: dict[str, Any], filename: str | None = None
 ) -> dict[str, Any]:
-    if not isinstance(vega_lite_spec, dict) or "mark" not in vega_lite_spec:
-        return {"error": "vega_lite_spec must be a Vega-Lite spec dict (missing 'mark')"}
+    # A spec carrying direct labels is layered rather than a bare unit spec, so
+    # either key identifies a renderable top level.
+    if not isinstance(vega_lite_spec, dict) or not (
+        "mark" in vega_lite_spec or "layer" in vega_lite_spec
+    ):
+        return make_error(
+            INVALID_SPEC,
+            "vega_lite_spec must be a Vega-Lite spec dict (missing 'mark' or 'layer')",
+        )
 
     name = _slugify(filename or f"chart-{time.strftime('%Y%m%d-%H%M%S')}")
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     path = (EXPORT_DIR / f"{name}.html").resolve()
     if not path.is_relative_to(EXPORT_DIR):
-        return {"error": "Export filename escapes the exports directory"}
+        return make_error(FORBIDDEN_PATH, "Export filename escapes the exports directory")
 
     # </script> inside JSON string values would terminate the inline script.
     spec_json = json.dumps(vega_lite_spec).replace("</", "<\\/")
-    path.write_text(_HTML_TEMPLATE.replace("{spec_json}", spec_json), encoding="utf-8")
+    html = _HTML_TEMPLATE.replace("{cdn_script_tags}", CDN_SCRIPT_TAGS).replace(
+        "{spec_json}", spec_json
+    )
+    path.write_text(html, encoding="utf-8")
     return {"path": str(path), "filename": path.name}
