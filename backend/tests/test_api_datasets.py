@@ -6,6 +6,7 @@ import autoviz.services.dataset as dataset_service
 from autoviz.api.deps import get_registry
 from autoviz.api.main import create_app
 from autoviz.services.registry import DatasetRegistry
+from autoviz.storage import blobs
 from tests.conftest import data_path
 
 
@@ -15,8 +16,16 @@ def _titanic_bytes() -> bytes:
 
 
 def _app_with_registry():
+    """App whose registry is empty on every request — a cold cache each time.
+
+    This is the restart/eviction case in miniature: nothing survives in memory
+    between calls, so every read after the upload has to come back from the
+    stored Parquet blob via the loader.
+    """
     app = create_app()
-    app.dependency_overrides[get_registry] = lambda: DatasetRegistry()
+    app.dependency_overrides[get_registry] = lambda: DatasetRegistry(
+        loader=blobs.make_loader()
+    )
     return app
 
 

@@ -22,7 +22,7 @@ from autoviz.api.errors import respond
 from autoviz.models import User
 from autoviz.services import dataset as dataset_service
 from autoviz.services.registry import DatasetRegistry
-from autoviz.storage import repository, uploads
+from autoviz.storage import blobs, repository, uploads
 
 router = APIRouter()
 
@@ -31,7 +31,20 @@ class RegisterRequest(BaseModel):
     file_ref: str
 
 
-def _persist_meta(db: Session, user: User, res: dict, filename: str, file_path: str):
+def _persist(
+    db: Session,
+    user: User,
+    res: dict,
+    filename: str,
+    file_path: str,
+    registry: DatasetRegistry,
+):
+    """Record the metadata and persist the dataset itself.
+
+    The Parquet blob is what makes the dataset durable — the file on disk is only
+    the staging area ``register_dataset`` read from. Metadata is written first so
+    the blob's FK to ``datasets.dataset_id`` resolves.
+    """
     repository.add_dataset_meta(
         db,
         dataset_id=res["dataset_id"],
@@ -41,6 +54,9 @@ def _persist_meta(db: Session, user: User, res: dict, filename: str, file_path: 
         row_count=res["row_count"],
         column_count=res["column_count"],
     )
+    record = registry.get(res["dataset_id"])
+    if record is not None:
+        blobs.store(db, record, source=filename)
     return {**res, "logical_name": filename}
 
 
@@ -51,14 +67,16 @@ async def upload(
     user: User = Depends(get_current_user),
     registry: DatasetRegistry = Depends(get_registry),
 ):
-    uploads.sweep_stale()  # opportunistic TTL cleanup
     data = await file.read()
     path = uploads.save_upload(user.id, file.filename or "upload.csv", data)
     res = dataset_service.register_dataset(str(path), registry)
     if "error" in res:  # e.g. RESOURCE_LIMIT (413) or unreadable CSV (400)
         path.unlink(missing_ok=True)
         return respond(res)
-    body = _persist_meta(db, user, res, file.filename or path.name, str(path))
+    body = _persist(db, user, res, file.filename or path.name, str(path), registry)
+    # The rows now live in the database; the staged CSV has served its purpose.
+    # Nothing durable references it, so the API no longer depends on local disk.
+    path.unlink(missing_ok=True)
     return respond(body, ok_status=201)
 
 
@@ -73,7 +91,11 @@ def register(
     if "error" in res:
         return respond(res)
     logical = body.file_ref.replace("\\", "/").rsplit("/", 1)[-1]
-    return respond(_persist_meta(db, user, res, logical, body.file_ref), ok_status=201)
+    # The source file belongs to the caller, not to us — persist a copy as a blob
+    # but leave the file itself alone.
+    return respond(
+        _persist(db, user, res, logical, body.file_ref, registry), ok_status=201
+    )
 
 
 @router.get("")
@@ -110,9 +132,13 @@ def delete_dataset(
 ):
     meta = _owned_meta(db, dataset_id, user)
     registry.remove(dataset_id)
-    from pathlib import Path
+    # Deletion is now the only way a dataset goes away, so it has to clear every
+    # copy: the cached frame, the stored rows, any staged file, then the metadata.
+    blobs.delete(db, dataset_id)
+    if meta.file_path:
+        from pathlib import Path
 
-    Path(meta.file_path).unlink(missing_ok=True)
+        Path(meta.file_path).unlink(missing_ok=True)
     repository.delete_dataset_meta(db, dataset_id)
     return {"removed": True, "dataset_id": dataset_id}
 

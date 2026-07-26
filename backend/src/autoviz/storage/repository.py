@@ -125,28 +125,13 @@ def delete_dataset_meta(session: Session, dataset_id: str) -> None:
         session.commit()
 
 
-def _reload_into_registry(registry: DatasetRegistry, meta: UserDataset):
-    """Re-register the dataset from its stored file, keeping its durable id.
-
-    Reuses the full ``register_dataset`` path (limits, profiling, neutralization),
-    then re-keys the fresh record to the persisted dataset_id.
-    """
-    from autoviz.services.dataset import register_dataset
-
-    res = register_dataset(meta.file_path, registry)
-    if "error" in res:
-        return None
-    fresh_id = res["dataset_id"]
-    record = registry.get(fresh_id)
-    registry.remove(fresh_id)
-    record.dataset_id = meta.dataset_id
-    registry.add(record)
-    return record
-
-
 def resolve_dataset(session: Session, registry: DatasetRegistry, dataset_id: str, user_id: str):
-    """Return (record, error). Enforces ownership and lazily reloads the DataFrame
-    from disk if it fell out of the in-memory registry (e.g. after a restart)."""
+    """Return (record, error). Enforces ownership; the registry restores the frame.
+
+    Reloading is no longer this function's job: ``DatasetRegistry.get`` calls its
+    loader on a miss (``storage.blobs``), so a dataset that was evicted under
+    memory pressure or lost to a restart comes back here transparently.
+    """
     meta = get_dataset_meta(session, dataset_id)
     if meta is None:
         return None, make_error(UNKNOWN_DATASET, f"Unknown dataset_id: {dataset_id}")
@@ -154,11 +139,9 @@ def resolve_dataset(session: Session, registry: DatasetRegistry, dataset_id: str
         return None, {"error": "You do not own this dataset", "error_code": FORBIDDEN}
     record = registry.get(dataset_id)
     if record is None:
-        record = _reload_into_registry(registry, meta)
-        if record is None:
-            return None, make_error(
-                UNKNOWN_DATASET, f"Dataset file for {dataset_id} is no longer available"
-            )
+        return None, make_error(
+            UNKNOWN_DATASET, f"Stored data for {dataset_id} is no longer available"
+        )
     return record, None
 
 

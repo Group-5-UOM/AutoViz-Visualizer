@@ -9,19 +9,44 @@ Requires GOOGLE_API_KEY for the real planner; tests inject a FakePlanner-backed
 AgentService via the get_agent dependency override. The agent always returns a
 structured envelope (its own `status`), so these routes respond 200 and let the
 body carry the workflow outcome — mirroring the MCP tools.
+
+Like every other route that touches user data, both endpoints are owner-scoped:
+`dataset_id` goes through the same ownership + lazy-reload gate the dataset
+routes use, so a dataset that fell out of the in-memory registry (e.g. after a
+restart) is re-registered from its stored file instead of 404-ing mid-conversation.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
-from autoviz.api.deps import get_agent
+from autoviz.api.deps import get_agent, get_current_user, get_db, get_registry
 from autoviz.api.errors import respond
 from autoviz.api.schemas import AnalyzeRequest, ClarificationRequest
+from autoviz.models import User
+from autoviz.services.registry import DatasetRegistry
+from autoviz.storage import repository
 
 router = APIRouter()
 
 
+def _require_owned(db: Session, registry: DatasetRegistry, dataset_id: str, user: User) -> None:
+    """Ownership + lazy reload into the registry; raises the matching HTTP error."""
+    _, error = repository.resolve_dataset(db, registry, dataset_id, user.id)
+    if error is not None:
+        status = 403 if error.get("error_code") == repository.FORBIDDEN else 404
+        raise HTTPException(status_code=status, detail=error["error"])
+
+
 @router.post("/analyze")
-def analyze(body: AnalyzeRequest, agent=Depends(get_agent)):
+def analyze(
+    body: AnalyzeRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    registry: DatasetRegistry = Depends(get_registry),
+    agent=Depends(get_agent),
+):
+    if body.dataset_id is not None:
+        _require_owned(db, registry, body.dataset_id, user)
     return respond(
         agent.run(
             body.request,
@@ -33,5 +58,9 @@ def analyze(body: AnalyzeRequest, agent=Depends(get_agent)):
 
 
 @router.post("/answer")
-def answer(body: ClarificationRequest, agent=Depends(get_agent)):
+def answer(
+    body: ClarificationRequest,
+    user: User = Depends(get_current_user),
+    agent=Depends(get_agent),
+):
     return respond(agent.resume(body.thread_id, body.answer))
