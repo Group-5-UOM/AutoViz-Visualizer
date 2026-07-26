@@ -187,5 +187,21 @@ AutoViz-Visualizer/
 ├── frontend/           # React + TypeScript board UI
 ├── backend/            # FastAPI, agent, MCP, Alembic, Docker
 ├── agent-playground/   # Dev-only agent test page
-└── test-data/          # Sample CSV datasets
+├── test-data/          # Sample CSV datasets
+└── docs/               # Project work plan and team docs
 ```
+
+## Documentation
+
+Team work plan (Route-IQ-style split): start at [`docs/README.md`](./docs/README.md).
+
+| Quick link | Description |
+| --- | --- |
+| [Project overview](./docs/project-overview.md) | What AutoViz AI is |
+| [Problem and scope](./docs/problem-and-scope.md) | P0 / P1 / P2 boundaries |
+| [Roadmap](./docs/project-roadmap.md) | Weeks 1–4 milestone + 14-week plan |
+| [Team responsibilities](./docs/team-responsibilities.md) | Ownership map |
+| [Team briefs](./docs/team/) | Per-member deliverables |
+| [API contracts](./docs/api-contracts.md) | Shared HTTP / schema freeze checklist |
+| [MCP tools](./docs/mcp-tools.md) | Typed tool responsibilities |
+| [Integration plan](./docs/integration-plan.md) | Contracts → mocks → vertical slices |
