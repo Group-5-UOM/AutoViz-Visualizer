@@ -52,6 +52,8 @@ def upgrade() -> None:
         sa.Column("file_path", sa.String(), nullable=False),
         sa.Column("status", sa.String(), nullable=False),
         sa.Column("size_bytes", sa.Integer(), nullable=True),
+        sa.Column("row_count", sa.Integer(), nullable=True),
+        sa.Column("column_count", sa.Integer(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),

@@ -3,9 +3,10 @@ import { Sidebar } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
 import { ChatPanel } from '../components/chat/ChatPanel';
 import { DashboardCanvas } from '../components/canvas/DashboardCanvas';
+import { DatasetModal } from '../components/layout/DatasetModal';
 import { useDashboard } from '../hooks/useDashboard';
 import { ApiError } from '../lib/api';
-import { uploadDataset } from '../lib/datasets';
+import { uploadDataset, type DatasetMetadata } from '../lib/datasets';
 import type { SidebarItemId } from '../types/dashboard';
 import '../App.css';
 
@@ -76,6 +77,20 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
     }
   };
 
+  const handleExistingDatasetSelected = (selected: DatasetMetadata) => {
+    if (selected.dataset_id !== dataset?.datasetId) {
+      resetForDataset();
+    }
+    setDataset({
+      datasetId: selected.dataset_id,
+      fileName: selected.logical_name,
+      rowCount: selected.row_count,
+      columnCount: selected.column_count,
+    });
+    setActiveItem('ai-chat');
+    setChatOpen(true);
+  };
+
   return (
     <div className="board-app">
       <TopBar
@@ -125,6 +140,14 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
           onDelete={deleteWidget}
           onCsvSelected={handleCsvSelected}
         />
+
+        {activeItem === 'data' && (
+          <DatasetModal
+            currentDatasetId={dataset?.datasetId}
+            onClose={() => setActiveItem(chatOpen ? 'ai-chat' : null)}
+            onSelect={handleExistingDatasetSelected}
+          />
+        )}
       </div>
     </div>
   );

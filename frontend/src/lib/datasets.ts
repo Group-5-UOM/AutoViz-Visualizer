@@ -15,3 +15,23 @@ export async function uploadDataset(file: File): Promise<DatasetUploadResult> {
     form,
   });
 }
+
+export interface DatasetMetadata {
+  dataset_id: string;
+  logical_name: string;
+  row_count: number;
+  column_count: number;
+  created_at: string;
+}
+
+export async function listDatasets(): Promise<{ datasets: DatasetMetadata[] }> {
+  return apiRequest<{ datasets: DatasetMetadata[] }>('/datasets', {
+    method: 'GET',
+  });
+}
+
+export async function deleteDataset(datasetId: string): Promise<{ removed: boolean; dataset_id: string }> {
+  return apiRequest<{ removed: boolean; dataset_id: string }>(`/datasets/${datasetId}`, {
+    method: 'DELETE',
+  });
+}
