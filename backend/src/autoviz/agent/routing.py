@@ -6,6 +6,8 @@ from autoviz.agent.ambiguity import apply_resolutions
 from autoviz.agent.nodes import CHART_FALLBACK_STEPS
 from autoviz.agent.state import (
     MAX_CLARIFICATIONS,
+    MAX_CLEANING_PROMPTS,
+    MAX_CONFIRMATIONS,
     MAX_PLAN_ATTEMPTS,
     AutoVizState,
     WorkerState,
@@ -66,16 +68,37 @@ def _can_replan(state: WorkerState) -> bool:
 def route_after_plan(state: WorkerState) -> str:
     if state.get("analysis_plan") is None:  # planner output unusable
         return "plan" if _can_replan(state) else "finalize"
-    return "execute"
+    # A replan has already been through the cleaning pass; its answers are kept in
+    # state, so going round again would only re-apply them.
+    if state.get("cleaning_done"):
+        return "execute"
+    return "assess_quality"
+
+
+def route_after_assess(state: WorkerState) -> str:
+    """Keep asking while there are unanswered cleaning questions and budget left.
+
+    `assess_quality` sets `cleaning_done` when it has nothing more to ask; until
+    then each pass resolves one slot, exactly like the clarification loop.
+    """
+    if state.get("cleaning_done"):
+        return "execute"
+    if state.get("cleaning_prompts", 0) >= MAX_CLEANING_PROMPTS:
+        return "execute"
+    return "assess_quality"
 
 
 def route_after_execute(state: WorkerState) -> str:
     out = state["pipeline_output"]
     if out["status"] == "ok":
         return "finalize"
-    # The shared pipeline paused for large-row-removal confirmation; ask the user.
+    # Execution refused to run an unapproved large row removal; ask the user.
+    # Budgeted like every other loop in the graph: if the answer somehow fails to
+    # clear the gate, finalize with the refusal rather than re-prompting forever.
     if out["status"] == "confirmation_required":
-        return "confirm_preprocessing"
+        if state.get("confirmation_count", 0) < MAX_CONFIRMATIONS:
+            return "confirm_preprocessing"
+        return "finalize"
     # Replan only for a genuinely plan-repairable failure — never for an
     # infrastructure fault (those were already retried in execute_node) or a
     # missing dataset, which no amount of replanning can fix.

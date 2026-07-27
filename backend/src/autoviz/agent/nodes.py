@@ -8,10 +8,12 @@ import time
 from typing import Any
 
 from langgraph.types import interrupt
+from pydantic import ValidationError
 
 from autoviz import observability
 from autoviz.agent.ambiguity import detect_ambiguities
 from autoviz.agent.state import (
+    MAX_CLEANING_PROMPTS,
     MAX_TASKS,
     AutoVizState,
     ChartResult,
@@ -19,8 +21,9 @@ from autoviz.agent.state import (
 )
 from autoviz.errors import PLAN_REPAIRABLE, RETRYABLE
 from autoviz.llm.client import IntentDecision, PlannerError, PlannerLLM
+from autoviz.schema.analysis_plan import AnalysisPlan
 from autoviz.schema.clarification import Ambiguity, bind_answer
-from autoviz.services import charts, dataset
+from autoviz.services import charts, dataset, quality
 from autoviz.services.orchestrator import run_pipeline
 from autoviz.services.registry import REGISTRY, DatasetRegistry
 
@@ -182,6 +185,94 @@ def plan_node(state: WorkerState, *, planner: PlannerLLM) -> dict[str, Any]:
     return {"analysis_plan": plan, "plan_attempts": attempts}
 
 
+def assess_quality(
+    state: WorkerState, *, registry: DatasetRegistry = REGISTRY
+) -> dict[str, Any]:
+    """Clean what is safe to clean; ask about anything that would change a number.
+
+    This is the node a user who has never heard of imputation depends on. It runs
+    between planning and execution, so the scan is scoped to the columns the plan
+    actually reads — a messy column nobody asked about produces no findings and no
+    interruption.
+
+    One question per invocation, then routing sends us back for the next, matching
+    how `clarify` handles ambiguities. Answered slots accumulate in state, so the
+    queue shrinks toward empty and a slot is never asked twice.
+    """
+    record = registry.get(state["dataset_id"])
+    plan = dict(state.get("analysis_plan") or {})
+    if record is None or not plan:
+        return {"cleaning_done": True}
+    try:
+        model = AnalysisPlan.model_validate(plan)
+    except ValidationError:
+        # Let the normal validation path report it — assessing an unparseable plan
+        # would mean guessing which columns it meant.
+        return {"cleaning_done": True}
+
+    existing = list(plan.get("preprocessing") or [])
+    scope = {c for c in model.referenced_columns() if c in record.schema}
+    issues = quality.scan(record, scope)
+    auto_ops, proposals = quality.recommend(issues, len(record.df))
+
+    resolved: dict[str, Any] = dict(state.get("cleaning_resolutions") or {})
+    # An explicit instruction in the plan already answers its slot.
+    answered = set(resolved) | quality.suppressed_slots(existing)
+    dimensions = quality.dimension_columns(model)
+    pending = [
+        p
+        for p in proposals
+        if p.slot not in answered and quality.is_worth_asking(p, dimensions)
+    ]
+
+    # Safe repairs first — they need no permission and must be in place before the
+    # value-changing ops (a user's chosen op included) decide which rows survive.
+    merged = quality.merge_auto_ops(existing, auto_ops)
+    chosen = [op for op in resolved.values() if op]
+    if chosen:
+        merged = merged + chosen
+    if merged != existing:
+        plan["preprocessing"] = merged
+
+    if not pending or state.get("cleaning_prompts", 0) >= MAX_CLEANING_PROMPTS:
+        return {
+            "analysis_plan": plan,
+            "applied_cleaning": [op for op in auto_ops],
+            "cleaning_done": True,
+        }
+
+    proposal = pending[0]
+    answer = interrupt(  # pause; resumes here with the user's choice
+        {
+            "question": proposal.question,
+            # Structured, unlike a clarification's plain strings: each option
+            # carries what it costs in real rows plus its technique, so a host can
+            # preselect the recommendation and hide the jargon behind a disclosure.
+            "options": [o.to_wire() for o in proposal.options],
+            "pause_kind": "cleaning_choice",
+            "slot": proposal.slot,
+            "issue": proposal.issue.to_wire(),
+        }
+    )
+    option = quality.bind_cleaning_answer(proposal, str(answer))
+    observability.log_event(
+        "cleaning_choice",
+        slot=proposal.slot,
+        kind=proposal.issue.kind,
+        column=proposal.issue.column,
+        affected=proposal.issue.affected,
+        chose=option.technique,
+        applied=option.op is not None,
+        recommended=option.recommended,
+    )
+    return {
+        "analysis_plan": plan,
+        "cleaning_resolutions": {**resolved, proposal.slot: option.op},
+        "cleaning_prompts": state.get("cleaning_prompts", 0) + 1,
+        "applied_cleaning": [op for op in auto_ops],
+    }
+
+
 def execute_node(state: WorkerState, *, registry: DatasetRegistry = REGISTRY) -> dict[str, Any]:
     # Retry transient infrastructure faults in place with backoff; only a
     # plan-repairable code sends us back to the planner (handled in routing).
@@ -240,18 +331,40 @@ def confirm_preprocessing(state: WorkerState) -> dict[str, Any]:
         input_rows=(conf.get("impact") or {}).get("input_rows"),
     )
 
+    spent = state.get("confirmation_count", 0) + 1
     if proceed:
-        return {"approved_preprocessing_hash": conf.get("preprocessing_hash")}
+        return {
+            "approved_preprocessing_hash": conf.get("preprocessing_hash"),
+            "confirmation_count": spent,
+        }
 
     # Skip: strip only the row-dropping ops, keep fill_nulls (R3). The trimmed plan
     # has no row-dropping preprocessing, so it will not gate again.
+    #
+    # Which ops those are is read off the models, not matched against a name list:
+    # a row-dropping op missing from a hardcoded tuple here would survive the very
+    # "Skip cleaning" the user just chose, and still drop their rows.
     plan = dict(state["analysis_plan"] or {})
+    try:
+        model = AnalysisPlan.model_validate(plan)
+    except ValidationError:
+        # Unreachable in the normal flow — the plan validated before the gate could
+        # fire. Fail closed: an unparseable plan gets no preprocessing at all rather
+        # than keeping steps we cannot classify.
+        plan["preprocessing"] = []
+        return {
+            "analysis_plan": plan,
+            "approved_preprocessing_hash": None,
+            "confirmation_count": spent,
+        }
     plan["preprocessing"] = [
-        op
-        for op in plan.get("preprocessing", [])
-        if op.get("op") not in ("drop_nulls", "drop_exact_duplicates")
+        op.model_dump(by_alias=True) for op in model.preprocessing if not op.removes_rows
     ]
-    return {"analysis_plan": plan, "approved_preprocessing_hash": None}
+    return {
+        "analysis_plan": plan,
+        "approved_preprocessing_hash": None,
+        "confirmation_count": spent,
+    }
 
 
 def chart_fallback(state: WorkerState) -> dict[str, Any]:

@@ -1,0 +1,204 @@
+"""The SAFE tier: repairs that change how a value is written, not what it means.
+
+These are the ops the system is allowed to apply without asking, so the tests
+that matter most are the ones pinning the *boundary* — what makes an op safe, and
+what disqualifies it.
+"""
+
+from autoviz.schema.allowlists import Risk
+from autoviz.schema.analysis_plan import AnalysisPlan
+from autoviz.services import dataset
+from autoviz.services.execution import execute_analysis
+from autoviz.services.orchestrator import run_pipeline
+from autoviz.services.validation import validate_analysis_plan
+
+
+def _plan(ds, **extra):
+    base = {"dataset_id": ds, "intent": "comparison"}
+    base.update(extra)
+    return base
+
+
+def _register(registry, tmp_path, name, text):
+    p = tmp_path / name
+    p.write_text(text)
+    return dataset.register_dataset(p.as_posix(), registry)["dataset_id"]
+
+
+# --- tier declarations --------------------------------------------------------
+
+
+def test_safe_ops_declare_the_safe_tier():
+    plan = AnalysisPlan.model_validate(
+        {
+            "dataset_id": "ds_x",
+            "intent": "comparison",
+            "preprocessing": [
+                {"op": "trim_whitespace", "columns": ["a"]},
+                {"op": "empty_string_to_null", "columns": ["a"]},
+                {"op": "normalize_case", "column": "a"},
+                {"op": "drop_empty_rows"},
+                {"op": "cast_column", "column": "a", "to": "number"},
+            ],
+        }
+    )
+    assert all(op.risk is Risk.SAFE for op in plan.preprocessing)
+
+
+def test_drop_empty_rows_is_safe_but_still_removes_rows():
+    """The two flags are independent — being safe does not exempt an op from the
+    row-removal backstop."""
+    plan = AnalysisPlan.model_validate(
+        {"dataset_id": "ds_x", "intent": "comparison", "preprocessing": [{"op": "drop_empty_rows"}]}
+    )
+    op = plan.preprocessing[0]
+    assert op.risk is Risk.SAFE and op.removes_rows is True
+    assert plan.has_row_dropping_preprocessing() is True
+
+
+# --- trim / empty-string / case ------------------------------------------------
+
+
+def test_trim_whitespace_merges_padded_categories(registry, tmp_path):
+    ds = _register(registry, tmp_path, "padded.csv", "cls,v\n a,1\na ,2\na,3\nb,4\n")
+    out = execute_analysis(
+        ds,
+        _plan(
+            ds,
+            preprocessing=[{"op": "trim_whitespace", "columns": ["cls"]}],
+            group_by=["cls"],
+            aggregations=[{"column": "v", "fn": "sum", "as": "total"}],
+        ),
+        registry,
+    )
+    assert "error" not in out, out
+    by_cls = {r["cls"]: r["total"] for r in out["result_table"]}
+    assert by_cls == {"a": 6, "b": 4}  # three spellings of "a" became one group
+    assert out["preprocessing"][0]["rows_affected"] == 2  # " a" and "a "
+
+
+def test_empty_string_becomes_null_and_is_then_skipped(registry, tmp_path):
+    """Blank text is an absent value; making it null lets the rest of the system
+    treat it as one."""
+    ds = _register(registry, tmp_path, "blanks.csv", "cls,note\na,x\nb,\nc,   \n")
+    plan = _plan(
+        ds,
+        preprocessing=[{"op": "empty_string_to_null", "columns": ["note"]}],
+        group_by=["cls"],
+        aggregations=[{"column": "note", "fn": "count", "as": "n"}],
+    )
+    out = execute_analysis(ds, plan, registry)
+    assert "error" not in out, out
+    assert {r["cls"]: r["n"] for r in out["result_table"]} == {"a": 1, "b": 0, "c": 0}
+
+
+def test_normalize_case_folds_variants(registry, tmp_path):
+    ds = _register(registry, tmp_path, "case.csv", "sex,v\nMale,1\nmale,2\nMALE,3\nFemale,4\n")
+    out = execute_analysis(
+        ds,
+        _plan(
+            ds,
+            preprocessing=[{"op": "normalize_case", "column": "sex"}],
+            group_by=["sex"],
+            aggregations=[{"column": "v", "fn": "sum", "as": "total"}],
+        ),
+        registry,
+    )
+    assert "error" not in out, out
+    assert {r["sex"]: r["total"] for r in out["result_table"]} == {"male": 6, "female": 4}
+
+
+def test_text_repairs_are_rejected_on_non_text_columns(registry, nulls_id):
+    v = validate_analysis_plan(
+        nulls_id, _plan(nulls_id, preprocessing=[{"op": "trim_whitespace", "columns": ["fare"]}]), registry
+    )
+    assert not v["valid"]
+    assert any("requires a string column" in e for e in v["errors"])
+
+
+# --- drop_empty_rows -----------------------------------------------------------
+
+
+def test_drop_empty_rows_removes_only_all_null_rows(registry, tmp_path):
+    ds = _register(registry, tmp_path, "empties.csv", "a,b\n1,x\n,\n2,\n,y\n")
+    plan = _plan(ds, preprocessing=[{"op": "drop_empty_rows"}], select=["a", "b"])
+    out = execute_analysis(ds, plan, registry)
+    assert "error" not in out, out
+    assert out["input_rows"] == 4 and out["output_rows"] == 3  # only the blank row
+    assert out["preprocessing"][0]["rows_affected"] == 1
+
+
+def test_a_mostly_blank_file_still_hits_the_backstop(registry, tmp_path):
+    """Safe does not mean unlimited: removing most of the file needs consent."""
+    ds = _register(registry, tmp_path, "mostly_blank.csv", "a,b\n1,x\n,\n,\n,\n")
+    out = run_pipeline(ds, _plan(ds, preprocessing=[{"op": "drop_empty_rows"}], select=["a", "b"]), registry)
+    assert out["status"] == "confirmation_required"
+    assert out["confirmation"]["impact"]["dropped"] == 3
+
+
+# --- cast_column ---------------------------------------------------------------
+
+
+def test_cast_column_rejects_a_lossy_conversion(registry, tmp_path):
+    """A column that is *mostly* numeric is a refusal naming the cost, not a
+    partial success that quietly nulls the rest."""
+    # "unknown" rather than "n/a": pandas treats the latter as a NA sentinel and
+    # would parse the column as numeric before we ever get to cast it.
+    ds = _register(registry, tmp_path, "lossy.csv", "cls,amount\na,10\nb,20\nc,unknown\n")
+    assert registry.get(ds).schema["amount"] == "string"
+    plan = _plan(
+        ds,
+        preprocessing=[{"op": "cast_column", "column": "amount", "to": "number"}],
+        select=["amount"],
+    )
+    out = execute_analysis(ds, plan, registry)
+    assert out["error_code"] == "INVALID_PLAN", out
+    assert "1 of 3 value(s) would not convert" in out["error"]
+
+
+def test_cast_column_after_nulling_blanks_then_aggregates(registry, tmp_path):
+    """End to end: text column with blank cells -> nulled -> cast -> summed.
+
+    This is the capability that did not exist before: a text-typed numeric column
+    could not be aggregated at all, because sum/mean require a numeric column.
+    """
+    ds = _register(registry, tmp_path, "blanknum.csv", "cls,amount\na,10\na,   \nb,30\nb,x\n")
+    assert registry.get(ds).schema["amount"] == "string"
+
+    # With "x" still present the cast is refused...
+    lossy = _plan(
+        ds,
+        preprocessing=[
+            {"op": "empty_string_to_null", "columns": ["amount"]},
+            {"op": "cast_column", "column": "amount", "to": "number"},
+        ],
+        select=["amount"],
+    )
+    assert execute_analysis(ds, lossy, registry)["error_code"] == "INVALID_PLAN"
+
+    # ...and once the offending row is filtered out, it converts and aggregates.
+    ds2 = _register(registry, tmp_path, "blanknum2.csv", "cls,amount\na,10\na,   \nb,30\n")
+    plan = _plan(
+        ds2,
+        preprocessing=[
+            {"op": "empty_string_to_null", "columns": ["amount"]},
+            {"op": "cast_column", "column": "amount", "to": "number"},
+        ],
+        group_by=["cls"],
+        aggregations=[{"column": "amount", "fn": "sum", "as": "total"}],
+    )
+    v = validate_analysis_plan(ds2, plan, registry)
+    assert v["valid"], v  # sum() on a cast column validates against the new type
+    out = execute_analysis(ds2, plan, registry)
+    assert "error" not in out, out
+    assert {r["cls"]: r["total"] for r in out["result_table"]} == {"a": 10.0, "b": 30.0}
+
+
+def test_cast_column_refuses_an_already_typed_column(registry, nulls_id):
+    v = validate_analysis_plan(
+        nulls_id,
+        _plan(nulls_id, preprocessing=[{"op": "cast_column", "column": "fare", "to": "number"}]),
+        registry,
+    )
+    assert not v["valid"]
+    assert any("already typed" in e for e in v["errors"])

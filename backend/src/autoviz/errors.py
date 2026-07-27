@@ -37,6 +37,11 @@ FORBIDDEN_PATH = "FORBIDDEN_PATH"  # a write target escaped its allowed director
 NO_CHART_FIT = "NO_CHART_FIT"  # no column in the result can carry the requested chart
 INVALID_SPEC = "INVALID_SPEC"  # a caller-supplied Vega-Lite spec is malformed
 CANCELLED = "CANCELLED"  # the caller cancelled the request mid-execution
+# A cleaning step needs the user's consent before anything runs. Terminal for the
+# *machine* — no amount of replanning or retrying resolves it, only a person
+# deciding — but the accompanying `confirmation` payload says exactly how to
+# proceed, so it is a refusal with an answer attached rather than a dead end.
+CONFIRMATION_REQUIRED = "CONFIRMATION_REQUIRED"
 
 PLAN_REPAIRABLE = frozenset({INVALID_PLAN, TYPE_MISMATCH})
 RETRYABLE = frozenset({EXECUTION_ERROR, TIMEOUT})
@@ -50,6 +55,7 @@ TERMINAL = frozenset(
         NO_CHART_FIT,
         INVALID_SPEC,
         CANCELLED,
+        CONFIRMATION_REQUIRED,
     }
 )
 
@@ -68,6 +74,11 @@ _USER_ACTION: dict[str, str] = {
     NO_CHART_FIT: "The result has no plottable measure; aggregate a numeric column first.",
     INVALID_SPEC: "Pass a Vega-Lite spec dict, such as the one generate_chart returns.",
     CANCELLED: "The request was cancelled before it finished; no results were produced.",
+    CONFIRMATION_REQUIRED: (
+        "This plan's cleaning step needs approval before anything runs. Review "
+        "confirmation.impact, then call again passing confirmation.preprocessing_hash "
+        "as approved_preprocessing_hash."
+    ),
 }
 
 

@@ -10,6 +10,7 @@ import math
 import re
 from typing import Any
 
+import pandas as pd
 from pydantic import ValidationError
 
 from autoviz.schema.allowlists import (
@@ -108,6 +109,15 @@ def _fill_value_errors(value: Any, col_type: str, column: str) -> list[str]:
         errs.append(
             f"preprocessing fill_nulls on '{column}': {col_type} column needs a string constant"
         )
+    elif col_type == "datetime" and pd.isna(pd.to_datetime(value, errors="coerce")):
+        # Parse it here or DuckDB raises at execution time, where the failure is
+        # caught as a generic EXECUTION_ERROR — which is *retryable*, so the agent
+        # would back off and re-run an identical, deterministically-failing plan
+        # and never be told to fix the value. A bad literal is a plan defect.
+        errs.append(
+            f"preprocessing fill_nulls on '{column}': constant "
+            f"'{value}' is not a recognisable date/time"
+        )
     return errs
 
 
@@ -120,14 +130,16 @@ def _validate_preprocessing(
     `schema`, never derived names. Enforces column existence, strategy/type
     compatibility, constant-value shape, resource ceilings, and op conflicts.
     """
-    touched: set[str] = set()
     drop_cols: set[str] = set()
     fill_cols: set[str] = set()
+    # Every column any op names, read off the ops themselves — an op that adds a
+    # new column-bearing field reports it via columns_touched() rather than
+    # needing this loop to learn about the field.
+    touched: set[str] = plan.preprocessing_columns()
 
     for op in plan.preprocessing:
         if op.op == "drop_nulls":
             for col in op.columns:
-                touched.add(col)
                 if col not in schema:
                     errors.append(f"preprocessing drop_nulls: column '{col}' does not exist")
                 elif col in fully_null:
@@ -141,7 +153,6 @@ def _validate_preprocessing(
                 drop_cols.add(col)
         elif op.op == "fill_nulls":
             col = op.column
-            touched.add(col)
             col_type = schema.get(col)
             if col_type is None:
                 errors.append(f"preprocessing fill_nulls: column '{col}' does not exist")
@@ -173,7 +184,80 @@ def _validate_preprocessing(
                     )
                 elif op.strategy == "constant":
                     errors.extend(_fill_value_errors(op.value, col_type, col))
-        # drop_exact_duplicates takes no params — nothing to check.
+        elif op.op in ("trim_whitespace", "empty_string_to_null", "normalize_case"):
+            # Text repairs only make sense on text. Applying them to a number
+            # would be a no-op at best and a silent string coercion at worst.
+            cols = [op.column] if op.op == "normalize_case" else list(op.columns)
+            for col in cols:
+                col_type = schema.get(col)
+                if col_type is None:
+                    errors.append(f"preprocessing {op.op}: column '{col}' does not exist")
+                elif col_type != "string":
+                    errors.append(
+                        f"preprocessing {op.op} on '{col}': requires a string column "
+                        f"({col_type} given)"
+                    )
+        elif op.op == "cast_column":
+            col_type = schema.get(op.column)
+            if col_type is None:
+                errors.append(f"preprocessing cast_column: column '{op.column}' does not exist")
+            elif col_type != "string":
+                errors.append(
+                    f"preprocessing cast_column on '{op.column}': only a string column can be "
+                    f"converted ({col_type} is already typed)"
+                )
+            elif op.column in fully_null:
+                errors.append(
+                    f"preprocessing cast_column on '{op.column}': column is entirely null (unusable)"
+                )
+            # Whether every value actually converts is checked at execution time,
+            # against the working view rather than the raw frame. It has to be:
+            # the whole point of casting after empty_string_to_null is that the
+            # values blocking the conversion are gone by then, and a raw-frame
+            # check would reject exactly the plans that were written correctly.
+        elif op.op in ("clean_categories", "group_rare_categories"):
+            col_type = schema.get(op.column)
+            if col_type is None:
+                errors.append(f"preprocessing {op.op}: column '{op.column}' does not exist")
+            elif col_type not in ("string", "boolean"):
+                errors.append(
+                    f"preprocessing {op.op} on '{op.column}': requires a categorical "
+                    f"(string/boolean) column ({col_type} given)"
+                )
+            if op.op == "clean_categories":
+                for source, target in op.mapping.items():
+                    if len(source) > MAX_FILL_STRING_LEN or len(target) > MAX_FILL_STRING_LEN:
+                        errors.append(
+                            f"preprocessing clean_categories on '{op.column}': a mapping "
+                            f"entry exceeds {MAX_FILL_STRING_LEN} characters"
+                        )
+                        break
+            else:
+                # Two ways to draw the same line; accepting both would leave the
+                # precedence between them undefined.
+                given = [
+                    n for n in ("top_n", "min_frequency") if getattr(op, n) is not None
+                ]
+                if len(given) != 1:
+                    errors.append(
+                        f"preprocessing group_rare_categories on '{op.column}': give exactly "
+                        f"one of top_n or min_frequency ({', '.join(given) or 'neither'} given)"
+                    )
+                if len(op.other_label) > MAX_FILL_STRING_LEN:
+                    errors.append(
+                        f"preprocessing group_rare_categories on '{op.column}': other_label "
+                        f"exceeds {MAX_FILL_STRING_LEN} characters"
+                    )
+        elif op.op in ("drop_exact_duplicates", "drop_empty_rows"):
+            pass  # span whole rows; no parameters to check
+        else:
+            # Unreachable through the closed grammar. An op added to PreprocessOp
+            # without a branch here would otherwise be accepted with *no* semantic
+            # checks at all — no column-existence, no type compatibility — so the
+            # default has to be rejection, not silence.
+            errors.append(
+                f"preprocessing: op '{op.op}' has no validation rule and cannot be applied"
+            )
 
     if len(touched) > MAX_PREPROCESSING_COLUMNS:
         errors.append(
@@ -209,29 +293,17 @@ def validate_analysis_plan(
 
     # Columns this plan touches directly on the raw schema; used to flag fully-null
     # (unusable) columns cheaply, without scanning the whole frame.
-    pp_cols: set[str] = set()
-    for op in plan.preprocessing:
-        if op.op == "drop_nulls":
-            pp_cols.update(op.columns)
-        elif op.op == "fill_nulls":
-            pp_cols.add(op.column)
-    referenced = (
-        pp_cols
-        | set(plan.select)
-        | set(plan.group_by)
-        | {f.column for f in plan.filters}
-        | {a.column for a in plan.aggregations}
-        | {d.from_ for d in plan.derive}
-    )
+    referenced = plan.referenced_columns()
     fully_null = _fully_null_columns(record, {c for c in referenced if c in schema})
 
     # Preprocessing runs first, on real columns — validate it against the raw schema.
     _validate_preprocessing(plan, schema, fully_null, errors)
 
-    # Derived columns become referenceable with a known logical type.
-    effective: dict[str, str] = dict(schema)
+    # Everything after the cleaning stage sees the *cleaned* types, so a cast
+    # column is its new type from here on. Derived columns then layer on top.
+    effective: dict[str, str] = {**schema, **plan.preprocessing_type_overrides()}
     for d in plan.derive:
-        src_type = schema.get(d.from_)
+        src_type = effective.get(d.from_)
         if src_type is None:
             errors.append(f"derive '{d.name}': source column '{d.from_}' does not exist")
             continue

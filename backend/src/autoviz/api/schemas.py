@@ -18,9 +18,18 @@ class PlanRequest(BaseModel):
     dataset_id: str
     analysis_plan: dict[str, Any]
     # Echo back the preprocessing_hash from a prior {status: "confirmation_required"}
-    # response to approve a large row-removal and let /pipeline execute. Ignored by
-    # /validate and /execute.
+    # response to approve a large row-removal. Honoured by /execute and /pipeline
+    # alike — the gate lives in execution, so both need the token. Ignored by
+    # /validate, which never runs anything.
     approved_preprocessing_hash: str | None = None
+
+
+class QualityRequest(BaseModel):
+    dataset_id: str
+    # Scope the scan to the columns an analysis actually needs. Omit for the whole
+    # frame — but a scoped scan is what keeps an unrelated messy column from
+    # interrupting a question that never touches it.
+    columns: list[str] | None = None
 
 
 class RecommendChartRequest(BaseModel):

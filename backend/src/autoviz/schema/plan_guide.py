@@ -11,9 +11,18 @@ analysis_plan JSON structure (lists may be empty/omitted; dataset_id and intent 
   "dataset_id": "<from register_dataset>",
   "intent": "comparison" | "trend" | "distribution" | "relationship" | "composition" | "ranking",
   "preprocessing": [  // optional, explicit cleaning applied to a read-only working view first
+    // Safe repairs — change how a value is written, not what it means.
+    {"op": "trim_whitespace", "columns": ["col", ...]},
+    {"op": "empty_string_to_null", "columns": ["col", ...]},
+    {"op": "normalize_case", "column": "col"},
+    {"op": "drop_empty_rows"},
+    {"op": "cast_column", "column": "col", "to": "number"|"datetime"},
+    // Value-changing — alter values or which rows survive.
     {"op": "drop_nulls", "columns": ["col", ...], "how": "any"|"all"},
     {"op": "fill_nulls", "column": "col", "strategy": "constant"|"median"|"mode", "value": <scalar for constant>},
-    {"op": "drop_exact_duplicates"}
+    {"op": "drop_exact_duplicates"},
+    {"op": "clean_categories", "column": "col", "mapping": {"old": "new", ...}},
+    {"op": "group_rare_categories", "column": "col", "top_n": <int>, "other_label": "Other"}
   ],
   "select": ["col", ...],
   "filters": [{"column": "col",
@@ -32,7 +41,24 @@ analysis_plan JSON structure (lists may be empty/omitted; dataset_id and intent 
 }
 Preprocessing (explicit, never silent — the source CSV is never modified):
 - Order of execution: preprocessing -> filters -> derive -> group/aggregate. Preprocessing
-  operates on real dataset columns only (not derived names).
+  operates on real dataset columns only (not derived names). Ops run in the order you list
+  them, and each sees the output of the one before — so null the blanks *before* casting.
+- Safe repairs (apply freely; they preserve meaning):
+  trim_whitespace and normalize_case fix category spellings that would otherwise split one
+  group into several (" a", "a ", "A" and "a" are four bars on a chart). empty_string_to_null
+  turns blank text into a real null so aggregates skip it. drop_empty_rows removes rows that
+  are null in every column. All four need string columns.
+- Category cleaning (string/boolean columns; both merge distinct values, so use them only when
+  the user asked or after offering the choice):
+  clean_categories applies an explicit {old: new} mapping — use it for "treat UK and U.K. as the
+  same", never to guess at similar-looking values yourself. Values not named are left alone.
+  group_rare_categories keeps the commonest values and folds the rest into other_label — the fix
+  for a grouping column with too many categories to read. Give exactly ONE of top_n or
+  min_frequency. Nulls are never bucketed (missing is not the same as rare).
+- cast_column reads a text column as the type it already holds — the only way to aggregate a
+  numeric column your reader took as text (sum/mean require a numeric column). It refuses if
+  any value would fail to convert, so pair it with empty_string_to_null when blanks or
+  sentinels are present. After casting, the column IS the new type for filters and aggregations.
 - drop_nulls: how "any" drops a row if ANY listed column is null; "all" only if all are.
 - fill_nulls strategy: "median" (numeric columns only), "mode" (categorical/string or boolean
   columns only), "constant" (any type — requires a "value"). Mean imputation is not available.
@@ -44,10 +70,15 @@ Preprocessing (explicit, never silent — the source CSV is never modified):
 - For a null-bearing GROUP BY column, add drop_nulls / is_not_null on it so there is no spurious
   "null" category. Aggregates (avg/sum/...) already skip nulls in the measured column — you do not
   need to drop those; the result reports the exclusion.
-- Do NOT impute unless the user asks. Missing-value heuristic (percent of a column used by the
-  analysis): 0% no action; <5% exclude affected rows and report; 5-30% offer remove-or-impute;
-  >30% removing rows needs user confirmation (run_analysis_pipeline returns confirmation_required —
-  re-call with approved_preprocessing_hash to proceed); 100% the column is unusable, do not select it.
+- Do NOT impute unless the user asks. Imputing changes values, so it needs the user's agreement
+  regardless of how few rows it touches — a small share of a measure column can still move a total.
+- What the system enforces for you (you do not need to reproduce these checks, only to expect them):
+  removing more than 30% of rows is refused with CONFIRMATION_REQUIRED until the caller passes the
+  returned confirmation.preprocessing_hash back as approved_preprocessing_hash. This applies to
+  execute_analysis and run_analysis_pipeline alike. Imputing 5% or more of a column is allowed but
+  is disclosed in provenance.imputation_notices, and nulls skipped by an aggregate are always
+  reported in provenance.implicit_null_exclusions (measured before cleaning, so filling them in
+  does not hide them). A 100%-null column is unusable — do not select, group, or aggregate on it.
 
 Rules: group_by max 2 columns; limit max 100000; no other fields or op/fn values are accepted.
 is_null/is_not_null take no value and work on any column type.

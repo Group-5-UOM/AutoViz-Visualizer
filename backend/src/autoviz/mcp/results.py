@@ -59,6 +59,24 @@ class DatasetSummary(_Strict):
     column_count: int
 
 
+class MaterializeCleanedOutput(_Strict):
+    """A cleaned copy promoted to a dataset of its own.
+
+    ``dataset_id`` is a normal dataset from here on — previewable, chartable, and
+    usable as the source of further analyses. ``parent_id`` and ``version_id``
+    record where it came from; the parent is unchanged.
+    """
+
+    dataset_id: str
+    parent_id: str
+    version_id: str
+    row_count: int
+    column_count: int
+    input_rows: int
+    output_rows: int
+    preprocessing: list[dict[str, Any]] = []
+
+
 class RegisterDatasetOutput(_Strict):
     dataset_id: str
     row_count: int
@@ -125,8 +143,20 @@ class Provenance(_Strict):
     preprocessing: list[dict[str, Any]] = []
     preprocessing_sql: list[str] = []
     # column -> rows the aggregate silently skipped, so the exclusion is stated
-    # rather than hidden. Empty when no null-skipping aggregate ran.
+    # rather than hidden. Measured before cleaning, so imputing cannot erase it.
+    # Empty when no null-skipping aggregate ran.
     implicit_null_exclusions: dict[str, int] = {}
+    # Imputations big enough to move the answer: filling keeps every row, so it
+    # never trips the row gate, but a mean over mostly-substituted values needs
+    # to say so. Empty when nothing was imputed above the notice threshold.
+    imputation_notices: list[dict[str, Any]] = []
+    # Logical id of the cleaned view these numbers came from — reproducible from
+    # (source, preprocessing) without materialising a frame.
+    preprocessing_version: str | None = None
+    # The cleaning account in one place: columns inspected, per-step effect,
+    # before/after row counts, whether a person approved it, and the parent
+    # dataset when the source was itself a cleaned copy.
+    cleaning: dict[str, Any] = {}
     sql: str
 
 
@@ -186,6 +216,52 @@ class PreprocessingImpact(_Strict):
     dropped: int
     fraction: float
     preprocessing: list[dict[str, Any]] = []
+
+
+# --- data quality -------------------------------------------------------------
+
+
+class QualityIssueOutput(_Strict):
+    kind: str
+    column: str | None = None
+    affected: int
+    fraction: float
+    detail: dict[str, Any] = {}
+
+
+class CleaningOptionOutput(_Strict):
+    """One answer, phrased for someone who does not know the technique.
+
+    ``label``/``detail`` are the offer; ``technique`` is the jargon, kept apart so
+    a host can put it behind a disclosure rather than lead with it.
+    """
+
+    label: str
+    detail: str
+    technique: str
+    recommended: bool = False
+
+
+class CleaningProposalOutput(_Strict):
+    slot: str
+    question: str
+    options: list[CleaningOptionOutput]
+    issue: QualityIssueOutput
+
+
+class DataQualityOutput(_Strict):
+    """What is wrong, what can be fixed silently, and what needs a decision.
+
+    ``auto_apply`` is a preprocessing block of semantics-preserving repairs, ready
+    to merge into a plan. ``proposals`` are questions — every one of them alters
+    values or row membership, so none may be applied without the user choosing.
+    """
+
+    row_count: int
+    columns_inspected: list[str]
+    issues: list[QualityIssueOutput] = []
+    auto_apply: list[dict[str, Any]] = []
+    proposals: list[CleaningProposalOutput] = []
 
 
 class ConfirmationRequired(_Strict):

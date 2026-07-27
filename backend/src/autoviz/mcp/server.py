@@ -23,17 +23,20 @@ from typing import Any, Callable
 import anyio
 from mcp.server.fastmcp import Context, FastMCP
 
-from autoviz.errors import NO_CHART_FIT
+from autoviz.errors import INVALID_PLAN, NO_CHART_FIT, make_error
 from autoviz.mcp.envelope import unwrap
 from autoviz.mcp.results import (
     AnalyzeOutput,
+    DataQualityOutput,
     DatasetProfileOutput,
     DatasetSchemaOutput,
     ExecuteAnalysisOutput,
     ExportChartOutput,
     GenerateChartOutput,
     ListDatasetsOutput,
+    MaterializeCleanedOutput,
     PipelineOutput,
+    PreprocessingImpact,
     PreviewDatasetOutput,
     RecommendChartOutput,
     RegisterDatasetOutput,
@@ -42,8 +45,9 @@ from autoviz.mcp.results import (
 )
 from autoviz.observability import observed
 from autoviz.schema.plan_guide import PLAN_GUIDE
-from autoviz.services import charts, dataset, execution, export, validation
+from autoviz.services import charts, dataset, execution, export, quality, validation
 from autoviz.services.orchestrator import run_pipeline
+from autoviz.services.registry import REGISTRY
 
 PLAN_GUIDE_URI = "autoviz://docs/analysis-plan-guide"
 
@@ -170,7 +174,10 @@ _EXECUTE_DESC = (
     "Deterministically execute a validated analysis_plan via read-only DuckDB. Returns "
     "{result_table, row_count, execution_time_ms, provenance}; the provenance carries the "
     "exact SQL, so every number is traceable. Prefer run_analysis_pipeline unless you "
-    "specifically want the numbers without a chart. "
+    "specifically want the numbers without a chart. A plan whose cleaning step would "
+    "remove a large fraction of rows fails with CONFIRMATION_REQUIRED until you pass the "
+    "returned confirmation.preprocessing_hash back as approved_preprocessing_hash — the "
+    "same rule the pipeline applies, enforced here too. "
     f"See {PLAN_GUIDE_URI} for the plan structure."
 )
 
@@ -193,9 +200,98 @@ def validate_analysis_plan(dataset_id: str, analysis_plan: dict[str, Any]) -> Va
 
 
 @observed
-def execute_analysis(dataset_id: str, analysis_plan: dict[str, Any]) -> ExecuteAnalysisOutput:
+def execute_analysis(
+    dataset_id: str,
+    analysis_plan: dict[str, Any],
+    approved_preprocessing_hash: str | None = None,
+) -> ExecuteAnalysisOutput:
     return unwrap(
-        execution.execute_analysis(dataset_id, analysis_plan), ExecuteAnalysisOutput
+        execution.execute_analysis(
+            dataset_id,
+            analysis_plan,
+            approved_preprocessing_hash=approved_preprocessing_hash,
+        ),
+        ExecuteAnalysisOutput,
+    )
+
+
+_QUALITY_DESC = (
+    "Inspect a dataset for data-quality problems and get back a cleaning proposal. "
+    "Read-only: nothing is applied. Pass `columns` with just the columns your analysis "
+    "needs — a problem in an unrelated column is not a reason to interrupt. Returns "
+    "{issues, auto_apply, proposals}: `auto_apply` is a ready-to-use preprocessing block "
+    "of semantics-preserving repairs (whitespace, blank-as-text, case variants) you can "
+    "merge into a plan without asking; `proposals` are questions you MUST put to the user, "
+    "because each one changes values or drops rows. Every proposal carries plain-language "
+    "options with exact row counts and one marked `recommended` — offer that as the default."
+)
+
+_PREVIEW_PREPROCESSING_DESC = (
+    "Measure what a preprocessing block would do before committing to it. Read-only: "
+    "counts rows through the cleaning chain without running the analysis or touching the "
+    "source. Returns {input_rows, output_rows, dropped, fraction, preprocessing} with the "
+    "per-step effect. Use it to show a user the cost of a cleaning step in real numbers."
+)
+
+
+@observed
+def analyze_data_quality(
+    dataset_id: str, columns: list[str] | None = None
+) -> DataQualityOutput:
+    record = REGISTRY.get(dataset_id)
+    if record is None:
+        return unwrap(
+            dataset.get_dataset_profile(dataset_id), DataQualityOutput
+        )  # reuse the UNKNOWN_DATASET error shape
+    scope = set(columns) if columns else None
+    return unwrap(quality.analyze_data_quality(record, scope), DataQualityOutput)
+
+
+@observed
+def preview_preprocessing(
+    dataset_id: str, analysis_plan: dict[str, Any]
+) -> PreprocessingImpact:
+    record = REGISTRY.get(dataset_id)
+    if record is None:
+        return unwrap(
+            dataset.get_dataset_profile(dataset_id), PreprocessingImpact
+        )  # reuse the UNKNOWN_DATASET error shape
+    verdict = validation.validate_analysis_plan(dataset_id, analysis_plan)
+    if not verdict["valid"]:
+        return unwrap(verdict, PreprocessingImpact)
+    try:
+        return unwrap(
+            execution.preprocessing_impact(record, analysis_plan), PreprocessingImpact
+        )
+    except execution.PreprocessError as exc:
+        return unwrap(make_error(INVALID_PLAN, str(exc)), PreprocessingImpact)
+    except execution.GovernedFailure as exc:
+        return unwrap(make_error(exc.code, str(exc)), PreprocessingImpact)
+
+
+_MATERIALIZE_DESC = (
+    "Apply a cleaning block once and keep the result as a new dataset. Use this only when the "
+    "user wants to go on working from cleaned data — for a single chart, put the same "
+    "preprocessing in the analysis_plan instead and nothing needs storing. The source dataset "
+    "is never modified; the new one records parent_id and version_id. Subject to the same "
+    "approval rule as execution: a block removing a large share of rows needs "
+    "approved_preprocessing_hash. Returns the new dataset_id, which behaves like any other."
+)
+
+
+@observed
+def materialize_cleaned_dataset(
+    dataset_id: str,
+    preprocessing: list[dict[str, Any]],
+    approved_preprocessing_hash: str | None = None,
+) -> MaterializeCleanedOutput:
+    return unwrap(
+        execution.materialize_cleaned_dataset(
+            dataset_id,
+            preprocessing,
+            approved_preprocessing_hash=approved_preprocessing_hash,
+        ),
+        MaterializeCleanedOutput,
     )
 
 
@@ -371,6 +467,10 @@ the provenance field shows the exact SQL) and describe the chart."""
 _DEFAULT_TOOLS = [
     (register_dataset, None),
     (list_datasets, None),
+    # In the default profile because a host that cannot see a dataset's problems
+    # will plan around them badly, and this is the tool that makes the cleaning
+    # decision explicit rather than guessed. Read-only, so it is safe everywhere.
+    (analyze_data_quality, _QUALITY_DESC),
     (run_analysis_pipeline, _PIPELINE_DESC),
     (analyze, None),
     (export_chart, None),
@@ -381,6 +481,8 @@ _ADVANCED_ONLY_TOOLS = [
     (get_dataset_schema, None),
     (get_dataset_profile, None),
     (preview_dataset, None),
+    (preview_preprocessing, _PREVIEW_PREPROCESSING_DESC),
+    (materialize_cleaned_dataset, _MATERIALIZE_DESC),
     (validate_analysis_plan, _VALIDATE_DESC),
     (execute_analysis, _EXECUTE_DESC),
     (recommend_chart_type, None),

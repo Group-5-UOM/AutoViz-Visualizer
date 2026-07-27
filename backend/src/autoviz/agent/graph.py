@@ -1,9 +1,10 @@
 """Graph assembly: bounded workflow, not an unconstrained agent.
 
 START -> load_context -> classify_intent -> (clarify | Send fan-out | fail)
-Each analysis worker: plan -> execute -> [repair loop | preprocessing-confirmation |
-chart fallback] -> finalize. Workers join at compose_response. Interrupts (clarify and
-the large-row-removal gate) require the checkpointer.
+Each analysis worker: plan -> assess_quality -> execute -> [repair loop |
+preprocessing-confirmation | chart fallback] -> finalize. Workers join at
+compose_response. Three interrupts require the checkpointer: clarify (an ambiguous
+request), assess_quality (a cleaning choice), and the large-row-removal gate.
 """
 
 from functools import partial
@@ -27,13 +28,28 @@ def build_graph(
 
     worker = StateGraph(WorkerState, output_schema=WorkerOutput)
     worker.add_node("plan", partial(nodes.plan_node, planner=planner))
+    worker.add_node("assess_quality", partial(nodes.assess_quality, registry=registry))
     worker.add_node("execute", partial(nodes.execute_node, registry=registry))
     worker.add_node("confirm_preprocessing", nodes.confirm_preprocessing)
     worker.add_node("chart_fallback", nodes.chart_fallback)
     worker.add_node("finalize", nodes.finalize_worker)
     worker.add_edge(START, "plan")
     worker.add_conditional_edges(
-        "plan", routing.route_after_plan, {"plan": "plan", "execute": "execute", "finalize": "finalize"}
+        "plan",
+        routing.route_after_plan,
+        {
+            "plan": "plan",
+            "assess_quality": "assess_quality",
+            "execute": "execute",
+            "finalize": "finalize",
+        },
+    )
+    # One cleaning question per pass, looping until the queue empties or the budget
+    # runs out — the same shape as the clarification loop in the parent graph.
+    worker.add_conditional_edges(
+        "assess_quality",
+        routing.route_after_assess,
+        {"assess_quality": "assess_quality", "execute": "execute"},
     )
     worker.add_conditional_edges(
         "execute",

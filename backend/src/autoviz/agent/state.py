@@ -16,6 +16,17 @@ MAX_TASKS = 3
 # after this we proceed on best effort. Raised from 1 to allow resolving more than
 # one distinct ambiguity (e.g. a time column AND an undefined metric).
 MAX_CLARIFICATIONS = 2
+# Bounded preprocessing-confirmation rounds per worker. Every other loop in the
+# graph carries a budget; this one terminates today only because both answers
+# happen to defuse the gate ("proceed" approves the hash, "skip" strips the ops).
+# That is a property of the current two ops, not a guarantee — a future op whose
+# approved hash does not match exactly would spin here forever.
+MAX_CONFIRMATIONS = 2
+# Bounded cleaning questions per worker. Every proposal is a real decision the user
+# should make, but a dirty wide dataset could produce a dozen — and an interrogation
+# is its own kind of unusable. Past the budget the remaining issues are left
+# untouched (the safe default: no value is changed without an answer).
+MAX_CLEANING_PROMPTS = 2
 
 
 class ChartResult(TypedDict, total=False):
@@ -86,9 +97,22 @@ class WorkerState(TypedDict, total=False):
     rejected_plan: dict[str, Any] | None
     validation_errors: list[str]
     plan_attempts: int
-    # Content hash of the preprocessing block the user approved (large row-removal
-    # gate). Bound to the block, not a boolean, so a repaired plan re-gates.
+    # Logical version of the preprocessing block the user approved (large
+    # row-removal gate). Bound to the block *and* the dataset, not a boolean, so a
+    # repaired block — or the same block on different data — re-gates.
     approved_preprocessing_hash: str | None
+    # Confirmation rounds spent, against MAX_CONFIRMATIONS.
+    confirmation_count: int
+    # Automated cleaning (assess_quality): slot -> the op the user chose, or None
+    # for "leave it alone". Answered slots are never re-asked, including across a
+    # replan, so a repaired plan does not restart the questioning.
+    cleaning_resolutions: dict[str, Any]
+    cleaning_prompts: int
+    # Set once the cleaning pass has nothing left to ask, so a replan loop does not
+    # re-enter it forever.
+    cleaning_done: bool
+    # Safe repairs applied without asking — surfaced so the answer can say so.
+    applied_cleaning: list[dict[str, Any]]
     pipeline_output: dict[str, Any] | None
     fallback_chart: dict[str, Any] | None
     chart_results: Annotated[list[ChartResult], add_or_reset]

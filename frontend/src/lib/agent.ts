@@ -38,18 +38,66 @@ export interface AgentFailed {
 }
 
 /**
+ * One answer to a cleaning question, written for someone who does not know the
+ * technique. `label` is the offer, `detail` is what it costs in this dataset's
+ * real row counts, and `technique` is the jargon — kept separate so it can go
+ * behind a "how this works" disclosure rather than lead.
+ */
+export interface CleaningOption {
+  label: string;
+  detail: string;
+  technique: string;
+  recommended: boolean;
+}
+
+/** What the cleaning question is about, so the counts can be shown alongside it. */
+export interface QualityIssue {
+  kind: string;
+  column: string | null;
+  affected: number;
+  fraction: number;
+  detail?: Record<string, unknown>;
+}
+
+/**
  * The run paused. `pause_kind` says which decision the user is making:
- * "clarification" (an ambiguous request) or "confirmation" (approving a
- * preprocessing step that would drop a large number of rows).
+ *
+ * - `clarification`   — the request was ambiguous.
+ * - `cleaning_choice` — a data-quality problem needs a decision before the
+ *                       numbers are computed. `options` are `CleaningOption`s,
+ *                       one flagged `recommended` so it can be preselected.
+ * - `confirmation`    — approving a cleaning step that would drop a large share
+ *                       of rows. `options` are plain strings.
+ *
+ * `options` is therefore either shape; narrow on `pause_kind` before rendering.
  */
 export interface AgentWaiting {
   status: 'waiting_for_user';
   question: string | null;
-  options: string[];
-  pause_kind: 'clarification' | 'confirmation';
+  options: string[] | CleaningOption[];
+  pause_kind: 'clarification' | 'cleaning_choice' | 'confirmation';
   preprocessing_hash?: string;
   impact?: { dropped?: number; input_rows?: number };
+  /** cleaning_choice only: which finding is being decided. */
+  slot?: string;
+  issue?: QualityIssue;
   thread_id: string;
+}
+
+/** Type guard: cleaning options are objects, clarification/confirmation are strings. */
+export function isCleaningOptions(
+  waiting: AgentWaiting,
+): waiting is AgentWaiting & { options: CleaningOption[] } {
+  return waiting.pause_kind === 'cleaning_choice';
+}
+
+/**
+ * The answer to send back for a chosen option. The backend matches on the label
+ * and falls back to leaving the data alone when it cannot read the reply, so the
+ * label must be sent verbatim.
+ */
+export function answerFor(option: CleaningOption): string {
+  return option.label;
 }
 
 export type AgentResponse = AgentCompleted | AgentFailed | AgentWaiting;
