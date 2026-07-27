@@ -35,3 +35,13 @@ export async function deleteDataset(datasetId: string): Promise<{ removed: boole
     method: 'DELETE',
   });
 }
+
+export interface DatasetPreviewResult {
+  rows: Record<string, unknown>[];
+}
+
+export async function previewDataset(datasetId: string, limit: number = 10): Promise<DatasetPreviewResult> {
+  return apiRequest<DatasetPreviewResult>(`/datasets/${datasetId}/preview?limit=${limit}`, {
+    method: 'GET',
+  });
+}

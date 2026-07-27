@@ -241,6 +241,8 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
             currentDatasetId={dataset?.datasetId}
             onClose={() => setActiveItem(chatOpen ? 'ai-chat' : null)}
             onSelect={handleExistingDatasetSelected}
+            onCsvSelected={handleCsvSelected}
+            uploading={uploading}
           />
         )}
 
