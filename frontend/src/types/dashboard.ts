@@ -3,6 +3,7 @@ export type SidebarItemId =
   | 'setup'
   | 'filter'
   | 'ai-chat'
+  | 'dashboards'
   | 'data'
   | 'settings';
 
@@ -40,9 +41,12 @@ export interface ChartWidget {
   y: number;
   width: number;
   height: number;
+  backendChartId?: string;
 }
 
 export interface DashboardState {
   widgets: ChartWidget[];
   selectedWidgetId: string | null;
+  dashboardId?: string;
+  dashboardName?: string;
 }

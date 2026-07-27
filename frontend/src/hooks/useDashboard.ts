@@ -54,6 +54,10 @@ export function useDashboard(datasetId: string | null) {
     setDashboard((prev) => ({ ...prev, selectedWidgetId: id }));
   }, []);
 
+  const setDashboardMeta = useCallback((dashboardId: string, dashboardName: string) => {
+    setDashboard((prev) => ({ ...prev, dashboardId, dashboardName }));
+  }, []);
+
   const updateWidget = useCallback((id: string, patch: Partial<ChartWidget>) => {
     setDashboard((prev) => ({
       ...prev,
@@ -162,12 +166,30 @@ export function useDashboard(datasetId: string | null) {
     [datasetId, applyResponse, pushAssistant],
   );
 
+  const loadDashboardState = useCallback(
+    (dashboardId: string, dashboardName: string, widgets: ChartWidget[]) => {
+      threadId.current = null;
+      awaitingAnswer.current = false;
+      placedCount.current = widgets.length;
+      setDashboard({
+        widgets,
+        selectedWidgetId: widgets.length > 0 ? widgets[0].id : null,
+        dashboardId,
+        dashboardName,
+      });
+      setMessages([
+        { id: uid('msg'), role: 'assistant', content: `Loaded dashboard: ${dashboardName}`, timestamp: Date.now() },
+      ]);
+    },
+    []
+  );
+
   /** Drop canvas + conversation state when a different dataset is uploaded. */
   const resetForDataset = useCallback(() => {
     threadId.current = null;
     awaitingAnswer.current = false;
     placedCount.current = 0;
-    setDashboard({ widgets: [], selectedWidgetId: null });
+    setDashboard({ widgets: [], selectedWidgetId: null, dashboardId: undefined, dashboardName: undefined });
     setMessages([{ id: uid('msg'), role: 'assistant', content: WELCOME, timestamp: Date.now() }]);
   }, []);
 
@@ -176,9 +198,11 @@ export function useDashboard(datasetId: string | null) {
     messages,
     isThinking,
     selectWidget,
+    setDashboardMeta,
     updateWidget,
     deleteWidget,
     sendMessage,
+    loadDashboardState,
     resetForDataset,
   };
 }

@@ -2,6 +2,7 @@ import {
   Database,
   Filter,
   BotMessageSquare,
+  LayoutDashboard,
   Pencil,
   Plus,
   Settings,
@@ -20,6 +21,7 @@ const topItems: { id: SidebarItemId; label: string; icon: typeof Plus }[] = [
   { id: 'add', label: 'Add', icon: Plus },
   { id: 'setup', label: 'Setup', icon: Pencil },
   { id: 'filter', label: 'Filter', icon: Filter },
+  { id: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
   { id: 'ai-chat', label: 'AI Chat', icon: BotMessageSquare },
 ];
 

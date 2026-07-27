@@ -1,11 +1,15 @@
 import { useState } from 'react';
+import html2canvas from 'html2canvas';
 import { Sidebar } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
 import { ChatPanel } from '../components/chat/ChatPanel';
 import { DashboardCanvas } from '../components/canvas/DashboardCanvas';
+import { DashboardsModal } from '../components/layout/DashboardsModal';
+import { DatasetModal } from '../components/layout/DatasetModal';
 import { useDashboard } from '../hooks/useDashboard';
 import { ApiError } from '../lib/api';
-import { uploadDataset } from '../lib/datasets';
+import { uploadDataset, type DatasetMetadata } from '../lib/datasets';
+import { createDashboard, saveChart, updateDashboard, getDashboard, getChart, type DashboardResult } from '../lib/dashboards';
 import type { SidebarItemId } from '../types/dashboard';
 import '../App.css';
 
@@ -34,11 +38,43 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
     messages,
     isThinking,
     selectWidget,
+    setDashboardMeta,
     updateWidget,
     deleteWidget,
     sendMessage,
+    loadDashboardState,
     resetForDataset,
   } = useDashboard(dataset?.datasetId ?? null);
+
+  const handleLoadDashboard = async (selected: DashboardResult) => {
+    try {
+      const fullDashboard = await getDashboard(selected.id);
+      
+      const loadedWidgets = await Promise.all(
+        fullDashboard.widgets.map(async (w) => {
+          const chartData = await getChart(w.chart_id);
+          return {
+            id: `chart-${w.id}`,
+            title: chartData.name,
+            explanation: '', 
+            vegaLiteSpec: chartData.vega_lite_spec,
+            x: w.x,
+            y: w.y,
+            width: w.w,
+            height: w.h,
+            backendChartId: w.chart_id,
+          };
+        })
+      );
+      
+      loadDashboardState(selected.id, selected.name, loadedWidgets);
+      setActiveItem('ai-chat');
+      setChatOpen(true);
+    } catch (err) {
+      console.error('Failed to load dashboard:', err);
+      alert('Failed to load dashboard.');
+    }
+  };
 
   const handleSidebarSelect = (id: SidebarItemId) => {
     setActiveItem(id);
@@ -76,10 +112,82 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
     }
   };
 
+  const handleExistingDatasetSelected = (selected: DatasetMetadata) => {
+    if (selected.dataset_id !== dataset?.datasetId) {
+      resetForDataset();
+    }
+    setDataset({
+      datasetId: selected.dataset_id,
+      fileName: selected.logical_name,
+      rowCount: selected.row_count,
+      columnCount: selected.column_count,
+    });
+    setActiveItem('ai-chat');
+    setChatOpen(true);
+  };
+
+  const handleSaveDashboard = async () => {
+    try {
+      let dashId = dashboard.dashboardId;
+      let dashName = dashboard.dashboardName;
+
+      if (!dashId) {
+        const name = window.prompt('Enter a name for this dashboard:', 'My Dashboard');
+        if (!name) return;
+        const created = await createDashboard(name);
+        dashId = created.id;
+        dashName = created.name;
+        setDashboardMeta(dashId, dashName);
+      }
+
+      for (const w of dashboard.widgets) {
+        if (!w.backendChartId) {
+          const saved = await saveChart({
+            name: w.title,
+            vega_lite_spec: w.vegaLiteSpec,
+            dataset_id: dataset?.datasetId,
+          });
+          updateWidget(w.id, { backendChartId: saved.id });
+          w.backendChartId = saved.id;
+        }
+      }
+
+      if (dashId) {
+        const widgets = dashboard.widgets.map((w, i) => ({
+          chart_id: w.backendChartId!,
+          x: w.x,
+          y: w.y,
+          w: w.width,
+          h: w.height,
+          order: i,
+        }));
+        await updateDashboard(dashId, dashName, widgets);
+        alert('Dashboard saved successfully!');
+      }
+    } catch (err) {
+      console.error('Failed to save dashboard:', err);
+      alert('Failed to save dashboard.');
+    }
+  };
+
+  const handleExportDashboard = async () => {
+    const el = document.querySelector('.dashboard-canvas') as HTMLElement;
+    if (!el) return;
+    try {
+      const canvas = await html2canvas(el, { backgroundColor: '#f4f5f7' });
+      const link = document.createElement('a');
+      link.download = `dashboard-${dataset?.fileName || 'export'}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (err) {
+      console.error('Failed to export dashboard:', err);
+    }
+  };
+
   return (
     <div className="board-app">
       <TopBar
-        title="Untitled dashboard"
+        title={dashboard.dashboardName || 'Untitled dashboard'}
         sidebarCollapsed={sidebarCollapsed}
         chatOpen={chatOpen}
         widgetCount={dashboard.widgets.length}
@@ -92,6 +200,8 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
             return next;
           });
         }}
+        onSave={handleSaveDashboard}
+        onExport={handleExportDashboard}
         onLogout={onLogout}
       />
 
@@ -125,6 +235,22 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
           onDelete={deleteWidget}
           onCsvSelected={handleCsvSelected}
         />
+
+        {activeItem === 'data' && (
+          <DatasetModal
+            currentDatasetId={dataset?.datasetId}
+            onClose={() => setActiveItem(chatOpen ? 'ai-chat' : null)}
+            onSelect={handleExistingDatasetSelected}
+          />
+        )}
+
+        {activeItem === 'dashboards' && (
+          <DashboardsModal
+            currentDashboardId={dashboard.dashboardId}
+            onClose={() => setActiveItem(chatOpen ? 'ai-chat' : null)}
+            onSelect={handleLoadDashboard}
+          />
+        )}
       </div>
     </div>
   );
