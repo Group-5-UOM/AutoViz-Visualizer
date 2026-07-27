@@ -8,6 +8,7 @@ authenticated user (MCP tools 1-6 plus a multipart upload the frontend needs).
     GET    /datasets/{dataset_id}/schema   column schema
     GET    /datasets/{dataset_id}/profile  profile
     GET    /datasets/{dataset_id}/preview  first rows (limit)
+    POST   /datasets/{dataset_id}/cleaned  apply a cleaning block, keep the result (owned)
 
 Ownership is enforced on every id: a caller can only see/act on their own
 datasets (403 otherwise, 404 for an unknown id).
@@ -21,6 +22,7 @@ from autoviz.api.deps import get_current_user, get_db, get_registry
 from autoviz.api.errors import respond
 from autoviz.models import User
 from autoviz.services import dataset as dataset_service
+from autoviz.services import execution
 from autoviz.services.registry import DatasetRegistry
 from autoviz.storage import blobs, repository, uploads
 
@@ -112,6 +114,45 @@ def list_datasets(db: Session = Depends(get_db), user: User = Depends(get_curren
             for m in repository.list_dataset_meta(db, user.id)
         ]
     }
+
+
+class MaterializeRequest(BaseModel):
+    preprocessing: list[dict]
+    # Echo back confirmation.preprocessing_hash to approve a large row removal.
+    approved_preprocessing_hash: str | None = None
+
+
+@router.post("/{dataset_id}/cleaned", status_code=201)
+def materialize_cleaned(
+    dataset_id: str,
+    body: MaterializeRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    registry: DatasetRegistry = Depends(get_registry),
+):
+    """Apply a cleaning block once and keep the result as a dataset of its own.
+
+    The cleaned copy is persisted like any upload rather than left in the
+    in-memory registry: it is a dataset the user now owns and will come back to,
+    and a derived frame that vanished on eviction would be worse than one that
+    was never offered. The parent is untouched.
+    """
+    _resolve(db, registry, dataset_id, user)  # ownership + lazy reload
+    res = execution.materialize_cleaned_dataset(
+        dataset_id,
+        body.preprocessing,
+        registry,
+        approved_preprocessing_hash=body.approved_preprocessing_hash,
+    )
+    if "error" in res:
+        return respond(res)
+    parent = _owned_meta(db, dataset_id, user)
+    name = f"{parent.filename} (cleaned {res['version_id']})"
+    return respond(
+        _persist(db, user, res, name, "", registry) | {"parent_id": dataset_id,
+                                                       "version_id": res["version_id"]},
+        ok_status=201,
+    )
 
 
 def _owned_meta(db: Session, dataset_id: str, user: User):

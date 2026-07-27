@@ -10,22 +10,15 @@ from typing import Any, Callable
 
 from autoviz.errors import (
     CHART_ERROR,
+    CONFIRMATION_REQUIRED,
     EXECUTION_ERROR,
     INVALID_PLAN,
     UNKNOWN_DATASET,
 )
-from autoviz.schema.allowlists import (
-    DATE_DERIVE_FNS,
-    NUMERIC_DERIVE_FNS,
-    ROW_DROP_CONFIRM_FRACTION,
-)
+from autoviz.schema.allowlists import DATE_DERIVE_FNS, NUMERIC_DERIVE_FNS
 from autoviz.schema.analysis_plan import AnalysisPlan
 from autoviz.services.charts import generate_chart, recommend_chart_type
-from autoviz.services.execution import (
-    PreprocessError,
-    execute_analysis,
-    preprocessing_impact,
-)
+from autoviz.services.execution import execute_analysis
 from autoviz.services.registry import REGISTRY, DatasetRegistry
 from autoviz.services.validation import validate_analysis_plan
 
@@ -65,53 +58,25 @@ def run_pipeline(
         }
     effective_plan = verdict.get("repaired_plan", analysis_plan)
 
-    # Shared confirmation gate (enforced here, not just in the agent, so no caller —
-    # including a bare MCP host — can bypass it). If a cleaning step would remove more
-    # than the configured fraction of rows, pause unless this exact preprocessing block
-    # was already approved (approval is bound to its content hash, not a boolean).
+    # The row-removal gate is enforced inside execute_analysis, next to the only
+    # code that can actually run the cleaning stage — so the MCP execute_analysis
+    # tool and POST /analysis/execute are covered by the same check, not just the
+    # callers that happen to come through here. This layer only translates the
+    # refusal into the pipeline's own vocabulary.
     progress(2, "Checking data-cleaning impact")
-    plan_model = AnalysisPlan.model_validate(effective_plan)
-    if plan_model.has_row_dropping_preprocessing():
-        record = registry.get(dataset_id)
-        if record is None:
-            return {
-                "status": "error",
-                "failed_step": "validate_analysis_plan",
-                "error_code": UNKNOWN_DATASET,
-                "errors": [f"Unknown dataset_id: {dataset_id}"],
-            }
-        pp_hash = plan_model.preprocessing_hash()
-        if approved_preprocessing_hash != pp_hash:
-            # preprocessing_impact runs the cleaning stage to measure it, so it can
-            # raise on an unfillable column (all-null median/mode). execute_analysis
-            # already converts that to INVALID_PLAN; the gate must too, or the
-            # exception escapes run_pipeline as an unstructured crash.
-            try:
-                impact = preprocessing_impact(record, effective_plan)
-            except PreprocessError as exc:
-                return {
-                    "status": "error",
-                    "failed_step": "validate_analysis_plan",
-                    "error_code": INVALID_PLAN,
-                    "errors": [str(exc)],
-                }
-            if impact["fraction"] > ROW_DROP_CONFIRM_FRACTION:
-                pct = round(impact["fraction"] * 100, 1)
-                return {
-                    "status": "confirmation_required",
-                    "confirmation": {
-                        "question": (
-                            f"This cleaning step would remove {impact['dropped']} of "
-                            f"{impact['input_rows']} rows ({pct}%). Proceed?"
-                        ),
-                        "options": ["Proceed with cleaning", "Skip cleaning (keep all rows)"],
-                        "impact": impact,
-                        "preprocessing_hash": pp_hash,
-                    },
-                }
-
     progress(3, "Executing query")
-    executed = execute_analysis(dataset_id, effective_plan, registry, cancel_event=cancel_event)
+    executed = execute_analysis(
+        dataset_id,
+        effective_plan,
+        registry,
+        cancel_event=cancel_event,
+        approved_preprocessing_hash=approved_preprocessing_hash,
+    )
+    if executed.get("error_code") == CONFIRMATION_REQUIRED:
+        return {
+            "status": "confirmation_required",
+            "confirmation": executed["confirmation"],
+        }
     if "error" in executed:
         return {
             "status": "error",
@@ -141,7 +106,9 @@ def run_pipeline(
     dimension_cols = set(plan.group_by)
     if plan.chart is not None and plan.chart.color:
         dimension_cols.add(plan.chart.color)
-    effective_types = dict(record.schema)
+    # Start from the cleaned types: a column cast to a number in preprocessing must
+    # reach the chart encoder as a number, or it would be plotted as a text axis.
+    effective_types = {**record.schema, **plan.preprocessing_type_overrides()}
     for c in coded & dimension_cols:
         effective_types[c] = "categorical"
     for d in plan.derive:

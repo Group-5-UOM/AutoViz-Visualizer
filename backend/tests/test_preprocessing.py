@@ -5,6 +5,7 @@ and fixed, so every assertion checks an exact, known effect.
 """
 
 from autoviz.errors import INVALID_PLAN
+from autoviz.schema.analysis_plan import AnalysisPlan
 from autoviz.services import dataset
 from autoviz.services.execution import execute_analysis, preprocessing_impact
 from autoviz.services.validation import validate_analysis_plan
@@ -14,6 +15,16 @@ def _plan(ds, **extra):
     base = {"dataset_id": ds, "intent": "comparison"}
     base.update(extra)
     return base
+
+
+def _approved(ds, plan):
+    """The consent token for `plan`'s cleaning block against dataset `ds`.
+
+    Tests that mean to exercise the *mechanics* of a large row removal have to
+    supply consent explicitly — execute_analysis refuses an unapproved one. That
+    refusal is the subject of its own tests in test_preprocessing_gate.py.
+    """
+    return AnalysisPlan.model_validate(plan).preprocessing_version(ds)
 
 
 # --- profiling ----------------------------------------------------------------
@@ -54,7 +65,10 @@ def test_drop_nulls_any_removes_rows_with_any_null(registry, nulls_id):
         preprocessing=[{"op": "drop_nulls", "columns": ["cls", "fare"], "how": "any"}],
         select=["cls", "fare"],
     )
-    out = execute_analysis(nulls_id, plan, registry)
+    # 4/10 = 40% removed, so this needs consent; the gate itself is tested separately.
+    out = execute_analysis(
+        nulls_id, plan, registry, approved_preprocessing_hash=_approved(nulls_id, plan)
+    )
     assert "error" not in out, out
     assert out["input_rows"] == 10
     assert out["output_rows"] == 6  # 4 rows dropped (cls-null or fare-null)
@@ -134,7 +148,10 @@ def test_drop_exact_duplicates(registry, tmp_path):
     p.write_text("a,b\n1,x\n1,x\n2,y\n1,x\n")  # 3 identical (1,x) rows
     ds = dataset.register_dataset(p.as_posix(), registry)["dataset_id"]
     plan = _plan(ds, preprocessing=[{"op": "drop_exact_duplicates"}], select=["a", "b"])
-    out = execute_analysis(ds, plan, registry)
+    # 2/4 = 50% removed — consent required.
+    out = execute_analysis(
+        ds, plan, registry, approved_preprocessing_hash=_approved(ds, plan)
+    )
     assert out["input_rows"] == 4 and out["output_rows"] == 2
     assert out["preprocessing"][0]["rows_affected"] == 2
 

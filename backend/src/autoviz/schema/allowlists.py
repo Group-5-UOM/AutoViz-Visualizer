@@ -6,6 +6,8 @@ MVP subsets were widened once date-range/set filters and distribution charts
 were needed.
 """
 
+from enum import Enum
+
 FILTER_OPS = frozenset(
     {"eq", "neq", "gt", "gte", "lt", "lte", "in", "between", "contains", "is_null", "is_not_null"}
 )
@@ -63,9 +65,31 @@ LIST_VALUE_OPS = frozenset({"in", "between"})
 MAX_IN_VALUES = 20
 
 # --- Preprocessing (explicit, provenance-tracked cleaning) --------------------
-# The closed set of cleaning operations. drop_nulls / drop_exact_duplicates remove
-# rows (and so can trip the confirmation gate); fill_nulls imputes and never does.
-PREPROCESS_OPS = frozenset({"drop_nulls", "fill_nulls", "drop_exact_duplicates"})
+# The closed set of cleaning operations is the PreprocessOp union in
+# schema/analysis_plan.py — the models carry their own row/risk behaviour, so a
+# parallel name list here would only be a second thing to forget to update.
+
+
+class Risk(str, Enum):
+    """How far a cleaning op can move the answer — the primary consent axis.
+
+    Percentage is the *secondary* axis: it escalates within a tier (see
+    ROW_DROP_CONFIRM_FRACTION) but never demotes one. Changing 1% of a revenue
+    column can move a total materially, while trimming whitespace from 80% of
+    category labels changes nothing — so "how many rows" cannot decide consent
+    on its own.
+    """
+
+    # Semantics-preserving. The corrected data means what the original meant, so
+    # this is applied automatically and reported, never asked about.
+    SAFE = "safe"
+    # Alters values or row membership, and so can alter the result. Always
+    # confirmed, at any fraction of rows — including below 5%.
+    VALUE_CHANGING = "value_changing"
+    # Correctness is not determinable from the data alone (e.g. a fuzzily-inferred
+    # category merge). Never auto-proposed at any percentage; only ever applied
+    # when the user asked for it explicitly.
+    AMBIGUOUS = "ambiguous"
 
 # Imputation strategies, split by the column type each is valid on. mean is
 # deliberately excluded from the MVP (sensitive to outliers).
@@ -79,6 +103,14 @@ CONSTANT_STRATEGY = "constant"                      # any column type
 MAX_PREPROCESSING_STEPS = 10
 MAX_PREPROCESSING_COLUMNS = 20
 MAX_FILL_STRING_LEN = 256
+
+# Category cleaning. An explicit mapping is one CASE arm per entry, so the cap
+# bounds both the generated SQL and how much relabelling can happen in one
+# unreviewable step.
+MAX_CATEGORY_MAPPING = 50
+# Ceiling on `group_rare_categories.top_n`. Past this the chart is unreadable
+# anyway, which is the problem the op exists to solve.
+MAX_TOP_CATEGORIES = 50
 
 # Missing-value heuristic thresholds (fractions of input rows). Configurable
 # heuristics, not fixed statistical rules — see execution.py / plan_guide.py.

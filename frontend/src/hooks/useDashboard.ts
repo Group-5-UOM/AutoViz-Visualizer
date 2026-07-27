@@ -1,6 +1,18 @@
 import { useCallback, useRef, useState } from 'react';
 import type { ChartWidget, ChatMessage, DashboardState } from '../types/dashboard';
-import { analyze, answerClarification, type AgentResponse } from '../lib/agent';
+import {
+  analyze,
+  answerClarification,
+  isCleaningOptions,
+  type AgentResponse,
+} from '../lib/agent';
+
+/** Used only when the backend somehow pauses without a question of its own. */
+const FALLBACK_QUESTION: Record<string, string> = {
+  clarification: 'Could you clarify your request?',
+  cleaning_choice: 'How should I handle a data-quality issue in this dataset?',
+  confirmation: 'Please confirm before I continue.',
+};
 import { widgetsFromAgent } from '../lib/chartWidgets';
 import { ApiError } from '../lib/api';
 
@@ -71,12 +83,18 @@ export function useDashboard(datasetId: string | null) {
       if (res.status === 'waiting_for_user') {
         awaitingAnswer.current = true;
         pushAssistant({
-          content:
-            res.question ??
-            (res.pause_kind === 'confirmation'
-              ? 'Please confirm before I continue.'
-              : 'Could you clarify your request?'),
-          options: res.options ?? [],
+          content: res.question ?? FALLBACK_QUESTION[res.pause_kind],
+          // A cleaning choice arrives as objects carrying the row counts and the
+          // recommendation; the other two pauses are plain strings. Normalising
+          // here keeps the chat component with one shape to render.
+          options: isCleaningOptions(res)
+            ? res.options.map((o) => ({
+                label: o.label,
+                detail: o.detail,
+                technique: o.technique,
+                recommended: o.recommended,
+              }))
+            : ((res.options ?? []) as string[]).map((label) => ({ label })),
         });
         return;
       }

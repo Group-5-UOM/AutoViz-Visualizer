@@ -161,7 +161,40 @@
   cursor: default;
 }
 
-/* Grounded answers offered alongside a clarification question. */
+/* The suggested answer to a cleaning question. Marked rather than preselected:
+   the choice still has to be the user's, but a novice should be able to see
+   which one to take without understanding the technique behind it. */
+.suggestion-chip--recommended {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.suggestion-chip__label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.suggestion-chip__badge {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* What the choice costs, in this dataset's real row counts. */
+.suggestion-chip__detail {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+/* Grounded answers offered alongside a question. */
 .chat-options {
   display: flex;
   flex-direction: column;

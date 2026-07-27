@@ -247,6 +247,33 @@ def register_dataset(
             f"Dataset has {len(df)} rows; the limit is {MAX_ROWS}.",
         )
 
+    record = build_record(df, str(path), registry)
+    registry.add(record)
+    return {
+        "dataset_id": record.dataset_id,
+        "row_count": int(len(df)),
+        "column_count": int(len(df.columns)),
+    }
+
+
+def build_record(
+    df: pd.DataFrame,
+    source: str,
+    registry: DatasetRegistry,
+    *,
+    lineage: dict[str, Any] | None = None,
+) -> DatasetRecord:
+    """Type, profile, and identify a frame as a registered dataset.
+
+    Shared by ``register_dataset`` and by materialisation so a derived dataset is
+    profiled by exactly the same code as an uploaded one — a cleaned copy that
+    reported its nulls differently from a fresh upload of the same rows would be
+    worse than useless.
+
+    ``lineage`` is stored inside the profile rather than as its own record field
+    so it survives the existing Parquet-blob round trip (``storage/blobs.py``
+    persists ``profile_json``) without a schema migration.
+    """
     df = _coerce_datetimes(df)
     schema = {col: _logical_type(df[col]) for col in df.columns}
     categorical_numeric = _categorical_numeric_columns(df, schema)
@@ -254,20 +281,16 @@ def register_dataset(
     # Surface the coded-category signal to the planner too (real names untouched
     # in the record; the copy emitted to the LLM is neutralized like the rest).
     profile["categorical_numeric"] = [neutralize_text(c) for c in categorical_numeric]
-    record = DatasetRecord(
-        dataset_id=registry.new_id(str(path)),
-        source=str(path),
+    if lineage is not None:
+        profile["lineage"] = lineage
+    return DatasetRecord(
+        dataset_id=registry.new_id(source),
+        source=source,
         df=df,
         schema=schema,
         profile=profile,
         categorical_numeric=categorical_numeric,
     )
-    registry.add(record)
-    return {
-        "dataset_id": record.dataset_id,
-        "row_count": int(len(df)),
-        "column_count": int(len(df.columns)),
-    }
 
 
 def list_datasets(registry: DatasetRegistry = REGISTRY) -> dict[str, Any]:

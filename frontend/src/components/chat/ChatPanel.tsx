@@ -81,13 +81,28 @@ export function ChatPanel({
               <div className="chat-options">
                 {msg.options.map((option) => (
                   <button
-                    key={option}
+                    key={option.label}
                     type="button"
-                    className="suggestion-chip"
+                    className={
+                      option.recommended
+                        ? 'suggestion-chip suggestion-chip--recommended'
+                        : 'suggestion-chip'
+                    }
                     disabled={isThinking || disabled}
-                    onClick={() => onSend(option)}
+                    // The label is the reply the backend matches on, so it is
+                    // sent exactly as shown.
+                    onClick={() => onSend(option.label)}
+                    title={option.technique}
                   >
-                    {option}
+                    <span className="suggestion-chip__label">
+                      {option.label}
+                      {option.recommended && (
+                        <span className="suggestion-chip__badge">Recommended</span>
+                      )}
+                    </span>
+                    {option.detail && (
+                      <span className="suggestion-chip__detail">{option.detail}</span>
+                    )}
                   </button>
                 ))}
               </div>

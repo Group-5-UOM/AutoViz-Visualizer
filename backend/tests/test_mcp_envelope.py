@@ -233,4 +233,4 @@ def test_plan_guide_is_published_as_a_resource():
 def test_advanced_profile_exposes_every_tool():
     names = {t.name for t in asyncio.run(mcp.list_tools())}
     assert names == {fn.__name__ for fn, _ in PROFILES["advanced"]}
-    assert len(names) == 14
+    assert len(names) == 17

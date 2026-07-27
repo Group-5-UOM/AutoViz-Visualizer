@@ -103,8 +103,9 @@ class AgentService:
                 "status": "waiting_for_user",
                 "question": pending.get("question"),
                 "options": pending.get("options", []),
-                # Both a clarification and a preprocessing confirmation pause here;
-                # without this a caller cannot tell which decision it is making.
+                # Three different decisions pause here (clarification, cleaning
+                # choice, row-removal confirmation); without this a caller cannot
+                # tell which one it is making.
                 "pause_kind": pending.get("pause_kind", "clarification"),
                 "thread_id": thread_id,
             }
@@ -112,6 +113,12 @@ class AgentService:
                 shaped["preprocessing_hash"] = pending["preprocessing_hash"]
             if pending.get("impact") is not None:
                 shaped["impact"] = pending["impact"]
+            # cleaning_choice extras: which finding is being decided, so a host can
+            # show the counts alongside the options rather than just a question.
+            if pending.get("slot") is not None:
+                shaped["slot"] = pending["slot"]
+            if pending.get("issue") is not None:
+                shaped["issue"] = pending["issue"]
             return shaped
         final = state.get("final_response") or {
             "status": state.get("status", "failed"),

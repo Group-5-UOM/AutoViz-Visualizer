@@ -115,3 +115,68 @@ def test_delete_dataset(api_db):
     d = client.delete(f"/datasets/{ds}", headers=_auth(token))
     assert d.status_code == 200 and d.json()["removed"] is True
     assert client.get(f"/datasets/{ds}/schema", headers=_auth(token)).status_code == 404
+
+
+def test_materialize_cleaned_dataset_survives_a_cold_registry(api_db):
+    """A cleaned copy is persisted like an upload, not left in memory.
+
+    `_app_with_registry` gives every request an empty registry, so the reads after
+    the POST can only succeed if the derived frame reached the Parquet blob. A
+    dataset the user now owns that vanished on eviction would be worse than one
+    that was never offered.
+    """
+    client = TestClient(_app_with_registry())
+    token = _token(client, "cleaner@example.com")
+
+    csv = b"dept,salary\n Eng ,100\neng,200\nENG,300\nSales,400\n"
+    up = client.post(
+        "/datasets/upload",
+        files={"file": ("staff.csv", csv, "text/csv")},
+        headers=_auth(token),
+    )
+    parent = up.json()["dataset_id"]
+
+    res = client.post(
+        f"/datasets/{parent}/cleaned",
+        json={
+            "preprocessing": [
+                {"op": "trim_whitespace", "columns": ["dept"]},
+                {"op": "normalize_case", "column": "dept"},
+            ]
+        },
+        headers=_auth(token),
+    )
+    assert res.status_code == 201, res.json()
+    body = res.json()
+    assert body["parent_id"] == parent
+    assert body["version_id"].startswith("pp_")
+    cleaned = body["dataset_id"]
+
+    # Both datasets are listed, and the parent still has its original values.
+    names = {d["dataset_id"] for d in client.get("/datasets", headers=_auth(token)).json()["datasets"]}
+    assert {parent, cleaned} <= names
+
+    rows = client.get(f"/datasets/{cleaned}/preview", headers=_auth(token)).json()["rows"]
+    assert {r["dept"] for r in rows} == {"eng", "sales"}
+
+    original = client.get(f"/datasets/{parent}/preview", headers=_auth(token)).json()["rows"]
+    assert " Eng " in {r["dept"] for r in original}
+
+
+def test_cannot_clean_someone_elses_dataset(api_db):
+    client = TestClient(_app_with_registry())
+    owner = _token(client, "owner2@example.com")
+    intruder = _token(client, "intruder2@example.com")
+
+    up = client.post(
+        "/datasets/upload",
+        files={"file": ("titanic.csv", _titanic_bytes(), "text/csv")},
+        headers=_auth(owner),
+    )
+    ds = up.json()["dataset_id"]
+    res = client.post(
+        f"/datasets/{ds}/cleaned",
+        json={"preprocessing": [{"op": "drop_empty_rows"}]},
+        headers=_auth(intruder),
+    )
+    assert res.status_code == 403
