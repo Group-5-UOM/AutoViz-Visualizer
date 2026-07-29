@@ -222,6 +222,67 @@ def test_tool_descriptions_stay_small():
     assert total < 6000, f"tool descriptions grew to {total} chars"
 
 
+def test_a_cleaning_pause_survives_the_analyze_output_model():
+    """AnalyzeOutput forbids extra keys, so every pause field must be declared.
+
+    A cleaning_choice pause carries option objects, a slot and an issue — none of
+    which the model used to know about, so unwrap() raised on the whole envelope
+    and the host saw a crash instead of a question.
+    """
+    from autoviz.mcp.envelope import unwrap
+    from autoviz.mcp.results import AnalyzeOutput
+
+    out = unwrap(
+        {
+            "status": "waiting_for_user",
+            "thread_id": "th_x",
+            "question": "How should I handle the missing departments?",
+            "options": [
+                {
+                    "label": "Exclude those rows",
+                    "detail": "Calculates the result using 8 of 10 rows.",
+                    "technique": "drop_nulls on 'dept'",
+                    "recommended": True,
+                }
+            ],
+            "pause_kind": "cleaning_choice",
+            "slot": "missing:dept",
+            "issue": {"kind": "missing_values", "column": "dept", "affected": 2, "fraction": 0.2},
+            "interrupt_id": "abc123",
+            "pending_count": 2,
+        },
+        AnalyzeOutput,
+    )
+
+    assert out.pause_kind == "cleaning_choice"
+    assert out.slot == "missing:dept"
+    assert out.issue.column == "dept"
+    assert out.options[0].recommended is True
+    assert out.interrupt_id == "abc123" and out.pending_count == 2
+
+
+def test_a_confirmation_pause_still_uses_plain_string_options():
+    from autoviz.mcp.envelope import unwrap
+    from autoviz.mcp.results import AnalyzeOutput
+
+    out = unwrap(
+        {
+            "status": "waiting_for_user",
+            "thread_id": "th_y",
+            "question": "This cleaning step would remove 4 of 10 rows (40.0%). Proceed?",
+            "options": ["Proceed with cleaning", "Skip cleaning (keep all rows)"],
+            "pause_kind": "confirmation",
+            "preprocessing_hash": "pp_abc",
+            "interrupt_id": "def456",
+            "pending_count": 1,
+        },
+        AnalyzeOutput,
+    )
+
+    assert out.options == ["Proceed with cleaning", "Skip cleaning (keep all rows)"]
+    assert out.pause_kind == "confirmation"
+
+
 def test_plan_guide_is_published_as_a_resource():
     uris = {str(r.uri) for r in asyncio.run(mcp.list_resources())}
     assert "autoviz://docs/analysis-plan-guide" in uris

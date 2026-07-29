@@ -81,6 +81,16 @@ export interface AgentWaiting {
   /** cleaning_choice only: which finding is being decided. */
   slot?: string;
   issue?: QualityIssue;
+  /**
+   * Which decision this is. Parallel workers can pause on several at once, so
+   * only one is presented at a time: `pending_count` is how many are queued
+   * (this one included) and `interrupt_id` must be sent back with the answer so
+   * it reaches the workers that asked it rather than whichever paused first.
+   */
+  interrupt_id?: string;
+  pending_count?: number;
+  /** The answered decision was already resolved; nothing was consumed. */
+  stale_answer?: boolean;
   thread_id: string;
 }
 
@@ -117,13 +127,22 @@ export async function analyze(
   });
 }
 
-/** Resume a run paused on a clarification or a preprocessing confirmation. */
+/**
+ * Resume a run paused on a clarification, a cleaning choice or a preprocessing
+ * confirmation. Pass the `interrupt_id` from the pause being answered; omitting
+ * it answers whichever decision is currently at the head of the queue.
+ */
 export async function answerClarification(
   threadId: string,
   answer: string,
+  interruptId?: string | null,
 ): Promise<AgentResponse> {
   return apiRequest<AgentResponse>('/agent/answer', {
     method: 'POST',
-    body: { thread_id: threadId, answer },
+    body: {
+      thread_id: threadId,
+      answer,
+      ...(interruptId ? { interrupt_id: interruptId } : {}),
+    },
   });
 }

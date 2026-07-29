@@ -317,9 +317,14 @@ class AnalyzeOutput(_Strict):
     """The agent workflow's two non-terminal outcomes.
 
     A run that failed outright leaves as isError: true, so ``completed`` here
-    means at least one chart is usable. ``waiting_for_user`` covers both pause
-    kinds; read ``pause_kind`` to tell a clarification question apart from a
-    preprocessing confirmation, and answer either with ``answer_clarification``.
+    means at least one chart is usable. ``waiting_for_user`` covers all three
+    pause kinds; read ``pause_kind`` to tell a clarification question apart from
+    a cleaning choice or a preprocessing confirmation, and answer any of them
+    with ``answer_clarification``.
+
+    Parallel workers can pause on several independent decisions at once. Only
+    one is presented at a time: ``pending_count`` is how many are queued and
+    ``interrupt_id`` names this one, so the answer lands where it was asked.
     """
 
     status: Literal["completed", "waiting_for_user"]
@@ -328,7 +333,19 @@ class AnalyzeOutput(_Strict):
     charts: list[ChartResult] = []
     # waiting_for_user only.
     question: str | None = None
-    options: list[str] = []
-    pause_kind: Literal["clarification", "confirmation"] | None = None
+    # Plain strings for clarification/confirmation; cleaning choices carry their
+    # row counts and recommendation on each option.
+    options: list[str] | list[CleaningOptionOutput] = []
+    pause_kind: Literal["clarification", "cleaning_choice", "confirmation"] | None = None
     preprocessing_hash: str | None = None
     impact: PreprocessingImpact | None = None
+    # cleaning_choice only: which finding is being decided.
+    slot: str | None = None
+    issue: QualityIssueOutput | None = None
+    # Pass interrupt_id back to answer_clarification; call again while
+    # pending_count stays above 1.
+    interrupt_id: str | None = None
+    pending_count: int = 0
+    # Set when the answered decision was already resolved: nothing was consumed
+    # and the question below is what is actually pending.
+    stale_answer: bool = False

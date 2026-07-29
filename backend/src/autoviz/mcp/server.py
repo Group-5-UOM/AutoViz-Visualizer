@@ -379,11 +379,12 @@ async def analyze(
     executes it deterministically, and returns charts plus a grounded summary.
 
     Pass dataset_id (from register_dataset) or file_ref (a CSV to register).
-    Multi-part requests fan out into up to 3 charts. Reuse the returned
+    Multi-part requests fan out into up to 6 charts. Reuse the returned
     thread_id to refine previous results ("same but only 2015"). If the result
     is {status: "waiting_for_user"}, answer with answer_clarification — check
     pause_kind to see whether you are answering a clarifying question or
-    approving a data-cleaning step.
+    approving a data-cleaning step, and pass back interrupt_id so the answer
+    reaches the right one when pending_count is above 1.
     Requires a planner LLM key (GOOGLE_API_KEY by default); the granular tools
     remain the host-LLM path and need no key.
     """
@@ -402,10 +403,18 @@ async def analyze(
 
 
 @observed
-def answer_clarification(thread_id: str, answer: str) -> AnalyzeOutput:
+def answer_clarification(
+    thread_id: str, answer: str, interrupt_id: str | None = None
+) -> AnalyzeOutput:
     """Resume an analyze() run that paused with {status: "waiting_for_user"},
-    supplying the user's answer to its clarification or confirmation question."""
-    return unwrap(_get_agent().resume(thread_id, answer), AnalyzeOutput)
+    supplying the user's answer to its clarification, cleaning or confirmation
+    question.
+
+    Pass back the interrupt_id from the pause you are answering. When
+    pending_count is above 1 the run is paused on several independent decisions:
+    answer them one at a time, calling again with each new interrupt_id until
+    the status is no longer "waiting_for_user"."""
+    return unwrap(_get_agent().resume(thread_id, answer, interrupt_id), AnalyzeOutput)
 
 
 # --- resources and prompts --------------------------------------------------
