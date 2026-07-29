@@ -1,11 +1,17 @@
-import { useCallback, useRef, useState } from 'react';
-import type { ChartWidget, ChatMessage, DashboardState } from '../types/dashboard';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type {
+  ChartWidget,
+  ChatMessage,
+  DashboardState,
+  SaveStatus,
+} from '../types/dashboard';
 import {
   analyze,
   answerClarification,
   isCleaningOptions,
   type AgentResponse,
 } from '../lib/agent';
+import { defaultDashboardName, persistSignature, syncDashboard } from '../lib/dashboardSync';
 
 /** Used only when the backend somehow pauses without a question of its own. */
 const FALLBACK_QUESTION: Record<string, string> = {
@@ -19,6 +25,13 @@ import { ApiError } from '../lib/api';
 const WELCOME =
   'Hi! Ask me a question about your dataset — for example “average price by category” or “how has revenue changed over time”. I run the query on your data and put the chart on the canvas.';
 
+/**
+ * How long the canvas has to sit still before it is saved. Dragging a chart
+ * fires `onMove` on every pointer frame, so without this a single drag across
+ * the canvas would be a hundred PUTs.
+ */
+const AUTOSAVE_DELAY_MS = 1500;
+
 function uid(prefix: string) {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
 }
@@ -29,7 +42,7 @@ function errorText(err: unknown): string {
   return 'Something went wrong talking to the server.';
 }
 
-export function useDashboard(datasetId: string | null) {
+export function useDashboard(datasetId: string | null, datasetFileName?: string | null) {
   const [dashboard, setDashboard] = useState<DashboardState>({
     widgets: [],
     selectedWidgetId: null,
@@ -54,12 +67,27 @@ export function useDashboard(datasetId: string | null) {
   // rather than on top of one the user kept.
   const placedCount = useRef(0);
 
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // The signature of what the server is known to hold. Everything else about
+  // autosave follows from comparing this to the canvas.
+  const baseline = useRef<string | null>(null);
+  // Checked synchronously before the first await: two overlapping first saves
+  // would each POST /dashboards and leave the user with a duplicate board.
+  const inFlight = useRef(false);
+  const saveTimer = useRef<number | null>(null);
+  // A failed save stops the timer rather than retrying forever against a
+  // backend that is down. Pressing Save clears it.
+  const retryBlocked = useRef(false);
+  // Read by the debounce callback, which fires long after the render that
+  // scheduled it and must save what is on the canvas now.
+  const dashboardRef = useRef(dashboard);
+  const datasetRef = useRef({ id: datasetId, fileName: datasetFileName });
+
   const selectWidget = useCallback((id: string | null) => {
     setDashboard((prev) => ({ ...prev, selectedWidgetId: id }));
-  }, []);
-
-  const setDashboardMeta = useCallback((dashboardId: string, dashboardName: string) => {
-    setDashboard((prev) => ({ ...prev, dashboardId, dashboardName }));
   }, []);
 
   const updateWidget = useCallback((id: string, patch: Partial<ChartWidget>) => {
@@ -177,44 +205,191 @@ export function useDashboard(datasetId: string | null) {
     [datasetId, applyResponse, pushAssistant],
   );
 
+  // --- persistence ----------------------------------------------------------
+
+  const cancelPendingSave = useCallback(() => {
+    if (saveTimer.current !== null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+  }, []);
+
+  /**
+   * One pass at pushing the canvas to the server.
+   *
+   * `nameOverride` exists for the rename path: `setDashboard` has not flushed
+   * by the time this runs, so the new name has to be handed over rather than
+   * read back off the mirror ref.
+   */
+  const runSave = useCallback(async (nameOverride?: string) => {
+    // A save is already going. The scheduler re-checks when it lands, so
+    // dropping this attempt loses nothing and never doubles up a request.
+    if (inFlight.current) return;
+
+    const live = dashboardRef.current;
+    const snapshot: DashboardState = nameOverride
+      ? { ...live, dashboardName: nameOverride, nameIsAuto: false }
+      : live;
+    // An untouched canvas is not worth a dashboard row.
+    if (snapshot.widgets.length === 0 && !snapshot.dashboardId) return;
+
+    // Captured before the await so that edits made while the request is in
+    // flight stay dirty: the baseline may only claim what was actually sent.
+    const sent = persistSignature(snapshot);
+    const wasNew = !snapshot.dashboardId;
+    const { id, fileName } = datasetRef.current;
+
+    inFlight.current = true;
+    setSaveStatus('saving');
+    setSaveError(null);
+    try {
+      const result = await syncDashboard(snapshot, id, defaultDashboardName(fileName));
+      baseline.current = sent;
+      retryBlocked.current = false;
+      setDashboard((prev) => ({
+        ...prev,
+        dashboardId: result.dashboardId,
+        dashboardName: result.name,
+        nameIsAuto: prev.nameIsAuto ?? wasNew,
+        widgets: prev.widgets.map((w) =>
+          result.newChartIds[w.id] ? { ...w, backendChartId: result.newChartIds[w.id] } : w,
+        ),
+      }));
+      setLastSavedAt(Date.now());
+      setSaveStatus('saved');
+    } catch (err) {
+      // The baseline is left stale on purpose — the change really is unsaved,
+      // so Retry re-sends it instead of declaring victory over it.
+      retryBlocked.current = true;
+      setSaveError(errorText(err));
+      setSaveStatus('error');
+    } finally {
+      inFlight.current = false;
+    }
+  }, []);
+
+  /**
+   * Autosave scheduler — the single place that decides "the canvas differs
+   * from what the server has".
+   *
+   * `saveStatus` is a dependency because this has to re-decide when a save
+   * lands, not only when the canvas changes: an edit made mid-save is skipped
+   * below, and the status settling back is what brings it round again.
+   */
+  useEffect(() => {
+    dashboardRef.current = dashboard;
+    datasetRef.current = { id: datasetId, fileName: datasetFileName };
+
+    const nothingToSave = dashboard.widgets.length === 0 && !dashboard.dashboardId;
+    if (nothingToSave || persistSignature(dashboard) === baseline.current) return;
+
+    setSaveStatus((prev) => (prev === 'idle' || prev === 'saved' ? 'dirty' : prev));
+    // A save in flight comes back through here when it finishes. A failed one
+    // waits for the user instead of hammering a backend that is down every
+    // couple of seconds.
+    if (inFlight.current || retryBlocked.current) return;
+
+    cancelPendingSave();
+    saveTimer.current = window.setTimeout(() => {
+      saveTimer.current = null;
+      void runSave();
+    }, AUTOSAVE_DELAY_MS);
+  }, [dashboard, datasetId, datasetFileName, saveStatus, cancelPendingSave, runSave]);
+
+  useEffect(() => cancelPendingSave, [cancelPendingSave]);
+
+  useEffect(() => {
+    if (saveStatus !== 'dirty' && saveStatus !== 'saving' && saveStatus !== 'error') return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [saveStatus]);
+
+  /** Flush now — the Save button, and anything about to replace the canvas. */
+  const saveNow = useCallback(
+    async (nameOverride?: string) => {
+      cancelPendingSave();
+      retryBlocked.current = false;
+      await runSave(nameOverride);
+    },
+    [cancelPendingSave, runSave],
+  );
+
+  /** Name the dashboard and persist it straight away. */
+  const renameDashboard = useCallback(
+    (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      setDashboard((prev) => ({ ...prev, dashboardName: trimmed, nameIsAuto: false }));
+      void saveNow(trimmed);
+    },
+    [saveNow],
+  );
+
   const loadDashboardState = useCallback(
     (dashboardId: string, dashboardName: string, widgets: ChartWidget[]) => {
+      cancelPendingSave();
       threadId.current = null;
       awaitingAnswer.current = false;
       pendingInterruptId.current = null;
       placedCount.current = widgets.length;
-      setDashboard({
+      const next: DashboardState = {
         widgets,
         selectedWidgetId: widgets.length > 0 ? widgets[0].id : null,
         dashboardId,
         dashboardName,
-      });
+        nameIsAuto: false,
+      };
+      // This is, by definition, exactly what the server holds. Without seeding
+      // the baseline, opening a dashboard would immediately save it back.
+      baseline.current = persistSignature(next);
+      dashboardRef.current = next;
+      retryBlocked.current = false;
+      setDashboard(next);
+      setSaveStatus('saved');
+      setSaveError(null);
+      setLastSavedAt(null);
       setMessages([
         { id: uid('msg'), role: 'assistant', content: `Loaded dashboard: ${dashboardName}`, timestamp: Date.now() },
       ]);
     },
-    []
+    [cancelPendingSave]
   );
 
   /** Drop canvas + conversation state when a different dataset is uploaded. */
   const resetForDataset = useCallback(() => {
+    cancelPendingSave();
     threadId.current = null;
     awaitingAnswer.current = false;
     pendingInterruptId.current = null;
     placedCount.current = 0;
-    setDashboard({ widgets: [], selectedWidgetId: null, dashboardId: undefined, dashboardName: undefined });
+    const next: DashboardState = { widgets: [], selectedWidgetId: null };
+    baseline.current = persistSignature(next);
+    dashboardRef.current = next;
+    retryBlocked.current = false;
+    setDashboard(next);
+    setSaveStatus('idle');
+    setSaveError(null);
+    setLastSavedAt(null);
     setMessages([{ id: uid('msg'), role: 'assistant', content: WELCOME, timestamp: Date.now() }]);
-  }, []);
+  }, [cancelPendingSave]);
 
   return {
     dashboard,
     messages,
     isThinking,
+    saveStatus,
+    lastSavedAt,
+    saveError,
     selectWidget,
-    setDashboardMeta,
     updateWidget,
     deleteWidget,
     sendMessage,
+    saveNow,
+    renameDashboard,
     loadDashboardState,
     resetForDataset,
   };

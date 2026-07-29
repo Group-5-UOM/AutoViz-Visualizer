@@ -49,4 +49,18 @@ export interface DashboardState {
   selectedWidgetId: string | null;
   dashboardId?: string;
   dashboardName?: string;
+  /**
+   * The name was invented by autosave rather than chosen. Set while a board is
+   * still called something like "Titanic", cleared once the user names it —
+   * which is how Save knows to ask for a name exactly once.
+   */
+  nameIsAuto?: boolean;
 }
+
+/**
+ * Where the canvas stands relative to the server.
+ *
+ * `error` is sticky: autosave stops retrying on a timer so a dead backend is
+ * not hammered every couple of seconds, and the Save button re-arms it.
+ */
+export type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
