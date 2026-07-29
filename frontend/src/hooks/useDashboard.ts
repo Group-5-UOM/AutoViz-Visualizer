@@ -45,6 +45,10 @@ export function useDashboard(datasetId: string | null) {
   // Set while a run is paused on a question — the next message resumes that run
   // via /agent/answer instead of starting a new analysis.
   const awaitingAnswer = useRef(false);
+  // Which paused decision the question on screen belongs to. Parallel workers
+  // can pause on several at once, so the answer has to name the one it is for
+  // rather than landing on whichever the backend happens to reach first.
+  const pendingInterruptId = useRef<string | null>(null);
   // Monotonic slot counter for canvas placement. It deliberately does not
   // decrease when a widget is deleted, so a new chart lands in a free slot
   // rather than on top of one the user kept.
@@ -86,8 +90,14 @@ export function useDashboard(datasetId: string | null) {
 
       if (res.status === 'waiting_for_user') {
         awaitingAnswer.current = true;
+        pendingInterruptId.current = res.interrupt_id ?? null;
+        const question = res.question ?? FALLBACK_QUESTION[res.pause_kind];
+        // Several independent decisions are queued: say so, or answering the
+        // first one looks like the run stalled when the next question appears.
+        const position =
+          res.pending_count && res.pending_count > 1 ? `(1 of ${res.pending_count}) ` : '';
         pushAssistant({
-          content: res.question ?? FALLBACK_QUESTION[res.pause_kind],
+          content: `${position}${question}`,
           // A cleaning choice arrives as objects carrying the row counts and the
           // recommendation; the other two pauses are plain strings. Normalising
           // here keeps the chat component with one shape to render.
@@ -104,6 +114,7 @@ export function useDashboard(datasetId: string | null) {
       }
 
       awaitingAnswer.current = false;
+      pendingInterruptId.current = null;
 
       if (res.status === 'failed') {
         const detail = res.errors?.length
@@ -152,7 +163,7 @@ export function useDashboard(datasetId: string | null) {
       try {
         const res =
           awaitingAnswer.current && threadId.current
-            ? await answerClarification(threadId.current, trimmed)
+            ? await answerClarification(threadId.current, trimmed, pendingInterruptId.current)
             : await analyze(trimmed, datasetId, threadId.current);
         applyResponse(res);
       } catch (err) {
@@ -170,6 +181,7 @@ export function useDashboard(datasetId: string | null) {
     (dashboardId: string, dashboardName: string, widgets: ChartWidget[]) => {
       threadId.current = null;
       awaitingAnswer.current = false;
+      pendingInterruptId.current = null;
       placedCount.current = widgets.length;
       setDashboard({
         widgets,
@@ -188,6 +200,7 @@ export function useDashboard(datasetId: string | null) {
   const resetForDataset = useCallback(() => {
     threadId.current = null;
     awaitingAnswer.current = false;
+    pendingInterruptId.current = null;
     placedCount.current = 0;
     setDashboard({ widgets: [], selectedWidgetId: null, dashboardId: undefined, dashboardName: undefined });
     setMessages([{ id: uid('msg'), role: 'assistant', content: WELCOME, timestamp: Date.now() }]);

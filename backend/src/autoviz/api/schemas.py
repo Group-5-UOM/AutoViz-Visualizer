@@ -57,3 +57,6 @@ class AnalyzeRequest(BaseModel):
 class ClarificationRequest(BaseModel):
     thread_id: str
     answer: str
+    # Which paused decision this answers. Parallel workers can pause on several
+    # at once; omitted means "the one currently being presented".
+    interrupt_id: str | None = None

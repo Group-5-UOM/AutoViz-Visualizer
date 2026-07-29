@@ -19,7 +19,12 @@ CREDS = {"email": "agent@example.com", "password": "hunter2pw"}
 
 def _client_with_agent(planner, reg):
     app = create_app()
-    app.dependency_overrides[get_agent] = lambda: AgentService(planner=planner, registry=reg)
+    # One agent for the whole client, as in production (deps.get_agent is a
+    # singleton): a per-request instance would carry its own checkpointer, so a
+    # run paused by /agent/analyze would not exist by the time /agent/answer
+    # tried to resume it.
+    agent = AgentService(planner=planner, registry=reg)
+    app.dependency_overrides[get_agent] = lambda: agent
     # The routes' ownership gate must consult the same registry the agent uses.
     app.dependency_overrides[get_registry] = lambda: reg
     return TestClient(app)
@@ -85,3 +90,60 @@ def test_answer_without_paused_run_is_structured(api_db):
     )
     assert r.status_code == 200  # structured envelope, not an HTTP error
     assert r.json()["status"] == "failed"
+
+
+def _paused_client(api_db):
+    """A run parked on the row-removal gate, ready to be answered over HTTP."""
+    reg = DatasetRegistry()
+    plan = {
+        "intent": "comparison",
+        "preprocessing": [{"op": "drop_nulls", "columns": ["deck"], "how": "any"}],
+        "group_by": ["class"],
+        "aggregations": [{"column": "fare", "fn": "mean", "as": "avg_fare"}],
+    }
+    client = _client_with_agent(FakePlanner(plans=[plan]), reg)
+    headers = _auth(client)
+    ds = client.post(
+        "/datasets",
+        json={"file_ref": data_path("general-testing", "titanic.csv")},
+        headers=headers,
+    ).json()["dataset_id"]
+    paused = client.post(
+        "/agent/analyze",
+        json={"request": "avg fare by class without missing decks", "dataset_id": ds},
+        headers=headers,
+    ).json()
+    assert paused["status"] == "waiting_for_user", paused
+    return client, headers, paused
+
+
+def test_a_pause_carries_the_fields_needed_to_answer_it(api_db):
+    _, _, paused = _paused_client(api_db)
+    assert paused["interrupt_id"]
+    assert paused["pending_count"] >= 1
+
+
+def test_answer_accepts_an_interrupt_id(api_db):
+    client, headers, paused = _paused_client(api_db)
+    r = client.post(
+        "/agent/answer",
+        json={
+            "thread_id": paused["thread_id"],
+            "answer": "Skip cleaning (keep all rows)",
+            "interrupt_id": paused["interrupt_id"],
+        },
+        headers=headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "completed", r.json()
+
+
+def test_answer_without_an_interrupt_id_still_works(api_db):
+    client, headers, paused = _paused_client(api_db)
+    r = client.post(
+        "/agent/answer",
+        json={"thread_id": paused["thread_id"], "answer": "Skip cleaning (keep all rows)"},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "completed", r.json()

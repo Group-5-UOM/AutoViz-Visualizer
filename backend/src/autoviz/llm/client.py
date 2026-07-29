@@ -99,7 +99,7 @@ a JSON object:
  "clarification": {"question": "...", "options": ["...", ...]} | null}
 
 Rules:
-- Split multi-part requests into at most 3 independent tasks, each answerable with one chart.
+- Split multi-part requests into at most 6 independent tasks, each answerable with one chart.
   Rewrite each task so it stands alone (carry shared filters/context into every task).
 - "refinement" only when the request modifies a previous chart from the history (e.g. "make it
   a line chart", "same but only 2015"); still emit the full rewritten task(s).

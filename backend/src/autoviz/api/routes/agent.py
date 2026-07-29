@@ -2,8 +2,10 @@
 LangGraph workflow, Docs/08).
 
     POST /agent/analyze   -> {status, answer, charts, thread_id}
-                             or {status: "waiting_for_user", question, options, thread_id}
-    POST /agent/answer    -> resume a run paused on a clarification
+                             or {status: "waiting_for_user", question, options,
+                                 interrupt_id, pending_count, thread_id}
+    POST /agent/answer    -> resume a run paused on a clarification; echo back
+                             interrupt_id to answer a specific pending decision
 
 Requires GOOGLE_API_KEY for the real planner; tests inject a FakePlanner-backed
 AgentService via the get_agent dependency override. The agent always returns a
@@ -63,4 +65,4 @@ def answer(
     user: User = Depends(get_current_user),
     agent=Depends(get_agent),
 ):
-    return respond(agent.resume(body.thread_id, body.answer))
+    return respond(agent.resume(body.thread_id, body.answer, body.interrupt_id))
