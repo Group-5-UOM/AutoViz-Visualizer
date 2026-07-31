@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { LayoutDashboard, X, Calendar, Layers } from 'lucide-react';
 import { listDashboards, type DashboardResult } from '../../lib/dashboards';
 import './DashboardsPanel.css';
