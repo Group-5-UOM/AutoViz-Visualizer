@@ -2,6 +2,8 @@
 
 Real, public, permissively-licensed CSV datasets organized by domain, for testing AutoViz's upload, profiling, NL-query, and chart-generation pipeline against realistic tabular data. Pulled from `seaborn-data` (BSD-3), `vega-datasets` (BSD-3), `plotly/datasets` (MIT), and `Rdatasets` (mixed open licenses, see [source repo](https://github.com/vincentarelbundock/Rdatasets)) — all directly citable, stable GitHub-hosted sources. **38 files, ~5.7MB total.**
 
+> One exception: [`synthetic-quality/`](synthetic-quality/) holds **generated** fixtures with deliberately planted defects. Everything in the domain folders below is real and unmodified.
+
 > Rdatasets files originally include an R `rownames` index column, which was stripped on import — everything here reflects the real, unmodified data columns.
 
 ## Index
@@ -76,6 +78,18 @@ Classic ML/stats datasets — small, clean, well-known; useful as quick sanity-c
 | `titanic.csv` | 891 | 15 | Passenger survival data — **has missing values (age, embarked, deck)**, good for null-handling tests |
 | `penguins.csv` | 344 | 7 | Species measurements — **has missing values**, good for data-quality profiling tests |
 | `iris.csv` | 150 | 5 | Classic flower measurements — clean, no missing values, simplest baseline |
+
+### `synthetic-quality/` — **not real data**
+
+The one exception to everything above: generated fixtures whose defects are deliberate, so each
+trips exactly one path in the cleaning-disclosure and axis-scaling layers. See
+[`synthetic-quality/README.md`](synthetic-quality/README.md) for what each column is for and what
+it should produce.
+
+| File | Rows | Columns | Notes |
+|---|---|---|---|
+| `messy_sales.csv` | 246 | 11 | Case variants, whitespace, blanks, 14%/46% nulls, duplicates, 32-category column, and a 1-in-120 revenue outlier — every disclosure and axis-scaling path in one file |
+| `messy_sales_large.csv` | 205,000 | 11 | Same schema at ~14MB for throughput. **Not committed** — run `python test-data/synthetic-quality/generate.py` |
 
 ## Suggested use
 

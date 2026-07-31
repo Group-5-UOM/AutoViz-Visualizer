@@ -14,6 +14,11 @@ backend/exports/
 # Observability logs (per-call tool logging)
 backend/logs/
 
+# Generated throughput fixture (~14MB). Deterministic — rebuild with
+# `python test-data/synthetic-quality/generate.py`. The 240-row sibling is
+# committed; this one is too big to be worth versioning.
+test-data/synthetic-quality/messy_sales_large.csv
+
 # Environment files (secrets & API keys)
 .env
 *.env
