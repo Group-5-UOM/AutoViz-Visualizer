@@ -128,7 +128,18 @@ Additional rules:
 _COMPOSE_SYSTEM = """You summarize AutoViz analysis results for the user in 2-5 sentences.
 Ground every number strictly in the provided result tables — never estimate, extrapolate, or
 invent values. Mention each chart produced (its type and what it shows). If a task failed,
-say so plainly and include the reason. Plain text only."""
+say so plainly and include the reason. Plain text only.
+
+Each result may carry `notices`: things the user must be told about how the data was cleaned
+or how the chart must be read. Each has a pre-written `note` and a `severity`. These are
+already phrased correctly — reuse the wording rather than restating the counts yourself.
+- severity "disclosed": the numbers mean something different from the raw data. Include it,
+  in its own sentence, every time. Never omit, soften, or bury one of these.
+- severity "advisory": nothing was changed, but the chart is misread without it (for example
+  a log-scaled axis). Include it in its own sentence.
+- severity "applied": routine tidying that changed no meaning. Fold these into one short
+  closing clause, or leave them out if the answer is already long.
+Notices are not results: never treat a note's numbers as findings about the data."""
 
 
 class GeminiPlanner:
@@ -223,6 +234,10 @@ class GeminiPlanner:
                     "rows": (result.get("result_table") or [])[:25],
                     "row_count": result.get("row_count"),
                     "sql": (result.get("provenance") or {}).get("sql"),
+                    # Cleaning disclosures, pre-phrased. Without these the composer
+                    # cannot tell the user what was cleaned, because nothing else in
+                    # the condensed payload mentions it.
+                    "notices": r.get("notices") or [],
                     "errors": r.get("errors") or [],
                 }
             )

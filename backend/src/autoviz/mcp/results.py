@@ -150,6 +150,11 @@ class Provenance(_Strict):
     # never trips the row gate, but a mean over mostly-substituted values needs
     # to say so. Empty when nothing was imputed above the notice threshold.
     imputation_notices: list[dict[str, Any]] = []
+    # The disclosure channel: the same cleaning facts as the fields above, written
+    # as finished sentences with a severity saying how loudly to say each one.
+    # Whoever composes the reply relays these rather than re-deriving them, so a
+    # disclosure cannot be softened or dropped in paraphrase. See services/notices.py.
+    notices: list[dict[str, Any]] = []
     # Logical id of the cleaned view these numbers came from — reproducible from
     # (source, preprocessing) without materialising a frame.
     preprocessing_version: str | None = None

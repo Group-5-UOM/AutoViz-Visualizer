@@ -41,6 +41,9 @@ class ChartResult(TypedDict, total=False):
     chart_spec: dict[str, Any] | None
     vega_lite_spec: dict[str, Any] | None
     warnings: list[str]
+    # Cleaning disclosures for this chart, lifted out of provenance so the
+    # composer sees them without digging. See services/notices.py.
+    notices: list[dict[str, Any]]
     errors: list[str]
 
 

@@ -30,7 +30,7 @@ from autoviz.schema.allowlists import (
     ROW_DROP_NOTICE_FRACTION,
 )
 from autoviz.schema.analysis_plan import AnalysisPlan
-from autoviz.services import dataset
+from autoviz.services import dataset, notices as notices_svc
 from autoviz.services.dataset import _sanitize_scalar, sanitize_records
 from autoviz.services.registry import REGISTRY, DatasetRecord, DatasetRegistry
 from autoviz.services.validation import validate_analysis_plan
@@ -853,6 +853,14 @@ def execute_analysis(
                 )
                 result = con.execute(sql, pp_params + where_params).fetchdf()
                 imputation_notices = _imputation_notices(plan, pp_report, input_rows)
+                # The unified disclosure channel. `imputation_notices` and
+                # `implicit_null_exclusions` stay as they are — they are the
+                # machine-readable record — while this is the same facts written
+                # as sentences for whoever has to tell the user.
+                user_notices = notices_svc.to_wire(
+                    notices_svc.from_preprocessing(pp_report, input_rows)
+                    + notices_svc.from_null_exclusions(null_notes, input_rows)
+                )
             except PreprocessError:
                 raise
             except Exception as exc:
@@ -898,6 +906,9 @@ def execute_analysis(
             "preprocessing_sql": pp_ctes,
             "implicit_null_exclusions": null_notes,
             "imputation_notices": imputation_notices,
+            # What to actually tell the user, already phrased. Everything else in
+            # this block is the evidence; this is the disclosure.
+            "notices": user_notices,
             # Logical id of the cleaned view these numbers came from. Reproducible
             # from (source, preprocessing) without materialising anything.
             "preprocessing_version": plan.preprocessing_version(dataset_id),

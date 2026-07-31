@@ -23,7 +23,7 @@ from autoviz.errors import PLAN_REPAIRABLE, RETRYABLE
 from autoviz.llm.client import IntentDecision, PlannerError, PlannerLLM
 from autoviz.schema.analysis_plan import AnalysisPlan
 from autoviz.schema.clarification import Ambiguity, bind_answer
-from autoviz.services import charts, dataset, quality
+from autoviz.services import charts, dataset, notices as notices_svc, quality
 from autoviz.services.orchestrator import run_pipeline
 from autoviz.services.registry import REGISTRY, DatasetRegistry
 
@@ -145,6 +145,21 @@ def compose_response(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, A
                 chart = (r.get("chart_spec") or {}).get("type", "table")
                 parts.append(f"'{r.get('task')}': {rows} row(s), {chart} chart.")
         answer = " ".join(parts) or "No results were produced."
+    # Disclosures are owed regardless of who wrote the sentence. The composer is
+    # asked to weave them in, but "the LLM was told to" is not a guarantee — and a
+    # caveat that disappears because a model was terse or the call failed is the
+    # one failure mode this channel exists to prevent. Appended only when the
+    # answer does not already carry the wording, so the normal path stays clean.
+    owed = [
+        n
+        for r in results
+        for n in (r.get("notices") or [])
+        if n.get("severity") in (notices_svc.DISCLOSED, notices_svc.ADVISORY)
+        and n.get("note")
+        and n["note"] not in answer
+    ]
+    if owed:
+        answer = " ".join([answer, *(n["note"] for n in owed)]).strip()
     final = {"status": status, "answer": answer, "charts": results}
     plans = [r["plan"] for r in results if r.get("plan")]
     entry = {"request": state["user_request"], "plans": plans}
@@ -394,6 +409,16 @@ def chart_fallback(state: WorkerState) -> dict[str, Any]:
     return {"fallback_chart": None}
 
 
+def _notices_of(executed: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Disclosures from an execution result, if it got far enough to have any.
+
+    Lifted to the top level of the ChartResult because the composer's condensed
+    payload does not carry provenance — a disclosure left buried in there is a
+    disclosure the user never hears.
+    """
+    return ((executed or {}).get("provenance") or {}).get("notices") or []
+
+
 def finalize_worker(state: WorkerState) -> dict[str, Any]:
     out = state.get("pipeline_output")
     result: ChartResult = {
@@ -413,6 +438,7 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
                 "chart_spec": out["chart_spec"],
                 "vega_lite_spec": out["vega_lite_spec"],
                 "warnings": out.get("warnings", []),
+                "notices": _notices_of(out.get("result")),
                 "errors": [],
             }
         )
@@ -423,6 +449,9 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
             {
                 "status": "partial" if executed is not None else "error",
                 "result": executed,
+                # A run that failed at the chart step still cleaned data and still
+                # returned numbers, so the disclosure is owed either way.
+                "notices": _notices_of(executed),
                 "errors": [f"{out.get('failed_step')}: {e}" for e in out.get("errors", [])],
             }
         )
