@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Save, X } from 'lucide-react';
-// The overlay, panel, header and footer shells are shared with the dashboards
-// picker so the two dialogs cannot drift apart visually.
-import './DashboardsModal.css';
+// The overlay, panel, header and footer shells were originally shared with the dashboards
+// picker but are now defined locally since DashboardsModal is gone.
 import './SaveDashboardModal.css';
 
 interface SaveDashboardModalProps {
