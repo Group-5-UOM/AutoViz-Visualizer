@@ -16,10 +16,22 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _existing_columns(table: str) -> set[str]:
+    inspector = sa.inspect(op.get_bind())
+    return {col["name"] for col in inspector.get_columns(table)}
+
+
 def upgrade() -> None:
     # ── datasets: profiled row/column counts ─────────────────────────────
-    op.add_column("datasets", sa.Column("row_count", sa.Integer(), nullable=True))
-    op.add_column("datasets", sa.Column("column_count", sa.Integer(), nullable=True))
+    # 001 was later edited to create these two columns in the initial table,
+    # so a database built from the current 001 already has them while one
+    # built from the original 001 does not. Add only what is missing —
+    # unguarded add_column fails with DuplicateColumn on any fresh database.
+    existing = _existing_columns("datasets")
+    if "row_count" not in existing:
+        op.add_column("datasets", sa.Column("row_count", sa.Integer(), nullable=True))
+    if "column_count" not in existing:
+        op.add_column("datasets", sa.Column("column_count", sa.Integer(), nullable=True))
 
     # ── saved_charts ─────────────────────────────────────────────────────
     op.create_table(
