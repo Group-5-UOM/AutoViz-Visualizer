@@ -169,4 +169,12 @@ def run_pipeline(
         "recommendation": recommendation,
         "vega_lite_spec": chart["vega_lite_spec"],
         "warnings": chart["warnings"],
+        # Both halves of the disclosure in one list: what cleaning did to the
+        # numbers, and what the chart had to do to make them legible. They reach
+        # the user through the same channel and neither is worth more than the
+        # other, so nothing downstream should have to know they had two sources.
+        "notices": [
+            *((executed.get("provenance") or {}).get("notices") or []),
+            *chart.get("notices", []),
+        ],
     }

@@ -79,6 +79,13 @@ Preprocessing (explicit, never silent — the source CSV is never modified):
   is disclosed in provenance.imputation_notices, and nulls skipped by an aggregate are always
   reported in provenance.implicit_null_exclusions (measured before cleaning, so filling them in
   does not hide them). A 100%-null column is unusable — do not select, group, or aggregate on it.
+- `notices` collects everything the user must be told, already phrased, each with a severity:
+  "disclosed" (the numbers now mean something different — always repeat it), "advisory" (nothing
+  changed, but the chart is misread without it — e.g. a log-scaled axis), "applied" (routine
+  tidying; batch or omit). Reuse the wording; do not restate the counts yourself.
+- Do NOT try to fix a skewed chart with a plan. An extreme value that flattens the other marks is
+  handled at the axis, automatically, and disclosed as an advisory notice. Filtering or capping it
+  would change the answer to improve the picture — if the user did not ask to exclude it, keep it.
 
 Rules: group_by max 2 columns; limit max 100000; no other fields or op/fn values are accepted.
 is_null/is_not_null take no value and work on any column type.

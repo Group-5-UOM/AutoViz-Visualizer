@@ -205,6 +205,9 @@ class GenerateChartOutput(_Strict):
     vega_lite_spec: dict[str, Any] | None = None
     valid: bool
     warnings: list[str] = []
+    # Advisories about how the chart must be read — a log-scaled axis, or a
+    # linear one dominated by a single value. Empty for an unremarkable chart.
+    notices: list[dict[str, Any]] = []
 
 
 class ExportChartOutput(_Strict):
@@ -296,6 +299,10 @@ class PipelineOutput(_Strict):
     recommendation: RecommendChartOutput | None = None
     vega_lite_spec: dict[str, Any] | None = None
     warnings: list[str] = []
+    # Both halves of the disclosure, merged: what cleaning did to the numbers and
+    # what the chart had to do to make them legible. Pre-phrased with a severity —
+    # relay these rather than re-deriving them. See services/notices.py.
+    notices: list[dict[str, Any]] = []
     confirmation: ConfirmationRequired | None = None
     # Set on "partial" only: which chart step failed, and why.
     failed_step: str | None = None

@@ -404,6 +404,7 @@ def chart_fallback(state: WorkerState) -> dict[str, Any]:
                         "chart_spec": spec,
                         "vega_lite_spec": built["vega_lite_spec"],
                         "warnings": built["warnings"],
+                        "notices": built.get("notices", []),
                     }
                 }
     return {"fallback_chart": None}
@@ -438,7 +439,9 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
                 "chart_spec": out["chart_spec"],
                 "vega_lite_spec": out["vega_lite_spec"],
                 "warnings": out.get("warnings", []),
-                "notices": _notices_of(out.get("result")),
+                # The pipeline merges cleaning and chart disclosures; fall back to
+                # the execution half for callers that never ran the chart step.
+                "notices": out.get("notices") or _notices_of(out.get("result")),
                 "errors": [],
             }
         )
@@ -461,6 +464,9 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
                     "chart_spec": fallback["chart_spec"],
                     "vega_lite_spec": fallback["vega_lite_spec"],
                     "warnings": fallback["warnings"],
+                    # The substitute chart is still a chart, and can still be the
+                    # one whose axis needs explaining.
+                    "notices": [*result["notices"], *fallback.get("notices", [])],
                 }
             )
     return {"chart_results": [result]}

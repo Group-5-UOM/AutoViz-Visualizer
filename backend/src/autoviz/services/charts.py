@@ -13,9 +13,11 @@ from autoviz.schema.allowlists import (
     MAX_SERIES_ADJACENT,
     MAX_SERIES_ALL_PAIRS,
 )
+from autoviz.services import skew
 from autoviz.services.chart_interaction import attach as attach_interaction
 from autoviz.services.chart_labels import build_label_layer
 from autoviz.services.chart_theme import attach as attach_theme
+from autoviz.services.notices import Notice
 from autoviz.vega import VEGA_LITE_SCHEMA
 
 _VEGA_MARK = {
@@ -278,6 +280,26 @@ def generate_chart(
                     f"'{chart_type}') — series will not be reliably distinguishable"
                 )
 
+    # One extreme value flattens every other mark against the baseline. Judged on
+    # the values actually being plotted, because aggregation both creates and
+    # destroys skew — see services/skew.py for why the scale is only changed for
+    # position-encoded marks.
+    axis_notices: list[Notice] = []
+    for channel in ("x", "y"):
+        enc_def = encoding.get(channel)
+        # A channel with no field is derived (a binned count), so there is no
+        # column of values to judge.
+        if not enc_def or enc_def.get("type") != "quantitative" or "field" not in enc_def:
+            continue
+        field = enc_def["field"]
+        scale, notice = skew.assess(
+            [row.get(field) for row in result_table], field, chart_type
+        )
+        if scale:
+            enc_def["scale"] = {**enc_def.get("scale", {}), **scale}
+        if notice:
+            axis_notices.append(notice)
+
     data_layer: dict[str, Any] = {"mark": _mark_def(chart_type), "encoding": encoding}
     label_layer = build_label_layer(chart_type, encoding, result_table)
 
@@ -299,4 +321,18 @@ def generate_chart(
     # Belongs to the spec as a whole, so it is set after any layering.
     spec["width"] = "container"
     spec["height"] = "container"
-    return {"vega_lite_spec": spec, "valid": True, "warnings": warnings}
+    # The caveat rides on the spec as well as the reply. A saved dashboard has no
+    # chat behind it, so an explanation that lives only in the conversation is one
+    # a reader will not have tomorrow — and a log axis nobody mentions misleads.
+    if axis_notices:
+        spec["title"] = {
+            "text": "",
+            "subtitle": [n.note for n in axis_notices],
+            "anchor": "start",
+        }
+    return {
+        "vega_lite_spec": spec,
+        "valid": True,
+        "warnings": warnings,
+        "notices": [n.to_wire() for n in axis_notices],
+    }
