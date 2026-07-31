@@ -70,12 +70,39 @@
   color: var(--border);
 }
 
+/* A button so the dashboard can be renamed from where its name is shown. */
 .dashboard-title {
+  font: inherit;
   font-size: 14px;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.dashboard-title:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.topbar-save-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.topbar-save-status.is-saving {
+  color: var(--text-secondary);
+}
+
+.topbar-save-status.is-error {
+  color: var(--danger, #ef4444);
+  font-weight: 500;
 }
 
 .widget-count {
@@ -147,10 +174,17 @@
 }
 
 @media (max-width: 900px) {
+  /* Buttons in .topbar-right are AI Chat, Save, Share, Export. Share is the
+     only one that goes: Save is now functional and worth the space. */
   .widget-count,
-  .topbar-text-btn:nth-of-type(2),
   .topbar-text-btn:nth-of-type(3),
   .topbar-user-email {
     display: none;
+  }
+
+  .topbar-save-status {
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }

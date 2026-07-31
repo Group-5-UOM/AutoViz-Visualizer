@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, ChangeEvent } from 'react';
+import { useEffect, useState, useRef, type ChangeEvent } from 'react';
 import { Database, X, Trash2, Calendar, LayoutGrid, Rows, Upload, Table } from 'lucide-react';
 import { listDatasets, deleteDataset, previewDataset, type DatasetMetadata } from '../../lib/datasets';
 import './DatasetModal.css';

@@ -10,8 +10,11 @@ from typing import Annotated, Any, Literal, TypedDict
 # Repairs allowed after the first plan generation (so <= 1 + MAX_PLAN_ATTEMPTS
 # LLM plan calls per task).
 MAX_PLAN_ATTEMPTS = 2
-# Cap on parallel analysis tasks a single request may fan out into.
-MAX_TASKS = 3
+# Cap on parallel analysis tasks a single request may fan out into. Each task is
+# an independent worker, so this also caps concurrent planner calls (x1 +
+# MAX_PLAN_ATTEMPTS) and concurrent pauses. Keep the classifier prompt's own
+# limit (llm/client.py) in step, or the planner never emits this many.
+MAX_TASKS = 6
 # Bounded clarification rounds per run (deterministic detectors + LLM combined);
 # after this we proceed on best effort. Raised from 1 to allow resolving more than
 # one distinct ambiguity (e.g. a time column AND an undefined metric).

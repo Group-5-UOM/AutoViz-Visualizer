@@ -6,10 +6,12 @@ import { ChatPanel } from '../components/chat/ChatPanel';
 import { DashboardCanvas } from '../components/canvas/DashboardCanvas';
 import { DashboardsPanel } from '../components/layout/DashboardsPanel';
 import { DatasetModal } from '../components/layout/DatasetModal';
+import { SaveDashboardModal } from '../components/layout/SaveDashboardModal';
 import { useDashboard } from '../hooks/useDashboard';
 import { ApiError } from '../lib/api';
 import { uploadDataset, type DatasetMetadata } from '../lib/datasets';
-import { createDashboard, saveChart, updateDashboard, getDashboard, getChart, type DashboardResult } from '../lib/dashboards';
+import { getDashboard, getChart, type DashboardResult } from '../lib/dashboards';
+import { defaultDashboardName } from '../lib/dashboardSync';
 import type { SidebarItemId } from '../types/dashboard';
 import '../App.css';
 
@@ -32,22 +34,30 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
   const [dataset, setDataset] = useState<DatasetInfo | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
 
   const {
     dashboard,
     messages,
     isThinking,
+    saveStatus,
+    lastSavedAt,
+    saveError,
     selectWidget,
-    setDashboardMeta,
     updateWidget,
     deleteWidget,
     sendMessage,
+    saveNow,
+    renameDashboard,
     loadDashboardState,
     resetForDataset,
-  } = useDashboard(dataset?.datasetId ?? null);
+  } = useDashboard(dataset?.datasetId ?? null, dataset?.fileName ?? null);
 
   const handleLoadDashboard = async (selected: DashboardResult) => {
     try {
+      // Flush first: the board being replaced may have edits still on the
+      // autosave timer, and loading throws away the state they live in.
+      await saveNow();
       const fullDashboard = await getDashboard(selected.id);
 
       const loadedWidgets = await Promise.all(
@@ -126,48 +136,15 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
     setChatOpen(true);
   };
 
-  const handleSaveDashboard = async () => {
-    try {
-      let dashId = dashboard.dashboardId;
-      let dashName = dashboard.dashboardName;
-
-      if (!dashId) {
-        const name = window.prompt('Enter a name for this dashboard:', 'My Dashboard');
-        if (!name) return;
-        const created = await createDashboard(name);
-        dashId = created.id;
-        dashName = created.name;
-        setDashboardMeta(dashId, dashName);
-      }
-
-      for (const w of dashboard.widgets) {
-        if (!w.backendChartId) {
-          const saved = await saveChart({
-            name: w.title,
-            vega_lite_spec: w.vegaLiteSpec,
-            dataset_id: dataset?.datasetId,
-          });
-          updateWidget(w.id, { backendChartId: saved.id });
-          w.backendChartId = saved.id;
-        }
-      }
-
-      if (dashId) {
-        const widgets = dashboard.widgets.map((w, i) => ({
-          chart_id: w.backendChartId!,
-          x: w.x,
-          y: w.y,
-          w: w.width,
-          h: w.height,
-          order: i,
-        }));
-        await updateDashboard(dashId, dashName, widgets);
-        alert('Dashboard saved successfully!');
-      }
-    } catch (err) {
-      console.error('Failed to save dashboard:', err);
-      alert('Failed to save dashboard.');
+  // The canvas already saves itself. Pressing Save flushes immediately, and —
+  // the first time only — asks what the board should be called, since until
+  // then it is wearing a name autosave invented from the CSV.
+  const handleSaveDashboard = () => {
+    if (dashboard.nameIsAuto !== false) {
+      setRenameOpen(true);
+      return;
     }
+    void saveNow();
   };
 
   const handleExportDashboard = async () => {
@@ -192,6 +169,9 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
         chatOpen={chatOpen}
         widgetCount={dashboard.widgets.length}
         userEmail={userEmail}
+        saveStatus={saveStatus}
+        lastSavedAt={lastSavedAt}
+        saveError={saveError}
         onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
         onToggleChat={() => {
           setChatOpen((v) => {
@@ -201,6 +181,7 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
           });
         }}
         onSave={handleSaveDashboard}
+        onRename={() => setRenameOpen(true)}
         onExport={handleExportDashboard}
         onLogout={onLogout}
       />
@@ -250,6 +231,16 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
             onSelect={handleExistingDatasetSelected}
             onCsvSelected={handleCsvSelected}
             uploading={uploading}
+          />
+        )}
+        {renameOpen && (
+          <SaveDashboardModal
+            initialName={dashboard.dashboardName ?? defaultDashboardName(dataset?.fileName)}
+            onCancel={() => setRenameOpen(false)}
+            onConfirm={(name) => {
+              renameDashboard(name);
+              setRenameOpen(false);
+            }}
           />
         )}
       </div>
