@@ -261,6 +261,51 @@ def test_a_cleaning_pause_survives_the_analyze_output_model():
     assert out.interrupt_id == "abc123" and out.pending_count == 2
 
 
+def test_a_completed_run_survives_the_analyze_output_model():
+    """Same trap as the pause above, on the success path.
+
+    Every key the agent puts on a ChartResult has to be declared here or unwrap()
+    raises on the whole envelope. `notices` is the one that matters most: a chart
+    built from cleaned data always carries them, so an undeclared field turns the
+    ordinary case into a crash — and the disclosure is exactly what must not be
+    lost. `chart_id` is what lets a host update a chart rather than duplicate it.
+    """
+    from autoviz.mcp.envelope import unwrap
+    from autoviz.mcp.results import AnalyzeOutput
+
+    out = unwrap(
+        {
+            "status": "completed",
+            "thread_id": "th_x",
+            "answer": "Average fare rose with class.",
+            "charts": [
+                {
+                    "task": "average fare by class",
+                    "chart_id": "ch_abc123",
+                    "status": "ok",
+                    "plan": {"intent": "comparison"},
+                    "attempts": 1,
+                    "chart_spec": {"type": "bar", "x": "pclass", "y": "avg_fare"},
+                    "vega_lite_spec": {"mark": "bar"},
+                    "warnings": [],
+                    "notices": [
+                        {
+                            "kind": "fill_nulls",
+                            "severity": "disclosed",
+                            "note": "20 of 100 values in 'age' (20.0%) were filled in.",
+                        }
+                    ],
+                    "errors": [],
+                }
+            ],
+        },
+        AnalyzeOutput,
+    )
+
+    assert out.charts[0].chart_id == "ch_abc123"
+    assert out.charts[0].notices[0]["severity"] == "disclosed"
+
+
 def test_a_confirmation_pause_still_uses_plain_string_options():
     from autoviz.mcp.envelope import unwrap
     from autoviz.mcp.results import AnalyzeOutput

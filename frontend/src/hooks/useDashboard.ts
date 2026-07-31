@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
+  ChartStyle,
   ChartWidget,
   ChatMessage,
   DashboardState,
   SaveStatus,
 } from '../types/dashboard';
+import { styleChart } from '../lib/chartStyle';
 import {
   analyze,
   answerClarification,
@@ -19,7 +21,7 @@ const FALLBACK_QUESTION: Record<string, string> = {
   cleaning_choice: 'How should I handle a data-quality issue in this dataset?',
   confirmation: 'Please confirm before I continue.',
 };
-import { widgetsFromAgent } from '../lib/chartWidgets';
+import { applyAgentCharts } from '../lib/chartWidgets';
 import { ApiError } from '../lib/api';
 
 const WELCOME =
@@ -97,6 +99,55 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     }));
   }, []);
 
+  /**
+   * Restyle one chart where it sits.
+   *
+   * Presentation only, so nothing here goes near the agent thread: the spec's
+   * numbers are the ones already executed and the request never re-runs a query.
+   * `request` is the natural-language path ("make the bars orange"); `style` is
+   * the panel's, which skips the model.
+   *
+   * Resolves to an error message when the request could not be applied, so the
+   * caller can show it next to the control the user actually used. The chart is
+   * left untouched in that case.
+   */
+  const editWidgetStyle = useCallback(
+    async (id: string, edit: { request?: string; style?: ChartStyle }): Promise<string | null> => {
+      const widget = dashboardRef.current.widgets.find((w) => w.id === id);
+      if (!widget) return null;
+      try {
+        const res = await styleChart(
+          widget.vegaLiteSpec,
+          // The whole current block, not a diff — the backend merges onto it.
+          edit.style ?? widget.style,
+          edit.request,
+        );
+        setDashboard((prev) => ({
+          ...prev,
+          widgets: prev.widgets.map((w) =>
+            w.id === id
+              ? {
+                  ...w,
+                  vegaLiteSpec: res.vega_lite_spec,
+                  style: res.style,
+                  // Autosave cannot see inside the spec, so this is what tells
+                  // it the chart needs writing back. Counted off `prev` rather
+                  // than off the widget read before the request: two colour
+                  // clicks in quick succession would otherwise both compute
+                  // version 1, and the second edit would never be saved.
+                  specVersion: (w.specVersion ?? 0) + 1,
+                }
+              : w,
+          ),
+        }));
+        return null;
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+    [],
+  );
+
   const deleteWidget = useCallback((id: string) => {
     setDashboard((prev) => ({
       widgets: prev.widgets.filter((w) => w.id !== id),
@@ -154,20 +205,28 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
 
       // Built outside the state updater: updaters must stay pure (StrictMode
       // invokes them twice, which would post every reply to the chat twice).
-      const created = widgetsFromAgent(res.charts ?? [], placedCount.current, () => uid('chart'));
-      placedCount.current += created.length;
+      // Read off the mirror ref for the same reason — the updater cannot be the
+      // place that decides which widgets a refinement replaces.
+      const applied = applyAgentCharts(
+        dashboardRef.current.widgets,
+        res.charts ?? [],
+        placedCount.current,
+        () => uid('chart'),
+      );
+      placedCount.current += applied.placed;
 
       pushAssistant({
         content: res.answer ?? 'Done.',
         // Link the reply to the first chart it produced, so "View on canvas"
-        // has somewhere to go.
-        chartId: created[0]?.id,
+        // has somewhere to go — including when that chart was one already there.
+        chartId: applied.focusId ?? undefined,
       });
 
-      if (created.length === 0) return;
+      if (applied.focusId === null) return;
       setDashboard((prev) => ({
-        widgets: [...prev.widgets, ...created],
-        selectedWidgetId: created[0].id,
+        ...prev,
+        widgets: applied.widgets,
+        selectedWidgetId: applied.focusId,
       }));
     },
     [pushAssistant],
@@ -251,9 +310,19 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
         dashboardId: result.dashboardId,
         dashboardName: result.name,
         nameIsAuto: prev.nameIsAuto ?? wasNew,
-        widgets: prev.widgets.map((w) =>
-          result.newChartIds[w.id] ? { ...w, backendChartId: result.newChartIds[w.id] } : w,
-        ),
+        widgets: prev.widgets.map((w) => {
+          const chartId = result.newChartIds[w.id];
+          const synced = result.syncedSpecVersions[w.id];
+          if (chartId === undefined && synced === undefined) return w;
+          return {
+            ...w,
+            ...(chartId ? { backendChartId: chartId } : {}),
+            // What the server now holds. An edit made while the request was in
+            // flight has already bumped specVersion past this, so it stays
+            // dirty rather than being declared saved.
+            ...(synced === undefined ? {} : { syncedSpecVersion: synced }),
+          };
+        }),
       }));
       setLastSavedAt(Date.now());
       setSaveStatus('saved');
@@ -386,6 +455,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     saveError,
     selectWidget,
     updateWidget,
+    editWidgetStyle,
     deleteWidget,
     sendMessage,
     saveNow,

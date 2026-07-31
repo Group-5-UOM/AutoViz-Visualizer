@@ -32,6 +32,28 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+/**
+ * User overrides layered on top of the theme the backend bakes into every spec.
+ *
+ * Cumulative state, not a one-shot patch: an edit merges into this block and the
+ * whole block is re-applied to the spec, which is what keeps repeated edits from
+ * compounding. `null` on a field means "revert this to the theme"; absent means
+ * "leave it as it is".
+ *
+ * Snake-cased because this is a wire type: it is sent to `POST /charts/style`
+ * and stored verbatim in the saved chart's `chart_spec`, so it must stay
+ * field-for-field identical to backend `schema/chart_style.ChartStyle`.
+ */
+export interface ChartStyle {
+  title?: string | null;
+  x_title?: string | null;
+  y_title?: string | null;
+  legend?: boolean | null;
+  mark_color?: string | null;
+  series_colors?: Record<string, string> | null;
+  color_scheme?: string[] | null;
+}
+
 export interface ChartWidget {
   id: string;
   title: string;
@@ -42,6 +64,21 @@ export interface ChartWidget {
   width: number;
   height: number;
   backendChartId?: string;
+  /**
+   * The agent's own identity for this chart, carried so a refinement ("make it a
+   * line chart") lands on the card it refined instead of appending a second one.
+   */
+  agentChartId?: string;
+  style?: ChartStyle;
+  /**
+   * Bumped on every in-place change to `vegaLiteSpec` — a style edit or a
+   * refinement swapping the spec. This is what `persistSignature` watches:
+   * hashing the spec itself is not an option, since it carries every result row
+   * and the signature is recomputed on every pointer frame of a drag.
+   */
+  specVersion?: number;
+  /** The version the server holds. An outcome of saving, like `backendChartId`. */
+  syncedSpecVersion?: number;
 }
 
 export interface DashboardState {

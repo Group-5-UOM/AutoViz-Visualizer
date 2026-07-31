@@ -72,6 +72,20 @@ export async function getChart(chartId: string): Promise<SavedChartResult> {
   return apiRequest<SavedChartResult>(`/charts/${chartId}`, { method: 'GET' });
 }
 
+/**
+ * Overwrite a chart that has already been saved. Only the fields passed are
+ * written, so an edit that changed the spec leaves the name as it was.
+ */
+export async function updateChart(
+  chartId: string,
+  fields: Partial<Pick<SaveChartPayload, 'name' | 'vega_lite_spec' | 'chart_spec'>>
+): Promise<SavedChartResult> {
+  return apiRequest<SavedChartResult>(`/charts/${chartId}`, {
+    method: 'PUT',
+    body: fields,
+  });
+}
+
 export async function listDashboards(): Promise<{ dashboards: DashboardResult[] }> {
   return apiRequest<{ dashboards: DashboardResult[] }>('/dashboards', { method: 'GET' });
 }

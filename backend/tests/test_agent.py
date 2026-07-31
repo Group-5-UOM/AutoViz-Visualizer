@@ -169,6 +169,80 @@ def test_refinement_receives_prior_plan(registry, iris_id):
     assert len(out2["charts"]) == 1
 
 
+def test_refinement_keeps_the_chart_id_it_refines(registry, iris_id):
+    """A refinement is the same chart, changed — so the host can update it in
+    place instead of leaving a near-duplicate beside it."""
+    first = IntentDecision(intent="analysis", tasks=["avg sepal length by species"])
+    second = IntentDecision(intent="refinement", tasks=["same as a pie chart"])
+    third = IntentDecision(intent="refinement", tasks=["now as a line chart"])
+    refined = {**GOOD_IRIS_PLAN, "chart": {"type": "pie", "x": "species", "y": "avg_sepal_length"}}
+    again = {**GOOD_IRIS_PLAN, "chart": {"type": "line", "x": "species", "y": "avg_sepal_length"}}
+    fake = FakePlanner(
+        decisions=[first, second, third], plans=[GOOD_IRIS_PLAN, refined, again]
+    )
+    agent = AgentService(planner=fake, registry=registry)
+
+    out1 = agent.run("avg sepal length by species", dataset_id=iris_id)
+    original = out1["charts"][0]["chart_id"]
+    assert original
+
+    out2 = agent.run("same as a pie chart", dataset_id=iris_id, thread_id=out1["thread_id"])
+    assert out2["charts"][0]["chart_id"] == original
+    # Chained: the second refinement still points at the chart on screen.
+    out3 = agent.run("now as a line chart", dataset_id=iris_id, thread_id=out1["thread_id"])
+    assert out3["charts"][0]["chart_id"] == original
+
+
+def test_new_analysis_mints_a_new_chart_id(registry, iris_id):
+    fake = FakePlanner(plans=[GOOD_IRIS_PLAN, GOOD_IRIS_PLAN])
+    agent = AgentService(planner=fake, registry=registry)
+
+    out1 = agent.run("avg sepal length by species", dataset_id=iris_id)
+    out2 = agent.run("ask something else", dataset_id=iris_id, thread_id=out1["thread_id"])
+    assert out2["charts"][0]["chart_id"] != out1["charts"][0]["chart_id"]
+
+
+def test_multi_task_refinement_does_not_replace(registry, iris_id):
+    """Two charts out of one refinement means nothing single was superseded."""
+    first = IntentDecision(intent="analysis", tasks=["avg sepal length by species"])
+    second = IntentDecision(
+        intent="refinement", tasks=["as a pie chart", "and also as a line chart"]
+    )
+    fake = FakePlanner(
+        decisions=[first, second],
+        plans={
+            "avg sepal length by species": GOOD_IRIS_PLAN,
+            "as a pie chart": GOOD_IRIS_PLAN,
+            "and also as a line chart": GOOD_IRIS_PLAN,
+        },
+    )
+    agent = AgentService(planner=fake, registry=registry)
+
+    out1 = agent.run("avg sepal length by species", dataset_id=iris_id)
+    out2 = agent.run("split it up", dataset_id=iris_id, thread_id=out1["thread_id"])
+    ids = {c["chart_id"] for c in out2["charts"]}
+    assert len(ids) == 2
+    assert out1["charts"][0]["chart_id"] not in ids
+
+
+def test_legacy_history_entry_without_charts_still_refines(registry, iris_id):
+    """Threads checkpointed before chart ids existed must keep working."""
+    from autoviz.agent.routing import route_after_classify
+
+    sends = route_after_classify(
+        {
+            "intent": "refinement",
+            "tasks": ["same as a pie chart"],
+            "dataset_id": iris_id,
+            "schema": [],
+            "profile": {},
+            "history": [{"request": "first", "plans": [GOOD_IRIS_PLAN]}],
+        }
+    )
+    assert sends[0].arg["prior_plan"] == GOOD_IRIS_PLAN
+    assert sends[0].arg["refines_chart_id"] is None
+
+
 def test_chart_failure_keeps_partial_result(registry, iris_id):
     # Text-only result: recommend_chart_type fails (no numeric measure) and the
     # bar fallback has no numeric y either -> partial result, no chart, data kept.

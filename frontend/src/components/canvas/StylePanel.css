@@ -1,0 +1,156 @@
+/* A flex sibling of the canvas, mirroring the chat/dashboards panels on the
+   left. Deliberately not an overlay: it would otherwise cover the chart the
+   user is trying to watch change. */
+.style-panel {
+  flex: none;
+  width: 260px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  z-index: 15;
+}
+
+.style-panel-header {
+  flex: none;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.style-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.style-panel-title svg {
+  color: var(--accent);
+}
+
+.style-close-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.style-close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.style-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.style-panel-subject {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.style-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.style-field > span,
+.style-color-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.style-field input,
+.style-hex {
+  width: 100%;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.style-field input:focus,
+.style-hex:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.style-color-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.style-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.style-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  /* The ring is the surface colour, so an active swatch reads as selected
+     without the border eating into the colour being previewed. */
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 12%);
+}
+
+.style-swatch.is-active {
+  border-color: var(--text-primary);
+}
+
+.style-hex-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.style-reset {
+  flex: none;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.style-reset:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.style-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}

@@ -1,4 +1,4 @@
-import { createDashboard, saveChart, updateDashboard } from './dashboards';
+import { createDashboard, saveChart, updateChart, updateDashboard } from './dashboards';
 import type { ChartWidget, DashboardState } from '../types/dashboard';
 
 /**
@@ -16,14 +16,24 @@ import type { ChartWidget, DashboardState } from '../types/dashboard';
  * a circle and returned to its origin costs no request. `backendChartId` is
  * deliberately absent — it is an outcome of saving, not a reason to save.
  *
- * Widget `id` stands in for the spec: `widgetsFromAgent` mints a fresh id per
- * chart and never rewrites an existing one's spec, so equal ids mean equal
- * specs.
+ * Widget `id` and `specVersion` together stand in for the spec. The id covers
+ * charts arriving and leaving; the counter covers the two things that rewrite an
+ * existing widget's spec in place — a style edit, and a refinement replacing the
+ * chart it refined. The spec itself is deliberately not hashed: `data.values`
+ * holds every result row, and this runs on every pointer frame of a drag.
  */
 export function persistSignature(dashboard: DashboardState): string {
   return JSON.stringify([
     dashboard.dashboardName ?? null,
-    dashboard.widgets.map((w) => [w.id, w.title, w.x, w.y, w.width, w.height]),
+    dashboard.widgets.map((w) => [
+      w.id,
+      w.title,
+      w.x,
+      w.y,
+      w.width,
+      w.height,
+      w.specVersion ?? 0,
+    ]),
   ]);
 }
 
@@ -46,27 +56,54 @@ export interface SyncResult {
   name: string;
   /** Widget id → the chart row just created for it. Empty on a layout-only save. */
   newChartIds: Record<string, string>;
+  /** Widget id → the spec version now on the server, for every chart written. */
+  syncedSpecVersions: Record<string, number>;
 }
 
-/** Chart ids the layout will reference, minted for any widget still unsaved. */
+/** What a chart row holds beyond the spec. The style block is stored so a
+ *  reopened dashboard can keep editing from where the user left off, rather than
+ *  showing the styled render with no idea how it got that way. */
+function chartSpecOf(widget: ChartWidget): Record<string, unknown> | null {
+  return widget.style ? { style: widget.style } : null;
+}
+
+/**
+ * Get every widget's chart row up to date: create one for a widget that has
+ * never been saved, overwrite one whose spec has changed since it was.
+ *
+ * The version comparison is what stops a drag from re-uploading specs — moving a
+ * chart changes the layout signature but not `specVersion`, so nothing here fires.
+ */
 async function ensureCharts(
   widgets: ChartWidget[],
   datasetId: string | null,
-): Promise<Record<string, string>> {
-  const created: Record<string, string> = {};
+): Promise<Pick<SyncResult, 'newChartIds' | 'syncedSpecVersions'>> {
+  const newChartIds: Record<string, string> = {};
+  const syncedSpecVersions: Record<string, number> = {};
   // Sequential on purpose: a burst of parallel POSTs from a background save
   // competes with whatever the user is asking the agent for in the foreground,
   // and nothing here is latency-sensitive.
   for (const widget of widgets) {
-    if (widget.backendChartId) continue;
-    const saved = await saveChart({
-      name: widget.title,
-      vega_lite_spec: widget.vegaLiteSpec,
-      dataset_id: datasetId,
-    });
-    created[widget.id] = saved.id;
+    const version = widget.specVersion ?? 0;
+    if (!widget.backendChartId) {
+      const saved = await saveChart({
+        name: widget.title,
+        vega_lite_spec: widget.vegaLiteSpec,
+        dataset_id: datasetId,
+        chart_spec: chartSpecOf(widget),
+      });
+      newChartIds[widget.id] = saved.id;
+      syncedSpecVersions[widget.id] = version;
+    } else if (version !== (widget.syncedSpecVersion ?? 0)) {
+      await updateChart(widget.backendChartId, {
+        name: widget.title,
+        vega_lite_spec: widget.vegaLiteSpec,
+        chart_spec: chartSpecOf(widget),
+      });
+      syncedSpecVersions[widget.id] = version;
+    }
   }
-  return created;
+  return { newChartIds, syncedSpecVersions };
 }
 
 /**
@@ -90,7 +127,7 @@ export async function syncDashboard(
     name = created.name;
   }
 
-  const newChartIds = await ensureCharts(dashboard.widgets, datasetId);
+  const { newChartIds, syncedSpecVersions } = await ensureCharts(dashboard.widgets, datasetId);
 
   const widgets = dashboard.widgets.map((widget, i) => ({
     chart_id: widget.backendChartId ?? newChartIds[widget.id],
@@ -104,5 +141,5 @@ export async function syncDashboard(
   }));
 
   await updateDashboard(dashboardId, name, widgets);
-  return { dashboardId, name, newChartIds };
+  return { dashboardId, name, newChartIds, syncedSpecVersions };
 }

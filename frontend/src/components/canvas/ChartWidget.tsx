@@ -1,6 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import embed from 'vega-embed';
-import { BarChart3, Table2, Trash2 } from 'lucide-react';
+import { BarChart3, Palette, Table2, Trash2, Wand2 } from 'lucide-react';
 import type { ChartWidget } from '../../types/dashboard';
 import {
   BRUSH_SIGNAL,
@@ -16,6 +23,10 @@ interface ChartWidgetCardProps {
   widget: ChartWidget;
   selected: boolean;
   onSelect: () => void;
+  /** Restyle this chart. Resolves to an error message, or null on success. */
+  onEditStyle: (request: string) => Promise<string | null>;
+  /** Open the direct controls for the same styling. */
+  onOpenStyle: () => void;
   onDelete: () => void;
   onMove: (x: number, y: number) => void;
   onResize: (width: number, height: number) => void;
@@ -25,6 +36,8 @@ export function ChartWidgetCard({
   widget,
   selected,
   onSelect,
+  onEditStyle,
+  onOpenStyle,
   onDelete,
   onMove,
   onResize,
@@ -32,6 +45,12 @@ export function ChartWidgetCard({
   const chartRef = useRef<HTMLDivElement>(null);
   const [showTable, setShowTable] = useState(false);
   const [brush, setBrush] = useState<BrushExtent | null>(null);
+  // Editing lives on the card rather than in the chat so there is never a
+  // question of which chart an instruction is about.
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState('');
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const rows = useMemo(() => specRows(widget.vegaLiteSpec), [widget.vegaLiteSpec]);
   // Brushing the chart narrows its table view to the selected rows.
   const tableRows = useMemo(() => rowsInBrush(rows ?? [], brush), [rows, brush]);
@@ -124,6 +143,23 @@ export function ChartWidgetCard({
     };
   }, [onMove, onResize]);
 
+  const submitEdit = async (e: FormEvent) => {
+    e.preventDefault();
+    const request = editText.trim();
+    if (!request || editBusy) return;
+    setEditBusy(true);
+    setEditError(null);
+    const failure = await onEditStyle(request);
+    setEditBusy(false);
+    if (failure) {
+      // The chart was left as it was, so the box keeps what was typed for
+      // editing rather than making the user start again.
+      setEditError(failure);
+      return;
+    }
+    setEditText('');
+  };
+
   const startDrag = (
     e: ReactPointerEvent,
     mode: 'move' | 'resize',
@@ -177,6 +213,36 @@ export function ChartWidgetCard({
           )}
           <button
             type="button"
+            className="chart-header-btn"
+            title="Style options"
+            aria-label="Style options"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect();
+              onOpenStyle();
+            }}
+          >
+            <Palette size={14} />
+          </button>
+          <button
+            type="button"
+            className="chart-header-btn"
+            title="Change how this chart looks"
+            aria-label="Change how this chart looks"
+            aria-pressed={editing}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect();
+              setEditing((on) => !on);
+              setEditError(null);
+            }}
+          >
+            <Wand2 size={14} />
+          </button>
+          <button
+            type="button"
             className="chart-header-btn is-danger"
             title="Delete chart"
             aria-label="Delete chart"
@@ -206,8 +272,38 @@ export function ChartWidgetCard({
         </p>
       )}
 
-      {selected && (
-        <p className="chart-explanation">{widget.explanation}</p>
+      {editing ? (
+        <form
+          className="chart-edit-bar"
+          onSubmit={submitEdit}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <input
+            type="text"
+            value={editText}
+            autoFocus
+            disabled={editBusy}
+            placeholder="Make the bars orange, drop the legend…"
+            aria-label={`Change how "${widget.title}" looks`}
+            onChange={(e) => setEditText(e.target.value)}
+            // Escape closes without touching the chart; the canvas would
+            // otherwise deselect the card out from under the input.
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Escape') setEditing(false);
+            }}
+          />
+          <button type="submit" disabled={editBusy || !editText.trim()}>
+            {editBusy ? 'Applying…' : 'Apply'}
+          </button>
+          {editError && (
+            <p className="chart-edit-error" role="alert">
+              {editError}
+            </p>
+          )}
+        </form>
+      ) : (
+        selected && <p className="chart-explanation">{widget.explanation}</p>
       )}
 
       <div

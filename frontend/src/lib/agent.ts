@@ -11,6 +11,12 @@ import { apiRequest } from './api';
 /** One planner sub-task, executed and charted. Mirrors agent.state.ChartResult. */
 export interface AgentChartResult {
   task: string;
+  /**
+   * The agent's stable identity for this chart. A refinement returns the id of
+   * the chart it changed, which is what lets the canvas update that card instead
+   * of putting a near-duplicate next to it.
+   */
+  chart_id?: string;
   status: 'ok' | 'partial' | 'error';
   result?: {
     result_table?: Record<string, unknown>[];

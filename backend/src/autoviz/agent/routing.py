@@ -39,10 +39,19 @@ def route_after_classify(state: AutoVizState) -> str | list[Send]:
     tasks = state.get("tasks") or [state["user_request"]]
     resolved = state.get("resolved_slots") or {}
     prior_plan = None
+    refines_chart_id = None
     if state.get("intent") == "refinement":
         for entry in reversed(state.get("history", [])):
             if entry.get("plans"):
                 prior_plan = entry["plans"][-1]
+                # Entries written before `charts` existed carry plans only; those
+                # threads keep today's append-only behaviour rather than breaking.
+                last = (entry.get("charts") or [{}])[-1]
+                # Only a single-task refinement has one thing to replace. Fanning
+                # out to several charts from "make it a line chart" means the
+                # planner read it as new analysis, so nothing is superseded.
+                if len(tasks) == 1:
+                    refines_chart_id = last.get("chart_id")
                 break
     return [
         Send(
@@ -54,6 +63,7 @@ def route_after_classify(state: AutoVizState) -> str | list[Send]:
                 "schema": state["schema"],
                 "profile": state["profile"],
                 "prior_plan": prior_plan,
+                "refines_chart_id": refines_chart_id,
                 "plan_attempts": 0,
             },
         )

@@ -19,6 +19,10 @@ interface DashboardCanvasProps {
   uploadError: string | null;
   onSelect: (id: string | null) => void;
   onUpdate: (id: string, patch: Partial<ChartWidget>) => void;
+  /** Restyle one chart in place. Resolves to an error message, or null on success. */
+  onEditStyle: (id: string, request: string) => Promise<string | null>;
+  /** Open the direct style controls for one chart. */
+  onOpenStyle: (id: string) => void;
   onDelete: (id: string) => void;
   onCsvSelected: (file: File) => void;
 }
@@ -31,6 +35,8 @@ export function DashboardCanvas({
   uploadError,
   onSelect,
   onUpdate,
+  onEditStyle,
+  onOpenStyle,
   onDelete,
   onCsvSelected,
 }: DashboardCanvasProps) {
@@ -137,6 +143,8 @@ export function DashboardCanvas({
             widget={widget}
             selected={selectedWidgetId === widget.id}
             onSelect={() => onSelect(widget.id)}
+            onEditStyle={(request) => onEditStyle(widget.id, request)}
+            onOpenStyle={() => onOpenStyle(widget.id)}
             onDelete={() => onDelete(widget.id)}
             onMove={(x, y) => onUpdate(widget.id, { x, y })}
             onResize={(width, height) => onUpdate(widget.id, { width, height })}

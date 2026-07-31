@@ -5,6 +5,7 @@ the single source of truth for validate -> execute -> chart.
 """
 
 import time
+import uuid
 from typing import Any
 
 from langgraph.types import interrupt
@@ -161,8 +162,18 @@ def compose_response(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, A
     if owed:
         answer = " ".join([answer, *(n["note"] for n in owed)]).strip()
     final = {"status": status, "answer": answer, "charts": results}
-    plans = [r["plan"] for r in results if r.get("plan")]
-    entry = {"request": state["user_request"], "plans": plans}
+    # `charts` pairs each plan with the chart it produced, so the next refinement
+    # can carry the identity forward as well as the plan. `plans` is kept in step
+    # with it because routing still reads that key from older history entries —
+    # threads outlive a deploy under the Postgres checkpointer.
+    produced = [
+        {"chart_id": r.get("chart_id"), "plan": r["plan"]} for r in results if r.get("plan")
+    ]
+    entry = {
+        "request": state["user_request"],
+        "plans": [c["plan"] for c in produced],
+        "charts": produced,
+    }
     return {"status": status, "final_response": final, "history": [entry]}
 
 
@@ -424,6 +435,9 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
     out = state.get("pipeline_output")
     result: ChartResult = {
         "task": state["task"],
+        # A refinement is the same chart, changed — so it keeps its id and the
+        # host replaces what it already has. Everything else is a new chart.
+        "chart_id": state.get("refines_chart_id") or f"ch_{uuid.uuid4().hex[:12]}",
         "plan": state.get("analysis_plan"),
         "attempts": state.get("plan_attempts", 0),
     }

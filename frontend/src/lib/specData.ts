@@ -20,6 +20,38 @@ export function specRows(
 /** Rows past this are not rendered; 5k rows of DOM janks the whole canvas. */
 export const MAX_TABLE_ROWS = 500;
 
+/** The data layer of a generated spec — direct labels make it layered. Mirrors
+ *  backend `services/charts.primary_layer`. */
+function primaryLayer(spec: Record<string, unknown> | undefined): Record<string, unknown> {
+  const layers = spec?.layer;
+  return (Array.isArray(layers) ? layers[0] : spec) ?? {};
+}
+
+/**
+ * The series a chart draws, in the order Vega-Lite assigned them colours — so a
+ * colour picker can list them alongside the swatch each one currently has.
+ *
+ * Empty when the chart has no colour scale (a single-series bar chart), or when
+ * colour carries a measure rather than categories (a heatmap): neither has
+ * series to name, and both are recoloured as a whole instead.
+ */
+export function specSeries(spec: Record<string, unknown> | undefined): string[] {
+  const encoding = primaryLayer(spec).encoding as Record<string, unknown> | undefined;
+  const color = encoding?.color as { field?: string; type?: string } | undefined;
+  if (!color?.field || color.type === 'quantitative') return [];
+
+  const rows = specRows(spec);
+  if (!rows) return [];
+  const seen: string[] = [];
+  for (const row of rows) {
+    const value = row[color.field];
+    if (value === undefined || value === null) continue;
+    const key = String(value);
+    if (!seen.includes(key)) seen.push(key);
+  }
+  return seen;
+}
+
 /** Name of the interval selection the backend attaches to brushable charts. */
 export const BRUSH_SIGNAL = 'autoviz_brush';
 

@@ -34,6 +34,11 @@ MAX_CLEANING_PROMPTS = 2
 
 class ChartResult(TypedDict, total=False):
     task: str
+    # Stable identity for the chart this result represents, so a consumer can tell
+    # "here is a new chart" from "here is that chart again, changed". A refinement
+    # inherits the id of the chart it refined; anything else mints a fresh one.
+    # Without it a host has no way to update a chart in place and must append.
+    chart_id: str
     status: Literal["ok", "partial", "error"]
     plan: dict[str, Any] | None
     attempts: int
@@ -99,6 +104,9 @@ class WorkerState(TypedDict, total=False):
     schema: list[dict[str, str]]
     profile: dict[str, Any]
     prior_plan: dict[str, Any] | None
+    # Set only on a single-task refinement: the chart_id this worker's output
+    # supersedes. finalize_worker inherits it instead of minting a new one.
+    refines_chart_id: str | None
     analysis_plan: dict[str, Any] | None
     rejected_plan: dict[str, Any] | None
     validation_errors: list[str]

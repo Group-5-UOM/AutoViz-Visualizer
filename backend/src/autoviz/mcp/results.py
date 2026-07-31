@@ -315,6 +315,10 @@ class PipelineOutput(_Strict):
 
 class ChartResult(_Strict):
     task: str
+    # Stable identity for this chart across the thread. A refinement returns the
+    # id of the chart it changed, so a host can update that chart in place rather
+    # than showing a near-duplicate beside it.
+    chart_id: str | None = None
     status: Literal["ok", "partial", "error"]
     plan: dict[str, Any] | None = None
     attempts: int = 0
@@ -322,6 +326,10 @@ class ChartResult(_Strict):
     chart_spec: dict[str, Any] | None = None
     vega_lite_spec: dict[str, Any] | None = None
     warnings: list[str] = []
+    # What the user must be told about how the data was cleaned or how the chart
+    # has to be read — pre-written sentences with a severity. See
+    # services/notices.py; a "disclosed" one is owed to the user every time.
+    notices: list[dict[str, Any]] = []
     errors: list[str] = []
 
 

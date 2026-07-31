@@ -16,7 +16,7 @@ from autoviz.models import User
 from autoviz.services.registry import REGISTRY, DatasetRegistry
 from autoviz.storage import repository
 
-__all__ = ["get_registry", "get_agent", "get_db", "get_current_user"]
+__all__ = ["get_registry", "get_agent", "get_planner", "get_db", "get_current_user"]
 
 
 def get_registry() -> DatasetRegistry:
@@ -42,6 +42,24 @@ def get_agent():
 
         _agent = AgentService(checkpointer=make_agent_checkpointer())
     return _agent
+
+
+_planner = None
+
+
+def get_planner():
+    """Lazily-constructed singleton PlannerLLM, for routes that need the model
+    without the graph around it — chart styling is one LLM call and no workflow.
+
+    Same lazy-import reason as `get_agent`: no API key is needed to serve the
+    routes that never reach a model.
+    """
+    global _planner
+    if _planner is None:
+        from autoviz.llm.client import GeminiPlanner
+
+        _planner = GeminiPlanner()
+    return _planner
 
 
 def get_current_user(
