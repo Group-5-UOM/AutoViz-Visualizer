@@ -4,7 +4,7 @@ import { Sidebar } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
 import { ChatPanel } from '../components/chat/ChatPanel';
 import { DashboardCanvas } from '../components/canvas/DashboardCanvas';
-import { DashboardsModal } from '../components/layout/DashboardsModal';
+import { DashboardsPanel } from '../components/layout/DashboardsPanel';
 import { DatasetModal } from '../components/layout/DatasetModal';
 import { useDashboard } from '../hooks/useDashboard';
 import { ApiError } from '../lib/api';
@@ -49,14 +49,14 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
   const handleLoadDashboard = async (selected: DashboardResult) => {
     try {
       const fullDashboard = await getDashboard(selected.id);
-      
+
       const loadedWidgets = await Promise.all(
         fullDashboard.widgets.map(async (w) => {
           const chartData = await getChart(w.chart_id);
           return {
             id: `chart-${w.id}`,
             title: chartData.name,
-            explanation: '', 
+            explanation: '',
             vegaLiteSpec: chartData.vega_lite_spec,
             x: w.x,
             y: w.y,
@@ -66,7 +66,7 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
           };
         })
       );
-      
+
       loadDashboardState(selected.id, selected.name, loadedWidgets);
       setActiveItem('ai-chat');
       setChatOpen(true);
@@ -214,7 +214,7 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
         />
 
         <ChatPanel
-          open={chatOpen}
+          open={chatOpen && activeItem !== 'dashboards'}
           messages={messages}
           isThinking={isThinking}
           disabled={!dataset}
@@ -222,6 +222,13 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
           onClose={() => setChatOpen(false)}
           onSend={sendMessage}
           onFocusChart={(chartId) => selectWidget(chartId)}
+        />
+
+        <DashboardsPanel
+          open={activeItem === 'dashboards'}
+          currentDashboardId={dashboard.dashboardId}
+          onClose={() => setActiveItem(chatOpen ? 'ai-chat' : null)}
+          onSelect={handleLoadDashboard}
         />
 
         <DashboardCanvas
@@ -243,14 +250,6 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
             onSelect={handleExistingDatasetSelected}
             onCsvSelected={handleCsvSelected}
             uploading={uploading}
-          />
-        )}
-
-        {activeItem === 'dashboards' && (
-          <DashboardsModal
-            currentDashboardId={dashboard.dashboardId}
-            onClose={() => setActiveItem(chatOpen ? 'ai-chat' : null)}
-            onSelect={handleLoadDashboard}
           />
         )}
       </div>

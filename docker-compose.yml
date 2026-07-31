@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres:16
+    env_file: /home/ec2-user/autoviz/.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autoviz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: 965002174455.dkr.ecr.eu-north-1.amazonaws.com/autoviz-repo:latest
+    env_file: /home/ec2-user/autoviz/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

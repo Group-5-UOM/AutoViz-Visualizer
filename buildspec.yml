@@ -1,0 +1,31 @@
+version: 0.2
+phases:
+  install:
+    commands:
+      - pip install uv
+  pre_build:
+    commands:
+      - echo Running backend tests...
+      - cd backend && uv sync && uv run pytest tests/ -v && cd ..
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+  build:
+    commands:
+      - echo Building backend image...
+      - docker build -t autoviz-api ./backend
+      - docker tag autoviz-api:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/autoviz-repo:latest
+      - echo Building frontend static files...
+      - docker build -t autoviz-frontend-build ./frontend
+      - docker create --name fe-extract autoviz-frontend-build
+      - docker cp fe-extract:/app/dist ./frontend-dist
+      - docker rm fe-extract
+  post_build:
+    commands:
+      - echo Pushing the backend image...
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/autoviz-repo:latest
+artifacts:
+  files:
+    - docker-compose.yml
+    - appspec.yml
+    - scripts/**/*
+    - frontend-dist/**/*

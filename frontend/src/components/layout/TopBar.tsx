@@ -9,6 +9,8 @@ interface TopBarProps {
   userEmail?: string;
   onToggleSidebar: () => void;
   onToggleChat: () => void;
+  onSave: () => void;
+  onExport: () => void;
   onLogout?: () => void | Promise<void>;
 }
 
@@ -20,6 +22,8 @@ export function TopBar({
   userEmail,
   onToggleSidebar,
   onToggleChat,
+  onSave,
+  onExport,
   onLogout,
 }: TopBarProps) {
   return (
@@ -58,7 +62,7 @@ export function TopBar({
           AI Chat
         </button>
 
-        <button type="button" className="topbar-text-btn" disabled title="Coming soon">
+        <button type="button" className="topbar-text-btn" onClick={onSave} title="Save Dashboard">
           <Save size={15} />
           Save
         </button>
@@ -66,7 +70,7 @@ export function TopBar({
           <Share2 size={15} />
           Share
         </button>
-        <button type="button" className="topbar-primary-btn" disabled title="Coming soon">
+        <button type="button" className="topbar-primary-btn" onClick={onExport} title="Export Dashboard">
           <Download size={15} />
           Export
         </button>

@@ -59,7 +59,7 @@ export function ChartWidgetCard({
     const run = async () => {
       try {
         const result = await embed(el, widget.vegaLiteSpec as never, {
-          actions: false,
+          actions: { export: true, source: false, compiled: false, editor: false },
           renderer: 'svg',
           tooltip: true,
         });
