@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { SendHorizontal, Sparkles, X } from 'lucide-react';
-import type { ChatMessage } from '../../types/dashboard';
+import { AtSign, BarChart3, SendHorizontal, Sparkles, X } from 'lucide-react';
+import type { ChartWidget, ChatMessage } from '../../types/dashboard';
 import './ChatPanel.css';
 
 interface ChatPanelProps {
@@ -12,6 +12,14 @@ interface ChatPanelProps {
   onClose: () => void;
   onSend: (text: string) => void;
   onFocusChart?: (chartId: string) => void;
+  /**
+   * Charts that can be attached to a message. Only those this conversation
+   * produced: one restored from a saved dashboard has no thread behind it, so
+   * there is nothing for a request to modify.
+   */
+  referenceable?: ChartWidget[];
+  referencedWidgetId?: string | null;
+  onReference?: (id: string | null) => void;
 }
 
 // Deliberately generic: the agent answers against whatever CSV was uploaded,
@@ -32,9 +40,14 @@ export function ChatPanel({
   onClose,
   onSend,
   onFocusChart,
+  referenceable = [],
+  referencedWidgetId = null,
+  onReference,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState('');
+  const [picking, setPicking] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const referenced = referenceable.find((w) => w.id === referencedWidgetId) ?? null;
 
   useEffect(() => {
     const el = listRef.current;
@@ -51,6 +64,11 @@ export function ChatPanel({
     if (!canSend(draft)) return;
     onSend(draft);
     setDraft('');
+  };
+
+  const attach = (id: string | null) => {
+    onReference?.(id);
+    setPicking(false);
   };
 
   return (
@@ -76,6 +94,12 @@ export function ChatPanel({
             key={msg.id}
             className={`chat-bubble chat-bubble--${msg.role}`}
           >
+            {msg.referencedTitle && (
+              <p className="chat-bubble-reference" title={msg.referencedTitle}>
+                <AtSign size={11} />
+                {msg.referencedTitle}
+              </p>
+            )}
             <p>{msg.content}</p>
             {msg.options && msg.options.length > 0 && (
               <div className="chat-options">
@@ -151,14 +175,78 @@ export function ChatPanel({
         </div>
       )}
 
+      {picking && referenceable.length > 0 && (
+        <div className="chat-picker" role="listbox" aria-label="Charts on the canvas">
+          {referenceable.map((w) => (
+            <button
+              key={w.id}
+              type="button"
+              role="option"
+              aria-selected={w.id === referencedWidgetId}
+              className="chat-picker-item"
+              onClick={() => attach(w.id)}
+            >
+              <BarChart3 size={13} />
+              <span>{w.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {referenced && (
+        <div className="chat-reference">
+          <AtSign size={12} />
+          <span className="chat-reference-title" title={referenced.title}>
+            {referenced.title}
+          </span>
+          <button
+            type="button"
+            aria-label={`Stop editing ${referenced.title}`}
+            onClick={() => attach(null)}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
       <form className="chat-composer" onSubmit={handleSubmit}>
+        {onReference && referenceable.length > 0 && (
+          <button
+            type="button"
+            className="chat-attach-btn"
+            title="Reference a chart"
+            aria-label="Reference a chart"
+            aria-expanded={picking}
+            disabled={disabled}
+            onClick={() => setPicking((on) => !on)}
+          >
+            <AtSign size={16} />
+          </button>
+        )}
         <textarea
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={disabled ? 'Add a CSV file first…' : 'Ask for a chart…'}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            // Typing "@" opens the picker, the same gesture as referencing a
+            // file elsewhere. The character is left in the draft and simply
+            // reads as part of the sentence if nothing is picked.
+            if (e.target.value.endsWith('@') && referenceable.length > 0) setPicking(true);
+          }}
+          placeholder={
+            disabled
+              ? 'Add a CSV file first…'
+              : referenced
+                ? `Change "${referenced.title}"…`
+                : 'Ask for a chart, or @ to reference one…'
+          }
           rows={2}
           disabled={disabled}
           onKeyDown={(e) => {
+            if (e.key === 'Escape' && picking) {
+              e.preventDefault();
+              setPicking(false);
+              return;
+            }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               if (canSend(draft)) {

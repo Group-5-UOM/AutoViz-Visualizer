@@ -69,6 +69,11 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
   // rather than on top of one the user kept.
   const placedCount = useRef(0);
 
+  // A chart the user attached to the next message. Held here rather than in the
+  // composer because the attach gesture happens on the canvas, and because
+  // sending is what consumes it.
+  const [referencedWidgetId, setReferencedWidgetId] = useState<string | null>(null);
+
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -153,6 +158,9 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
       widgets: prev.widgets.filter((w) => w.id !== id),
       selectedWidgetId: prev.selectedWidgetId === id ? null : prev.selectedWidgetId,
     }));
+    // An attachment pointing at a chart that no longer exists would send a
+    // chart_id the backend cannot resolve, and quietly behave as if unattached.
+    setReferencedWidgetId((prev) => (prev === id ? null : prev));
   }, []);
 
   const pushAssistant = useCallback((message: Omit<ChatMessage, 'id' | 'role' | 'timestamp'>) => {
@@ -241,17 +249,33 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
         return;
       }
 
+      // Resolved before the message is posted so the transcript records what was
+      // attached, and consumed on send: an attachment that outlived its message
+      // would silently redirect the next, unrelated question onto that chart.
+      const referenced = referencedWidgetId
+        ? dashboardRef.current.widgets.find((w) => w.id === referencedWidgetId)
+        : undefined;
+      setReferencedWidgetId(null);
+
       setMessages((prev) => [
         ...prev,
-        { id: uid('msg'), role: 'user', content: trimmed, timestamp: Date.now() },
+        {
+          id: uid('msg'),
+          role: 'user',
+          content: trimmed,
+          referencedTitle: referenced?.title,
+          timestamp: Date.now(),
+        },
       ]);
       setIsThinking(true);
 
       try {
         const res =
           awaitingAnswer.current && threadId.current
-            ? await answerClarification(threadId.current, trimmed, pendingInterruptId.current)
-            : await analyze(trimmed, datasetId, threadId.current);
+            ? // A paused run is answering its own question; an attachment has
+              // nothing to do with that decision.
+              await answerClarification(threadId.current, trimmed, pendingInterruptId.current)
+            : await analyze(trimmed, datasetId, threadId.current, referenced?.agentChartId);
         applyResponse(res);
       } catch (err) {
         // A paused run is left paused on transport failure, so a retry resumes
@@ -261,7 +285,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
         setIsThinking(false);
       }
     },
-    [datasetId, applyResponse, pushAssistant],
+    [datasetId, applyResponse, pushAssistant, referencedWidgetId],
   );
 
   // --- persistence ----------------------------------------------------------
@@ -453,6 +477,8 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     saveStatus,
     lastSavedAt,
     saveError,
+    referencedWidgetId,
+    referenceWidget: setReferencedWidgetId,
     selectWidget,
     updateWidget,
     editWidgetStyle,

@@ -77,6 +77,11 @@ class AutoVizState(TypedDict, total=False):
     profile: dict[str, Any]
     # Routing
     intent: Literal["analysis", "refinement", "clarification"]
+    # A chart the caller pointed at explicitly ("edit this one"). Authoritative
+    # where it is set: the alternative is inferring the target from history, which
+    # can only ever mean "the most recent chart" and is wrong the moment a canvas
+    # holds more than one. Unset for an ordinary request.
+    target_chart_id: str | None
     tasks: list[str]
     clarification: dict[str, Any] | None
     clarification_answer: str | None

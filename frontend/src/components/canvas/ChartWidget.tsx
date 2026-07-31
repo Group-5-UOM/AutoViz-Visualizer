@@ -7,7 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import embed from 'vega-embed';
-import { BarChart3, Palette, Table2, Trash2, Wand2 } from 'lucide-react';
+import { AtSign, BarChart3, Palette, Table2, Trash2, Wand2 } from 'lucide-react';
 import type { ChartWidget } from '../../types/dashboard';
 import {
   BRUSH_SIGNAL,
@@ -27,6 +27,10 @@ interface ChartWidgetCardProps {
   onEditStyle: (request: string) => Promise<string | null>;
   /** Open the direct controls for the same styling. */
   onOpenStyle: () => void;
+  /** Attach this chart to the next chat message. */
+  onReference: () => void;
+  /** This chart is the one currently attached to the composer. */
+  referenced: boolean;
   onDelete: () => void;
   onMove: (x: number, y: number) => void;
   onResize: (width: number, height: number) => void;
@@ -38,6 +42,8 @@ export function ChartWidgetCard({
   onSelect,
   onEditStyle,
   onOpenStyle,
+  onReference,
+  referenced,
   onDelete,
   onMove,
   onResize,
@@ -209,6 +215,24 @@ export function ChartWidgetCard({
               }}
             >
               {showTable ? <BarChart3 size={14} /> : <Table2 size={14} />}
+            </button>
+          )}
+          {/* Only a chart this conversation produced can be referenced: one
+              restored from a saved dashboard has no thread behind it to edit. */}
+          {widget.agentChartId && (
+            <button
+              type="button"
+              className="chart-header-btn"
+              title={referenced ? 'Attached to the chat' : 'Ask the chat about this chart'}
+              aria-label={referenced ? 'Attached to the chat' : 'Ask the chat about this chart'}
+              aria-pressed={referenced}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onReference();
+              }}
+            >
+              <AtSign size={14} />
             </button>
           )}
           <button

@@ -52,6 +52,10 @@ class AnalyzeRequest(BaseModel):
     dataset_id: str | None = None
     file_ref: str | None = None
     thread_id: str | None = None
+    # A chart from an earlier turn that this request is about, so "make it a line
+    # chart" modifies the chart the user pointed at rather than the newest one.
+    # Read from the `chart_id` on a previous response's chart results.
+    chart_id: str | None = None
 
 
 class ClarificationRequest(BaseModel):

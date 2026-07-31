@@ -49,6 +49,8 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
     saveStatus,
     lastSavedAt,
     saveError,
+    referencedWidgetId,
+    referenceWidget,
     selectWidget,
     updateWidget,
     editWidgetStyle,
@@ -221,6 +223,11 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
           onClose={() => setChatOpen(false)}
           onSend={sendMessage}
           onFocusChart={(chartId) => selectWidget(chartId)}
+          // Only charts this conversation produced: a chart restored from a
+          // saved dashboard has no thread behind it to refine against.
+          referenceable={dashboard.widgets.filter((w) => w.agentChartId)}
+          referencedWidgetId={referencedWidgetId}
+          onReference={referenceWidget}
         />
 
         <DashboardsPanel
@@ -240,6 +247,16 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
           onUpdate={updateWidget}
           onEditStyle={(id, request) => editWidgetStyle(id, { request })}
           onOpenStyle={setStyleWidgetId}
+          onReference={(id) => {
+            // Toggle, so the same button detaches. Opening the chat is the point
+            // of the gesture — attaching to a panel nobody can see is a dead end.
+            referenceWidget(referencedWidgetId === id ? null : id);
+            if (referencedWidgetId !== id) {
+              setActiveItem('ai-chat');
+              setChatOpen(true);
+            }
+          }}
+          referencedWidgetId={referencedWidgetId}
           onDelete={deleteWidget}
           onCsvSelected={handleCsvSelected}
         />

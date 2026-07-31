@@ -27,6 +27,12 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   chartId?: string;
+  /**
+   * The chart this message was about, when the user attached one. Kept on the
+   * message so the transcript still says which chart was being edited after the
+   * attachment itself is consumed and cleared.
+   */
+  referencedTitle?: string;
   /** Grounded answers offered with a question; picking one replies with its label. */
   options?: ChatOption[];
   timestamp: number;
