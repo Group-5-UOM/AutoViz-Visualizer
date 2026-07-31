@@ -16,6 +16,18 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
+# Runtime user and writable dirs (uploads default to /app/uploads per
+# core/config.py). Done before the venv exists so this layer stays cached across
+# code edits, and so the chown never has to walk /app/.venv — ownership changes
+# force an overlayfs copy-up of every file touched, which would duplicate the
+# whole venv into a new layer on every rebuild. The venv and source stay
+# root-owned: autoviz needs to read them, not write them.
+# Mount a volume over /app/uploads in compose to persist across container swaps;
+# a named volume inherits this ownership when it is first created.
+RUN useradd --create-home --uid 10001 autoviz \
+    && mkdir -p /app/uploads /app/exports /app/logs \
+    && chown autoviz:autoviz /app/uploads /app/exports /app/logs
+
 # 1) Resolve dependencies from the lockfile first. This layer is cached and
 #    only rebuilds when uv.lock / pyproject.toml change — not on every code edit.
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -28,11 +40,6 @@ COPY . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
-# Writable runtime dirs (uploads default to /app/uploads per core/config.py).
-# Mount a volume over /app/uploads in compose to persist across container swaps.
-RUN mkdir -p /app/uploads /app/exports /app/logs \
-    && useradd --create-home --uid 10001 autoviz \
-    && chown -R autoviz:autoviz /app
 USER autoviz
 
 EXPOSE 8000
