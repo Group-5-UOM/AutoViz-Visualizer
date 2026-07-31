@@ -15,13 +15,17 @@ averages into twelve unremarkable regional means, and a tame column can produce
 one enormous bar because one group holds most of the rows. The distribution that
 compresses the chart is the one in the result table.
 
-**Whether a scale may be changed.** Only for marks that encode by *position*
-(line, scatter). A bar encodes magnitude by length from a baseline, and a
-log-scaled bar length is no longer proportional to its value — the same objection
-that makes a truncated bar axis misleading, and the research there is
-unambiguous that the distortion survives even when readers correctly read the
-axis labels. So bars, areas and histograms get told about the problem and keep
-their honest scale. Boxplots are exempt outright: extremes are their content.
+**Whether a scale may be changed.** This is a property of the *channel*, not of
+the chart type. A channel that encodes by **position** (a line or scatter axis) or
+by **colour** (a heatmap's measure) can be rescaled freely: the mark moves, or its
+hue changes, and nothing else is claimed. A channel that encodes by **length or
+area from a baseline** — a bar, an area — cannot, because a log-scaled bar length
+is no longer proportional to its value. That is the same objection that makes a
+truncated bar axis misleading, and the research there is unambiguous that the
+distortion survives even when readers correctly read the axis labels. So bars,
+areas and histograms are told about the problem and keep their honest scale,
+while a heatmap's colour is rescaled like any axis. Boxplots are exempt outright:
+extremes are their content.
 
 The result is always disclosed, never silent. A log axis that nobody mentions is
 its own way of misleading someone.
@@ -46,7 +50,7 @@ SKEW_OCCUPANCY = 0.03
 # different heights is a finding about the data, not a defect in the chart.
 MIN_POINTS = 4
 
-# Marks that encode by position: the scale may be changed.
+# Marks whose *position* channels may be rescaled.
 SCALABLE_TYPES = frozenset({"line", "scatter"})
 
 # Marks that encode by length or area from a baseline. Told, never rescaled.
@@ -54,6 +58,12 @@ BASELINE_TYPES = frozenset({"bar", "grouped_bar", "area", "histogram"})
 
 # Extremes are the point of the chart.
 EXEMPT_TYPES = frozenset({"boxplot"})
+
+# Channels that carry a quantity as a hue rather than a distance. Rescaling one
+# is always safe — no length is being claimed — so the mark's own class does not
+# get a vote. This is what lets a heatmap's measure be log-scaled while a bar's
+# height, on the very same chart grammar, may not be.
+COLOR_CHANNELS = frozenset({"color", "fill"})
 
 
 def _numbers(values: list[Any]) -> list[float]:
@@ -106,14 +116,14 @@ def _is_compressed(ordered: list[float]) -> bool:
 
 
 def assess(
-    values: list[Any], column: str, chart_type: str
+    values: list[Any], column: str, chart_type: str, channel: str = "y"
 ) -> tuple[dict[str, Any] | None, Notice | None]:
-    """Decide the scale for one quantitative axis, and what to say about it.
+    """Decide the scale for one quantitative channel, and what to say about it.
 
     Returns ``(scale, notice)``. ``scale`` is a Vega-Lite scale definition to
-    merge into the encoding, or None to leave the axis alone; ``notice`` is the
+    merge into the encoding, or None to leave the channel alone; ``notice`` is the
     advisory to show the user, or None when there is nothing to report. A scale
-    is never returned without a notice — an axis that silently stopped being
+    is never returned without a notice — a channel that silently stopped being
     linear is a trap, not a fix.
     """
     if chart_type in EXEMPT_TYPES:
@@ -127,15 +137,39 @@ def assess(
     pretty = neutralize_text(column).replace("_", " ").strip()
     detail = {
         "column": neutralize_text(column),
+        "channel": channel,
         "min": lo,
         "max": hi,
         "median": median,
     }
+    # A log domain must not include or cross zero, so anything touching zero or
+    # going negative gets symlog — log-like, but defined at and below zero.
+    scale_type = "log" if lo > 0 else "symlog"
+
+    if channel in COLOR_CHANNELS:
+        # Colour is the one channel where the linear version fails *worse* than a
+        # squashed axis: one dominant cell takes the whole top of the ramp and
+        # every other cell lands on an indistinguishable shade at the bottom, so
+        # the chart reads as uniform rather than merely cramped.
+        return (
+            {"type": scale_type},
+            Notice(
+                kind="skewed_color",
+                severity=ADVISORY,
+                note=(
+                    f"'{pretty}' spans {_num(lo)} to {_num(hi)}, so the colour "
+                    f"scale is {scale_type}-scaled — on a linear ramp one value "
+                    "would take the whole scale and the rest would be near-"
+                    "identical shades. Equal steps in colour are equal ratios, "
+                    "not equal amounts."
+                ),
+                column=neutralize_text(column),
+                technique=f"{scale_type} colour scale on '{column}'",
+                detail={**detail, "scale": scale_type},
+            ),
+        )
 
     if chart_type in SCALABLE_TYPES:
-        # A log domain must not include or cross zero, so anything touching zero
-        # or going negative gets symlog — log-like, but defined at and below zero.
-        scale_type = "log" if lo > 0 else "symlog"
         return (
             {"type": scale_type},
             Notice(

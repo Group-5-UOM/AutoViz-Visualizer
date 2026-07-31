@@ -284,8 +284,11 @@ def generate_chart(
     # the values actually being plotted, because aggregation both creates and
     # destroys skew — see services/skew.py for why the scale is only changed for
     # position-encoded marks.
+    # `color` is in the list for the heatmap, whose measure rides the colour
+    # channel rather than an axis — and where a linear ramp fails hardest, since
+    # one dominant cell leaves every other on the same shade.
     axis_notices: list[Notice] = []
-    for channel in ("x", "y"):
+    for channel in ("x", "y", "color"):
         enc_def = encoding.get(channel)
         # A channel with no field is derived (a binned count), so there is no
         # column of values to judge.
@@ -293,7 +296,7 @@ def generate_chart(
             continue
         field = enc_def["field"]
         scale, notice = skew.assess(
-            [row.get(field) for row in result_table], field, chart_type
+            [row.get(field) for row in result_table], field, chart_type, channel
         )
         if scale:
             enc_def["scale"] = {**enc_def.get("scale", {}), **scale}

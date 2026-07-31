@@ -89,6 +89,61 @@ def test_boxplot_is_exempt():
     assert skew.assess(SKEWED, "revenue", "boxplot") == (None, None)
 
 
+# --- colour is a channel property, not a chart-type property ------------------
+
+
+def test_colour_is_rescaled_even_on_a_mark_whose_axis_is_not():
+    """A bar's height may not be log-scaled; a quantity carried as *hue* on the
+    very same grammar may, because no length is being claimed."""
+    height_scale, _ = skew.assess(SKEWED, "revenue", "bar", "y")
+    colour_scale, notice = skew.assess(SKEWED, "revenue", "bar", "color")
+    assert height_scale is None
+    assert colour_scale == {"type": "log"}
+    assert notice.kind == "skewed_color"
+
+
+def test_heatmap_measure_is_log_scaled():
+    """The heatmap's measure rides colour, so it is scalable even though the
+    chart type is in neither the position-scalable nor the baseline set."""
+    scale, notice = skew.assess(SKEWED, "sales", "heatmap", "color")
+    assert scale == {"type": "log"}
+    assert "colour scale" in notice.note
+
+
+def test_heatmap_colour_crossing_zero_gets_symlog():
+    scale, _ = skew.assess([-4000, -2, -1, 0, 1, 2, 3, 5000], "delta", "heatmap", "color")
+    assert scale == {"type": "symlog"}
+
+
+def test_boxplot_exemption_still_wins_over_the_colour_rule():
+    assert skew.assess(SKEWED, "revenue", "boxplot", "color") == (None, None)
+
+
+def test_generate_chart_scales_the_heatmap_colour_channel():
+    rows = [
+        {"row": r, "col": c, "sales": v}
+        for (r, c), v in zip(
+            [(r, c) for r in "ABCD" for c in "1234"],
+            [3, 5, 4, 6, 7, 5, 8, 6, 4, 7, 5, 9, 6, 8, 7, 9000],
+        )
+    ]
+    out = generate_chart(rows, {"type": "heatmap", "x": "col", "y": "row", "color": "sales"})
+    enc = _encoding(out["vega_lite_spec"])
+    assert enc["color"]["scale"] == {"type": "log"}
+    # The categorical axes are untouched — only the quantitative channel is judged.
+    assert "scale" not in enc["x"] and "scale" not in enc["y"]
+    assert [n["kind"] for n in out["notices"]] == ["skewed_color"]
+
+
+def test_nominal_colour_channel_is_not_judged():
+    """A colour channel carrying categories has no quantity to compress."""
+    rows = [{"region": f"R{i}", "revenue": v, "tier": "a"} for i, v in enumerate(SKEWED)]
+    out = generate_chart(
+        rows, {"type": "line", "x": "region", "y": "revenue", "color": "tier"}
+    )
+    assert [n["detail"]["channel"] for n in out["notices"]] == ["y"]
+
+
 def test_a_scale_is_never_changed_without_saying_so():
     """A silently non-linear axis is a trap, not a fix."""
     for chart_type in sorted(skew.SCALABLE_TYPES | skew.BASELINE_TYPES):
