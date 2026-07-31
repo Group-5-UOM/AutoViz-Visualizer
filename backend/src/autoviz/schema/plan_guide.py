@@ -22,7 +22,8 @@ analysis_plan JSON structure (lists may be empty/omitted; dataset_id and intent 
     {"op": "fill_nulls", "column": "col", "strategy": "constant"|"median"|"mode", "value": <scalar for constant>},
     {"op": "drop_exact_duplicates"},
     {"op": "clean_categories", "column": "col", "mapping": {"old": "new", ...}},
-    {"op": "group_rare_categories", "column": "col", "top_n": <int>, "other_label": "Other"}
+    {"op": "group_rare_categories", "column": "col", "top_n": <int>, "other_label": "Other",
+     "rank_by": {"column": "col", "fn": "sum"|"mean"|"min"|"max"|"count"|"median"|"count_distinct"}}
   ],
   "select": ["col", ...],
   "filters": [{"column": "col",
@@ -52,9 +53,14 @@ Preprocessing (explicit, never silent — the source CSV is never modified):
   the user asked or after offering the choice):
   clean_categories applies an explicit {old: new} mapping — use it for "treat UK and U.K. as the
   same", never to guess at similar-looking values yourself. Values not named are left alone.
-  group_rare_categories keeps the commonest values and folds the rest into other_label — the fix
+  group_rare_categories keeps the leading values and folds the rest into other_label — the fix
   for a grouping column with too many categories to read. Give exactly ONE of top_n or
   min_frequency. Nulls are never bucketed (missing is not the same as rare).
+  With top_n, set rank_by to the SAME column and fn as the aggregation you are charting, so the
+  categories kept are the ones that lead on the plotted measure. Without it the keep-set is row
+  frequency, which answers "who has the most rows" — a different question from "who has the
+  highest total", and it will bury the top performer in "Other" whenever the two disagree.
+  rank_by does not apply to min_frequency (already a frequency rule).
 - cast_column reads a text column as the type it already holds — the only way to aggregate a
   numeric column your reader took as text (sum/mean require a numeric column). It refuses if
   any value would fail to convert, so pair it with empty_string_to_null when blanks or

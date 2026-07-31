@@ -179,9 +179,20 @@ def from_preprocessing(report: list[dict[str, Any]], input_rows: int) -> list[No
             )
             technique = f"clean_categories on '{col}'"
         elif name == "group_rare_categories":
+            # Naming the ranking matters: "outside the top 10" is a different
+            # claim depending on whether the top 10 was decided by row count or
+            # by the measure on the axis, and a reader cannot tell which from a
+            # bar labelled "Other".
+            rank_by = entry.get("rank_by") or {}
+            ranked = (
+                f"the categories leading on {rank_by['fn']} of "
+                f"'{_pretty(str(rank_by['column']))}'"
+                if rank_by
+                else "the commonest categories"
+            )
             note = (
                 f"{affected} row(s) in '{_pretty(str(col))}' ({_pct(fraction)}) fell "
-                "outside the commonest categories and were grouped as "
+                f"outside {ranked} and were grouped as "
                 f"'{entry.get('other_label') or 'Other'}'."
             )
             technique = f"group_rare_categories on '{col}'"

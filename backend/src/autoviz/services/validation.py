@@ -248,6 +248,28 @@ def _validate_preprocessing(
                         f"preprocessing group_rare_categories on '{op.column}': other_label "
                         f"exceeds {MAX_FILL_STRING_LEN} characters"
                     )
+                if op.rank_by is not None:
+                    if op.min_frequency is not None:
+                        errors.append(
+                            f"preprocessing group_rare_categories on '{op.column}': rank_by "
+                            "only applies to top_n (min_frequency is already a "
+                            "frequency rule)"
+                        )
+                    rank_type = schema.get(op.rank_by.column)
+                    if rank_type is None:
+                        errors.append(
+                            f"preprocessing group_rare_categories on '{op.column}': rank_by "
+                            f"column '{op.rank_by.column}' does not exist"
+                        )
+                    elif (
+                        op.rank_by.fn not in ("count", "count_distinct")
+                        and rank_type != "number"
+                    ):
+                        errors.append(
+                            f"preprocessing group_rare_categories on '{op.column}': rank_by "
+                            f"{op.rank_by.fn} requires a numeric column "
+                            f"('{op.rank_by.column}' is {rank_type})"
+                        )
         elif op.op in ("drop_exact_duplicates", "drop_empty_rows"):
             pass  # span whole rows; no parameters to check
         else:

@@ -24,7 +24,7 @@ from autoviz.errors import PLAN_REPAIRABLE, RETRYABLE
 from autoviz.llm.client import IntentDecision, PlannerError, PlannerLLM
 from autoviz.schema.analysis_plan import AnalysisPlan
 from autoviz.schema.clarification import Ambiguity, bind_answer
-from autoviz.services import charts, dataset, notices as notices_svc, quality
+from autoviz.services import charts, dataset, fidelity, notices as notices_svc, quality
 from autoviz.services.orchestrator import run_pipeline
 from autoviz.services.registry import REGISTRY, DatasetRegistry
 
@@ -130,6 +130,19 @@ def clarify(state: AutoVizState) -> dict[str, Any]:
     }
 
 
+def _normalize_note(text: str) -> str:
+    """Fold the differences a re-typed sentence picks up but a reader ignores.
+
+    Case, run-together whitespace, and the dash family — the composer rewrites an
+    em dash as a hyphen often enough that an exact match is not a usable test of
+    "has this already been said".
+    """
+    folded = text.casefold()
+    for dash in ("—", "–", "−"):
+        folded = folded.replace(dash, "-")
+    return " ".join(folded.split())
+
+
 def compose_response(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, Any]:
     results = state.get("chart_results") or []
     usable = [r for r in results if r.get("status") in ("ok", "partial")]
@@ -151,14 +164,26 @@ def compose_response(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, A
     # caveat that disappears because a model was terse or the call failed is the
     # one failure mode this channel exists to prevent. Appended only when the
     # answer does not already carry the wording, so the normal path stays clean.
-    owed = [
-        n
-        for r in results
-        for n in (r.get("notices") or [])
-        if n.get("severity") in (notices_svc.DISCLOSED, notices_svc.ADVISORY)
-        and n.get("note")
-        and n["note"] not in answer
-    ]
+    # Matched on a normalized form, not raw text. An exact substring test fails
+    # the moment the composer reproduces a caveat with a hyphen where the notice
+    # had an em dash, or across a line break — and the failure mode is the user
+    # reading the same sentence twice, which reads like a bug in the analysis
+    # rather than in the prose. The `seen` set covers the other source of a
+    # double: two workers whose results carry the same disclosure.
+    spoken = _normalize_note(answer)
+    seen: set[str] = set()
+    owed = []
+    for r in results:
+        for n in r.get("notices") or []:
+            if n.get("severity") not in (notices_svc.DISCLOSED, notices_svc.ADVISORY):
+                continue
+            if not n.get("note"):
+                continue
+            key = _normalize_note(n["note"])
+            if key in seen or key in spoken:
+                continue
+            seen.add(key)
+            owed.append(n)
     if owed:
         answer = " ".join([answer, *(n["note"] for n in owed)]).strip()
     final = {"status": status, "answer": answer, "charts": results}
@@ -239,7 +264,9 @@ def assess_quality(
     existing = list(plan.get("preprocessing") or [])
     scope = {c for c in model.referenced_columns() if c in record.schema}
     issues = quality.scan(record, scope)
-    auto_ops, proposals = quality.recommend(issues, len(record.df))
+    auto_ops, proposals = quality.recommend(
+        issues, len(record.df), quality.plan_measure(model)
+    )
 
     resolved: dict[str, Any] = dict(state.get("cleaning_resolutions") or {})
     # An explicit instruction in the plan already answers its slot.
@@ -446,6 +473,22 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
             {"status": "error", "result": None, "errors": state.get("validation_errors") or []}
         )
     elif out["status"] == "ok":
+        chart_notices = list(out.get("notices") or _notices_of(out.get("result")))
+        # Anything the request named and the run did not deliver. A refusal the
+        # chart grammar forced, a substituted chart type, an ordering that never
+        # happened — all of them otherwise come back as a finished chart with
+        # nothing to distinguish "considered and declined" from "dropped".
+        chart_notices.extend(
+            n.to_wire()
+            for n in fidelity.unmet_requests(
+                state.get("task") or "",
+                fidelity.ChartOutcome(
+                    chart_type=(out.get("chart_spec") or {}).get("type", ""),
+                    vega_lite_spec=out.get("vega_lite_spec") or {},
+                    plan=state.get("analysis_plan") or {},
+                ),
+            )
+        )
         result.update(
             {
                 "status": "ok",
@@ -455,7 +498,7 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
                 "warnings": out.get("warnings", []),
                 # The pipeline merges cleaning and chart disclosures; fall back to
                 # the execution half for callers that never ran the chart step.
-                "notices": out.get("notices") or _notices_of(out.get("result")),
+                "notices": chart_notices,
                 "errors": [],
             }
         )

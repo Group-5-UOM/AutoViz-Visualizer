@@ -288,16 +288,36 @@ def _missing_value_proposal(issue: QualityIssue, total: int) -> CleaningProposal
     )
 
 
-def _high_cardinality_proposal(issue: QualityIssue) -> CleaningProposal:
+def _high_cardinality_proposal(
+    issue: QualityIssue, measure: tuple[str, str] | None = None
+) -> CleaningProposal:
     """Offer to bucket the long tail of a column with too many categories.
 
     Value-changing, so it is asked rather than applied: folding categories into
     "Other" is usually what makes the chart readable, but it also erases whichever
     small category the user might have been looking for.
+
+    ``measure`` is the plan's ``(column, fn)`` when it aggregates, and it decides
+    which categories survive. Ranking by row frequency instead is a trap whenever
+    volume and value disagree: on a revenue chart it can bury the top earner in
+    "Other" while keeping a rep who ranks near-last, because who logged the most
+    orders is a different question from who brought in the most money.
     """
     col = issue.column
     assert col is not None
     distinct = int(issue.detail.get("distinct", issue.affected))
+    op: dict[str, Any] = {
+        "op": "group_rare_categories",
+        "column": col,
+        "top_n": DEFAULT_TOP_CATEGORIES,
+        "other_label": "Other",
+    }
+    if measure is not None:
+        m_col, m_fn = measure
+        op["rank_by"] = {"column": m_col, "fn": m_fn}
+        kept = f"the {DEFAULT_TOP_CATEGORIES} highest by {m_fn} of {_pretty(m_col)}"
+    else:
+        kept = f"the {DEFAULT_TOP_CATEGORIES} commonest values"
     return CleaningProposal(
         slot=f"cardinality:{col}",
         question=(
@@ -308,16 +328,11 @@ def _high_cardinality_proposal(issue: QualityIssue) -> CleaningProposal:
             CleaningOption(
                 label=f"Show the top {DEFAULT_TOP_CATEGORIES} and group the rest as Other",
                 detail=(
-                    f"Keeps the {DEFAULT_TOP_CATEGORIES} commonest values; the other "
+                    f"Keeps {kept}; the other "
                     f"{distinct - DEFAULT_TOP_CATEGORIES} are combined."
                 ),
                 technique=f"group_rare_categories(top_n={DEFAULT_TOP_CATEGORIES}) on '{col}'",
-                op={
-                    "op": "group_rare_categories",
-                    "column": col,
-                    "top_n": DEFAULT_TOP_CATEGORIES,
-                    "other_label": "Other",
-                },
+                op=op,
                 recommended=True,
             ),
             CleaningOption(
@@ -364,13 +379,20 @@ def _duplicate_proposal(issue: QualityIssue, total: int) -> CleaningProposal:
 
 
 def recommend(
-    issues: list[QualityIssue], total_rows: int
+    issues: list[QualityIssue],
+    total_rows: int,
+    measure: tuple[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[CleaningProposal]]:
     """Split findings into repairs to apply and questions to ask.
 
     Returns ``(auto_ops, proposals)``. ``auto_ops`` is a preprocessing block ready
     to merge into a plan; ``proposals`` are unanswered questions, most impactful
     first, so a caller that can only ask once asks about the thing that matters.
+
+    ``measure`` is the ``(column, fn)`` the plan aggregates by, when it has one.
+    It only affects the high-cardinality proposal, which uses it to keep the
+    categories that lead on the quantity being charted rather than the ones with
+    the most rows.
     """
     auto_ops: list[dict[str, Any]] = []
     proposals: list[CleaningProposal] = []
@@ -397,7 +419,7 @@ def recommend(
         elif issue.kind == "duplicate_rows":
             proposals.append(_duplicate_proposal(issue, total_rows))
         elif issue.kind == "high_cardinality":
-            proposals.append(_high_cardinality_proposal(issue))
+            proposals.append(_high_cardinality_proposal(issue, measure))
 
     proposals.sort(key=lambda p: p.issue.fraction, reverse=True)
     return auto_ops, proposals
@@ -416,6 +438,24 @@ def dimension_columns(plan: Any) -> set[str]:
     if plan.chart is not None and plan.chart.color:
         dims.add(plan.chart.color)
     return dims
+
+
+def plan_measure(plan: Any) -> tuple[str, str] | None:
+    """The ``(column, fn)`` this plan charts, or None if it doesn't aggregate.
+
+    Prefers the aggregation the chart actually plots — a plan can compute several
+    and show one, and it is the shown one that a "top N" should be ranked by.
+    Falls back to the first aggregation when the chart names something else (a
+    derived column, say), which is still closer to the truth than row counts.
+    """
+    if not plan.aggregations:
+        return None
+    if plan.chart is not None and plan.chart.y:
+        for agg in plan.aggregations:
+            if agg.as_ == plan.chart.y:
+                return agg.column, agg.fn
+    first = plan.aggregations[0]
+    return first.column, first.fn
 
 
 def is_worth_asking(proposal: CleaningProposal, dimensions: set[str]) -> bool:
@@ -520,6 +560,12 @@ def suppressed_slots(existing: list[dict[str, Any]]) -> set[str]:
                 slots.add(f"missing:{col}")
         elif op.get("op") == "drop_exact_duplicates":
             slots.add("duplicates")
+        elif op.get("op") == "group_rare_categories":
+            # A refinement carries the prior plan's preprocessing forward, so
+            # without this the cardinality slot is unsuppressable and every
+            # follow-up re-asks a question the user already answered.
+            for col in _op_columns(op):
+                slots.add(f"cardinality:{col}")
     return slots
 
 

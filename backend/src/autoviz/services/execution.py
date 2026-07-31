@@ -404,14 +404,22 @@ def _apply_preprocessing(
                 ).fetchone()[0]
             else:
                 # top_n: the keep-set is bounded by top_n, so an IN list is cheap.
-                # Same deterministic tie-break as `mode` — frequency desc, then
-                # value asc — so a tie never depends on scan order.
+                # Ranked by the plan's own measure when it has one, so the
+                # categories kept are the ones the chart is about; row frequency
+                # only when nothing better was given. Same deterministic
+                # tie-break as `mode` — measure desc, then value asc — so a tie
+                # never depends on scan order.
+                if op.rank_by is not None:
+                    rank_expr = _AGG_SQL[op.rank_by.fn].format(col=_q(op.rank_by.column))
+                else:
+                    rank_expr = "count(*)"
                 keep = [
                     row[0]
                     for row in con.execute(
                         _with(cte_defs)
                         + f"SELECT {col} FROM {current} WHERE {col} IS NOT NULL "
-                        f"GROUP BY {col} ORDER BY count(*) DESC, {col} ASC LIMIT ?",
+                        f"GROUP BY {col} ORDER BY {rank_expr} DESC NULLS LAST, "
+                        f"{col} ASC LIMIT ?",
                         list(params) + [op.top_n],
                     ).fetchall()
                 ]
@@ -437,6 +445,8 @@ def _apply_preprocessing(
                 "other_label": op.other_label,
                 **({"top_n": op.top_n} if op.top_n is not None else
                    {"min_frequency": op.min_frequency}),
+                **({"rank_by": {"column": op.rank_by.column, "fn": op.rank_by.fn}}
+                   if op.rank_by is not None else {}),
                 "rows_affected": int(bucketed), "confirmation_required": False,
             })
             current = name
