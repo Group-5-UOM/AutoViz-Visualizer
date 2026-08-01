@@ -57,7 +57,13 @@ Edit `backend/.env` and set at least:
 | `DATABASE_URL` | Postgres connection string |
 | `SECRET_KEY` | Auth / token secret |
 | `AUTOVIZ_CORS_ORIGINS` | Allowed frontend origins (comma-separated) |
-| `GOOGLE_API_KEY` | Planner LLM (agent routes) |
+| `OPENAI_API_KEY` | OpenAI planner (set with `AUTOVIZ_PLANNER_MODEL=openai:gpt-4o-mini`) |
+| `GOOGLE_API_KEY` | Google Gemini planner (default if `AUTOVIZ_PLANNER_MODEL` unset) |
+| `AUTOVIZ_PLANNER_MODEL` | LangChain model id, e.g. `openai:gpt-4o-mini` or `google_genai:gemini-3.5-flash` |
+| `GITHUB_OAUTH_CLIENT_ID` / `SECRET` | GitHub OAuth App credentials |
+| `GOOGLE_OAUTH_CLIENT_ID` / `SECRET` | Google OAuth Web client credentials |
+| `AUTOVIZ_FRONTEND_URL` | Frontend origin for OAuth return (`http://localhost:5173`) |
+| `AUTOVIZ_API_PUBLIC_URL` | Backend public URL for OAuth callbacks (`http://127.0.0.1:8000`) |
 
 For system Postgres (pgAdmin, port `5432`) — create a database named `autoviz`, then:
 
@@ -65,7 +71,11 @@ For system Postgres (pgAdmin, port `5432`) — create a database named `autoviz`
 DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/autoviz
 SECRET_KEY=autoviz-dev-secret-key-change-in-production
 AUTOVIZ_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000
-GOOGLE_API_KEY=your-key-here
+OPENAI_API_KEY=your-openai-key-here
+AUTOVIZ_PLANNER_MODEL=openai:gpt-4o-mini
+# Or use Google instead:
+# GOOGLE_API_KEY=your-google-key-here
+# AUTOVIZ_PLANNER_MODEL=google_genai:gemini-3.5-flash
 ```
 
 For Docker Compose Postgres instead:
@@ -73,6 +83,18 @@ For Docker Compose Postgres instead:
 ```env
 DATABASE_URL=postgresql://autoviz:autoviz@localhost:5434/autoviz
 ```
+
+### OAuth console URLs
+
+Register these exact callback URLs in the provider consoles:
+
+| Provider | Setting | Value |
+| --- | --- | --- |
+| GitHub OAuth App | Authorization callback URL | `http://127.0.0.1:8000/auth/oauth/github/callback` |
+| Google Cloud OAuth client | Authorized JavaScript origins | `http://localhost:5173` |
+| Google Cloud OAuth client | Authorized redirect URIs | `http://127.0.0.1:8000/auth/oauth/google/callback` |
+
+Google treats `localhost` and `127.0.0.1` as different hosts. The redirect URI must match `AUTOVIZ_API_PUBLIC_URL` in `backend/.env` character-for-character.
 
 ---
 
@@ -115,7 +137,7 @@ Docs: `http://localhost:8000/docs`
 
 ```bash
 cp backend/.env.example backend/.env
-# edit backend/.env (set DATABASE_URL / GOOGLE_API_KEY as needed)
+# edit backend/.env (set DATABASE_URL / OPENAI_API_KEY or GOOGLE_API_KEY as needed)
 docker compose -f backend/docker-compose.yml up --build
 ```
 
@@ -150,7 +172,7 @@ npm run preview
 # 1. Env
 cp backend/.env.example backend/.env
 # set DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/autoviz
-# set AUTOVIZ_CORS_ORIGINS and GOOGLE_API_KEY as needed
+# set AUTOVIZ_CORS_ORIGINS and OPENAI_API_KEY (or GOOGLE_API_KEY) as needed
 
 # 2. Database — create `autoviz` in pgAdmin (port 5432), then migrate
 cd backend && uv sync && uv run alembic upgrade head

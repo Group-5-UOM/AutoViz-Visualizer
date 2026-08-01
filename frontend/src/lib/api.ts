@@ -1,5 +1,6 @@
 const TOKEN_KEY = 'autoviz-access-token';
 const EMAIL_KEY = 'autoviz-user-email';
+const USERNAME_KEY = 'autoviz-username';
 
 export const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL as string | undefined
@@ -23,14 +24,20 @@ export function getStoredEmail(): string | null {
   return sessionStorage.getItem(EMAIL_KEY);
 }
 
-export function setSession(email: string, token: string) {
+export function getStoredUsername(): string | null {
+  return sessionStorage.getItem(USERNAME_KEY);
+}
+
+export function setSession(email: string, token: string, username?: string) {
   sessionStorage.setItem(EMAIL_KEY, email);
   sessionStorage.setItem(TOKEN_KEY, token);
+  sessionStorage.setItem(USERNAME_KEY, username || email.split('@')[0] || email);
 }
 
 export function clearSession() {
   sessionStorage.removeItem(EMAIL_KEY);
   sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(USERNAME_KEY);
 }
 
 /**
