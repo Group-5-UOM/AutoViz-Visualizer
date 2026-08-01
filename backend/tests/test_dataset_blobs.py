@@ -21,7 +21,7 @@ from autoviz.services.registry import DatasetRegistry
 from autoviz.storage import blobs, repository
 from tests.conftest import data_path
 
-CREDS = {"email": "blob@example.com", "password": "pw12345678"}
+CREDS = {"email": "blob@example.com", "password": "pw12345678", "username": "blobuser"}
 
 
 def _client(registry: DatasetRegistry | None = None) -> tuple[TestClient, DatasetRegistry]:

@@ -9,7 +9,11 @@ _SPEC = {"mark": "bar", "data": {"values": [{"a": 1}]}, "encoding": {}}
 
 def _client_with_user(email: str):
     client = TestClient(create_app())
-    creds = {"email": email, "password": "pw12345678"}
+    creds = {
+        "email": email,
+        "password": "pw12345678",
+        "username": f"user-{email.split('@', 1)[0]}",
+    }
     client.post("/auth/register", json=creds)
     token = client.post("/auth/login", json=creds).json()["access_token"]
     client.headers.update({"Authorization": f"Bearer {token}"})
