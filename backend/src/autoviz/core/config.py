@@ -25,11 +25,32 @@ class Settings(BaseSettings):
     # Default: backend/uploads/  (parents[3] from core/config.py → backend/)
     UPLOAD_DIR: Path = Path(__file__).resolve().parents[3] / "uploads"
 
+    # ── App URLs (OAuth redirects) ───────────────────────────────────────
+    AUTOVIZ_FRONTEND_URL: str = "http://localhost:5173"
+    AUTOVIZ_API_PUBLIC_URL: str = "http://127.0.0.1:8000"
+
+    # ── OAuth ────────────────────────────────────────────────────────────
+    GITHUB_OAUTH_CLIENT_ID: str = ""
+    GITHUB_OAUTH_CLIENT_SECRET: str = ""
+    GOOGLE_OAUTH_CLIENT_ID: str = ""
+    GOOGLE_OAUTH_CLIENT_SECRET: str = ""
+
+    # When true, forgot-password responses include the reset token/URL (local only).
+    AUTOVIZ_EXPOSE_RESET_TOKENS: bool = True
+
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[3] / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @property
+    def github_callback_url(self) -> str:
+        return f"{self.AUTOVIZ_API_PUBLIC_URL.rstrip('/')}/auth/oauth/github/callback"
+
+    @property
+    def google_callback_url(self) -> str:
+        return f"{self.AUTOVIZ_API_PUBLIC_URL.rstrip('/')}/auth/oauth/google/callback"
 
 
 settings = Settings()

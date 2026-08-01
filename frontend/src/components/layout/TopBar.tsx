@@ -1,4 +1,4 @@
-import { Download, LogOut, Menu, PanelLeft, Save, Share2 } from 'lucide-react';
+import { Download, KeyRound, LogOut, Menu, PanelLeft, Save, Share2 } from 'lucide-react';
 import type { SaveStatus } from '../../types/dashboard';
 import './TopBar.css';
 
@@ -8,6 +8,7 @@ interface TopBarProps {
   chatOpen: boolean;
   widgetCount: number;
   userEmail?: string;
+  username?: string;
   saveStatus: SaveStatus;
   /** When the last successful save landed, shown as the status tooltip. */
   lastSavedAt: number | null;
@@ -17,6 +18,7 @@ interface TopBarProps {
   onSave: () => void;
   onRename: () => void;
   onExport: () => void;
+  onSetPassword?: () => void;
   onLogout?: () => void | Promise<void>;
 }
 
@@ -34,6 +36,7 @@ export function TopBar({
   chatOpen,
   widgetCount,
   userEmail,
+  username,
   saveStatus,
   lastSavedAt,
   saveError,
@@ -42,11 +45,13 @@ export function TopBar({
   onSave,
   onRename,
   onExport,
+  onSetPassword,
   onLogout,
 }: TopBarProps) {
   const statusText = STATUS_TEXT[saveStatus];
   // Nothing to flush and nothing to retry — the button would be a no-op.
   const saveDisabled = saveStatus === 'saving' || saveStatus === 'idle';
+  const displayName = username || userEmail?.split('@')[0] || userEmail;
 
   return (
     <header className="board-topbar">
@@ -132,11 +137,22 @@ export function TopBar({
           Export
         </button>
 
-        {userEmail && (
+        {displayName && (
           <div className="topbar-user">
-            <span className="topbar-user-email" title={userEmail}>
-              {userEmail}
+            <span className="topbar-user-name" title={userEmail || displayName}>
+              {displayName}
             </span>
+            {onSetPassword && (
+              <button
+                type="button"
+                className="topbar-icon-btn"
+                onClick={onSetPassword}
+                title="Set a password"
+                aria-label="Set a password"
+              >
+                <KeyRound size={16} />
+              </button>
+            )}
             {onLogout && (
               <button
                 type="button"

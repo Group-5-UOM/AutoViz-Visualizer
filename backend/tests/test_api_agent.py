@@ -14,7 +14,7 @@ from autoviz.services.registry import DatasetRegistry
 from tests.conftest import data_path
 from tests.test_agent import GOOD_IRIS_PLAN, FakePlanner
 
-CREDS = {"email": "agent@example.com", "password": "hunter2pw"}
+CREDS = {"email": "agent@example.com", "password": "hunter2pw", "username": "agentuser"}
 
 
 def _client_with_agent(planner, reg):

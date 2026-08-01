@@ -18,6 +18,7 @@ backend/logs/
 .env
 *.env
 backend/.env
+oauth.md
 
 # Frontend
 frontend/node_modules/
