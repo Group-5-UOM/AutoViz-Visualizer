@@ -1,19 +1,4 @@
-# syntax=docker/dockerfile:1
-#
-# AutoViz backend — FastAPI API Gateway (Proposal §4.2).
-# Built with uv against the committed uv.lock for reproducible images.
-# Build context is backend/:  docker build -t autoviz-api backend/
-
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-
-# uv: copy (not hardlink) into the image, byte-compile, and keep the venv
-# on PATH so `uvicorn`/`alembic` resolve without `uv run`.
-ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy \
-    UV_PROJECT_ENVIRONMENT=/app/.venv \
-    PYTHONUNBUFFERED=1 \
-    PATH="/app/.venv/bin:$PATH"
-
+FROM python:3.12-slim
 WORKDIR /app
 
 # Runtime user and writable dirs (uploads default to /app/uploads per
@@ -47,3 +32,8 @@ EXPOSE 8000
 # Entrypoint applies DB migrations (alembic upgrade head) then execs the CMD.
 ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
 CMD ["uvicorn", "autoviz.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+RUN pip install uv
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
+COPY . .
+CMD ["uv", "run", "uvicorn", "autoviz.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

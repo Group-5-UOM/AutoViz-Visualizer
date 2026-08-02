@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import html2canvas from 'html2canvas';
 import { Sidebar } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
+import { AccountPasswordModal } from '../components/layout/AccountPasswordModal';
 import { ChatPanel } from '../components/chat/ChatPanel';
 import { DashboardCanvas } from '../components/canvas/DashboardCanvas';
 import { StylePanel } from '../components/canvas/StylePanel';
@@ -10,6 +11,7 @@ import { DatasetModal } from '../components/layout/DatasetModal';
 import { SaveDashboardModal } from '../components/layout/SaveDashboardModal';
 import { useDashboard } from '../hooks/useDashboard';
 import { ApiError } from '../lib/api';
+import { fetchMe } from '../lib/auth';
 import { uploadDataset, type DatasetMetadata } from '../lib/datasets';
 import { getDashboard, getChart, type DashboardResult } from '../lib/dashboards';
 import { defaultDashboardName } from '../lib/dashboardSync';
@@ -18,6 +20,7 @@ import '../App.css';
 
 interface BoardPageProps {
   userEmail: string;
+  username: string;
   onLogout: () => void | Promise<void>;
 }
 
@@ -28,7 +31,7 @@ interface DatasetInfo {
   columnCount: number;
 }
 
-export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
+export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
   const [activeItem, setActiveItem] = useState<SidebarItemId | null>('ai-chat');
@@ -36,11 +39,22 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
-  // Which chart's style controls are open, if any. Kept separate from the
-  // canvas selection: clicking another chart should not silently start editing
-  // it, and closing the panel should not deselect what the user was looking at.
-  const [styleWidgetId, setStyleWidgetId] = useState<string | null>(null);
-  const [styleBusy, setStyleBusy] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [hasPassword, setHasPassword] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchMe()
+      .then((me) => {
+        if (!cancelled) setHasPassword(Boolean(me.has_password));
+      })
+      .catch(() => {
+        /* ignore — password button still works */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const {
     dashboard,
@@ -189,6 +203,7 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
         chatOpen={chatOpen}
         widgetCount={dashboard.widgets.length}
         userEmail={userEmail}
+        username={username}
         saveStatus={saveStatus}
         lastSavedAt={lastSavedAt}
         saveError={saveError}
@@ -203,7 +218,15 @@ export function BoardPage({ userEmail, onLogout }: BoardPageProps) {
         onSave={handleSaveDashboard}
         onRename={() => setRenameOpen(true)}
         onExport={handleExportDashboard}
+        onSetPassword={() => setPasswordOpen(true)}
         onLogout={onLogout}
+      />
+
+      <AccountPasswordModal
+        open={passwordOpen}
+        hasPassword={hasPassword}
+        onClose={() => setPasswordOpen(false)}
+        onSaved={() => setHasPassword(true)}
       />
 
       <div className="board-body">

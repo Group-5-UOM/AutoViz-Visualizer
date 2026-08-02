@@ -23,6 +23,7 @@ test-data/synthetic-quality/messy_sales_large.csv
 .env
 *.env
 backend/.env
+oauth.md
 
 # Frontend
 frontend/node_modules/

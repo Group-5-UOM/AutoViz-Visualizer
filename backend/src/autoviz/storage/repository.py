@@ -15,6 +15,8 @@ from autoviz.errors import UNKNOWN_DATASET, make_error
 from autoviz.models import (
     Dashboard,
     DashboardWidget,
+    OAuthAccount,
+    PasswordResetToken,
     SavedChart,
     User,
     UserDataset,
@@ -33,14 +35,127 @@ def _now() -> datetime.datetime:
 
 
 def get_user_by_email(session: Session, email: str) -> User | None:
-    return session.scalar(select(User).where(User.email == email))
+    return session.scalar(select(User).where(User.email == email.strip().lower()))
 
 
-def create_user(session: Session, email: str, password_hash: str) -> User:
-    user = User(email=email, password_hash=password_hash)
+def get_user_by_username(session: Session, username: str) -> User | None:
+    return session.scalar(select(User).where(User.username == username))
+
+
+def get_oauth_account(
+    session: Session, provider: str, provider_user_id: str
+) -> OAuthAccount | None:
+    return session.scalar(
+        select(OAuthAccount).where(
+            OAuthAccount.provider == provider,
+            OAuthAccount.provider_user_id == provider_user_id,
+        )
+    )
+
+
+def get_user_by_oauth(
+    session: Session, provider: str, provider_user_id: str
+) -> User | None:
+    account = get_oauth_account(session, provider, provider_user_id)
+    if account is None:
+        return None
+    return session.get(User, account.user_id)
+
+
+def list_oauth_providers(session: Session, user_id: str) -> list[str]:
+    rows = session.scalars(
+        select(OAuthAccount.provider).where(OAuthAccount.user_id == user_id)
+    ).all()
+    return list(rows)
+
+
+def link_oauth_account(
+    session: Session,
+    user: User,
+    *,
+    provider: str,
+    provider_user_id: str,
+    access_token: str | None = None,
+) -> OAuthAccount:
+    existing = get_oauth_account(session, provider, provider_user_id)
+    if existing is not None:
+        if existing.user_id != user.id:
+            raise ValueError("oauth_identity_taken")
+        if access_token is not None:
+            existing.access_token = access_token
+            session.commit()
+        return existing
+    account = OAuthAccount(
+        user_id=user.id,
+        provider=provider,
+        provider_user_id=provider_user_id,
+        access_token=access_token,
+    )
+    session.add(account)
+    session.commit()
+    return account
+
+
+def create_user(
+    session: Session,
+    email: str,
+    password_hash: str | None,
+    *,
+    username: str | None = None,
+    email_verified: bool = False,
+) -> User:
+    user = User(
+        email=email.strip().lower(),
+        password_hash=password_hash,
+        username=username,
+        email_verified=email_verified,
+    )
     session.add(user)
     session.commit()
     return user
+
+
+def unique_username(session: Session, base: str) -> str:
+    candidate = base[:64]
+    if session.scalar(select(User).where(User.username == candidate)) is None:
+        return candidate
+    for i in range(2, 1000):
+        suffix = f"-{i}"
+        candidate = base[: 64 - len(suffix)] + suffix
+        if session.scalar(select(User).where(User.username == candidate)) is None:
+            return candidate
+    return f"{base[:40]}-{secrets.token_hex(4)}"
+
+
+def set_user_password(session: Session, user: User, password_hash: str) -> None:
+    user.password_hash = password_hash
+    session.commit()
+
+
+def create_password_reset_token(
+    session: Session, user_id: str, ttl_hours: int = 1
+) -> PasswordResetToken:
+    # Invalidate prior unused tokens for this user.
+    prior = session.scalars(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == user_id,
+            PasswordResetToken.used_at.is_(None),
+        )
+    ).all()
+    for row in prior:
+        session.delete(row)
+    row = PasswordResetToken(
+        user_id=user_id,
+        token=secrets.token_urlsafe(32),
+        expires_at=_now() + datetime.timedelta(hours=ttl_hours),
+    )
+    session.add(row)
+    session.commit()
+    return row
+
+
+def get_password_reset_token(session: Session, token: str) -> PasswordResetToken | None:
+    return session.scalar(select(PasswordResetToken).where(PasswordResetToken.token == token))
 
 
 def create_token(session: Session, user_id: str, ttl_hours: int = 24 * 7) -> UserSession:
@@ -71,6 +186,27 @@ def delete_token(session: Session, token: str) -> None:
     if row is not None:
         session.delete(row)
         session.commit()
+
+
+def delete_all_tokens_for_user(session: Session, user_id: str) -> None:
+    rows = session.scalars(select(UserSession).where(UserSession.user_id == user_id)).all()
+    for row in rows:
+        session.delete(row)
+    session.commit()
+
+
+def clear_oauth_access_tokens(session: Session, user_id: str) -> list[tuple[str, str]]:
+    """Clear stored provider tokens; return (provider, token) pairs that were set."""
+    revoked: list[tuple[str, str]] = []
+    accounts = session.scalars(
+        select(OAuthAccount).where(OAuthAccount.user_id == user_id)
+    ).all()
+    for account in accounts:
+        if account.access_token:
+            revoked.append((account.provider, account.access_token))
+            account.access_token = None
+    session.commit()
+    return revoked
 
 
 # --- dataset metadata --------------------------------------------------------
