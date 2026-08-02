@@ -12,7 +12,7 @@ from autoviz.api.main import create_app
 from autoviz.llm.client import PlannerError
 from autoviz.services.charts import generate_chart, primary_layer
 
-CREDS = {"email": "style@example.com", "password": "hunter2pw"}
+CREDS = {"email": "style@example.com", "password": "hunter2pw", "username": "styleuser"}
 
 _ROWS = [{"species": "setosa", "avg": 5.0}, {"species": "versicolor", "avg": 5.9}]
 
