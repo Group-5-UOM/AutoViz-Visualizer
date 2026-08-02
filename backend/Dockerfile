@@ -1,6 +1,9 @@
 FROM python:3.12-slim
 WORKDIR /app
 
+# Copy uv from the official image (Fastest/Best Practice)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 # Runtime user and writable dirs (uploads default to /app/uploads per
 # core/config.py). Done before the venv exists so this layer stays cached across
 # code edits, and so the chown never has to walk /app/.venv — ownership changes
@@ -25,6 +28,9 @@ COPY . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+# Add the virtual environment to the PATH so that python, alembic, and uvicorn are found
+ENV PATH="/app/.venv/bin:$PATH"
+
 USER autoviz
 
 EXPOSE 8000
@@ -32,8 +38,3 @@ EXPOSE 8000
 # Entrypoint applies DB migrations (alembic upgrade head) then execs the CMD.
 ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
 CMD ["uvicorn", "autoviz.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
-RUN pip install uv
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
-COPY . .
-CMD ["uv", "run", "uvicorn", "autoviz.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
