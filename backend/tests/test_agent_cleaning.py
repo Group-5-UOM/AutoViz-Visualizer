@@ -3,7 +3,7 @@
 This is the path a user who has never heard of imputation actually travels, so
 the tests are about *when the tool speaks up* as much as what it does: safe
 repairs happen silently, a misleading null gets one plain-language question, and
-an explicit instruction is never second-guessed.
+an explicit instruction is never second-guessed..
 """
 
 from autoviz.agent.service import AgentService
