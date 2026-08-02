@@ -4,7 +4,7 @@ const USERNAME_KEY = 'autoviz-username';
 
 export const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL as string | undefined
-)?.replace(/\/+$/, '') || 'http://127.0.0.1:8000';
+)?.replace(/\/+$/, '') || '/api';
 
 export class ApiError extends Error {
   status: number;
