@@ -2,48 +2,72 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
+import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import {
   SESSION_EXPIRED_EVENT,
   clearSession,
   getAccessToken,
   getStoredEmail,
+  getStoredUsername,
 } from './lib/api';
 import { logoutUser } from './lib/auth';
 
-function LoginRoute({ onLogin }: { onLogin: (email: string) => void }) {
+interface AuthUser {
+  email: string;
+  username: string;
+}
+
+function LoginRoute({ onLogin }: { onLogin: (user: AuthUser) => void }) {
   const navigate = useNavigate();
   return (
     <LoginPage
-      onLogin={(email) => {
-        onLogin(email);
+      onLogin={(user) => {
+        onLogin(user);
         navigate('/dashboard', { replace: true });
       }}
     />
   );
 }
 
+function DashboardRoute({
+  user,
+  onLogout,
+}: {
+  user: AuthUser;
+  onLogout: () => void | Promise<void>;
+}) {
+  const navigate = useNavigate();
+  return (
+    <BoardPage
+      userEmail={user.email}
+      username={user.username}
+      onLogout={async () => {
+        await onLogout();
+        navigate('/login', { replace: true });
+      }}
+    />
+  );
+}
+
 function App() {
-  const [userEmail, setUserEmail] = useState<string | null>(() => {
+  const [user, setUser] = useState<AuthUser | null>(() => {
     const email = getStoredEmail();
     const token = getAccessToken();
-    return email && token ? email : null;
+    if (!email || !token) return null;
+    return { email, username: getStoredUsername() || email.split('@')[0] };
   });
 
-  // The API layer clears the stored token on any 401 and announces it here.
   useEffect(() => {
-    const onExpired = () => setUserEmail(null);
+    const onExpired = () => setUser(null);
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, []);
 
-  const handleLogin = (email: string) => {
-    setUserEmail(email);
-  };
-
   const handleLogout = async () => {
     await logoutUser();
     clearSession();
-    setUserEmail(null);
+    setUser(null);
   };
 
   return (
@@ -52,18 +76,23 @@ function App() {
         <Route
           path="/login"
           element={
-            userEmail ? (
+            user ? (
               <Navigate to="/dashboard" replace />
             ) : (
-              <LoginRoute onLogin={handleLogin} />
+              <LoginRoute onLogin={setUser} />
             )
           }
+        />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route
+          path="/oauth/callback"
+          element={<OAuthCallbackPage onLogin={setUser} />}
         />
         <Route
           path="/dashboard"
           element={
-            userEmail ? (
-              <BoardPage userEmail={userEmail} onLogout={handleLogout} />
+            user ? (
+              <DashboardRoute user={user} onLogout={handleLogout} />
             ) : (
               <Navigate to="/login" replace />
             )
@@ -71,7 +100,7 @@ function App() {
         />
         <Route
           path="*"
-          element={<Navigate to={userEmail ? '/dashboard' : '/login'} replace />}
+          element={<Navigate to={user ? '/dashboard' : '/login'} replace />}
         />
       </Routes>
     </BrowserRouter>

@@ -1,11 +1,19 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Eye, EyeOff, Lock, Mail, User } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { ApiError } from '../lib/api';
-import { loginUser, registerUser } from '../lib/auth';
+import {
+  completeOAuthRegister,
+  loginUser,
+  registerUser,
+  requestPasswordReset,
+  startGithubOAuth,
+  startGoogleOAuth,
+} from '../lib/auth';
 import './LoginPage.css';
 
 interface LoginPageProps {
-  onLogin: (email: string) => void;
+  onLogin: (user: { email: string; username: string }) => void;
 }
 
 function GoogleIcon() {
@@ -31,17 +39,6 @@ function GoogleIcon() {
   );
 }
 
-function FacebookIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
-      <path
-        fill="#1877F2"
-        d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047v-2.66c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.971h-1.513c-1.491 0-1.956.931-1.956 1.886v2.264h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073Z"
-      />
-    </svg>
-  );
-}
-
 function GitHubIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
@@ -55,12 +52,12 @@ function GitHubIcon() {
 
 const OAUTH_PROVIDERS = [
   { id: 'google', label: 'Google', icon: <GoogleIcon /> },
-  { id: 'facebook', label: 'Facebook', icon: <FacebookIcon /> },
   { id: 'github', label: 'GitHub', icon: <GitHubIcon /> },
   { id: 'email', label: 'Email', icon: <Mail size={18} /> },
 ] as const;
 
 export function LoginPage({ onLogin }: LoginPageProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -68,7 +65,29 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [oauthPending, setOauthPending] = useState<string | null>(null);
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotInfo, setForgotInfo] = useState('');
   const emailInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const pending = searchParams.get('pending');
+    const nextEmail = searchParams.get('email');
+    const nextMode = searchParams.get('mode');
+    if (pending && nextEmail) {
+      setOauthPending(pending);
+      setEmail(nextEmail);
+      setMode('register');
+      setError('');
+      setSearchParams({}, { replace: true });
+    } else if (nextMode === 'register') {
+      setMode('register');
+    }
+  }, [searchParams, setSearchParams]);
+
+  const clearOauthPending = () => {
+    setOauthPending(null);
+  };
 
   const handleOAuthClick = (providerId: (typeof OAUTH_PROVIDERS)[number]['id']) => {
     if (providerId === 'email') {
@@ -76,15 +95,82 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       emailInputRef.current?.focus();
       return;
     }
-    setError(`${providerId[0].toUpperCase()}${providerId.slice(1)} sign-in is coming soon.`);
+    if (providerId === 'github') {
+      setError('');
+      startGithubOAuth();
+      return;
+    }
+    setError('');
+    startGoogleOAuth();
+  };
+
+  const handleForgot = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setForgotInfo('');
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError('Enter your email to reset or set a password.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await requestPasswordReset(trimmedEmail);
+      if (res.reset_url) {
+        setForgotInfo(`${res.detail} Open: ${res.reset_url}`);
+      } else {
+        setForgotInfo(res.detail);
+      }
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Could not start password reset.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
+    if (forgotMode) {
+      await handleForgot(e);
+      return;
+    }
     e.preventDefault();
     setError('');
 
     const trimmedEmail = email.trim();
     const trimmedUsername = username.trim();
+
+    if (oauthPending) {
+      if (!trimmedUsername) {
+        setError('Choose a username to finish creating your account.');
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const session = await completeOAuthRegister(oauthPending, trimmedUsername);
+        onLogin({
+          email: session.email || trimmedEmail,
+          username: session.username || trimmedUsername,
+        });
+      } catch (err) {
+        const message =
+          err instanceof ApiError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : 'Could not create account.';
+        setError(message);
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     if (!trimmedEmail || !password.trim()) {
       setError('Enter your email and password to continue.');
       return;
@@ -99,8 +185,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       if (mode === 'register') {
         await registerUser(trimmedEmail, password, trimmedUsername);
       }
-      await loginUser(trimmedEmail, password);
-      onLogin(trimmedEmail);
+      const session = await loginUser(trimmedEmail, password);
+      onLogin({
+        email: trimmedEmail,
+        username: session.username || trimmedUsername || trimmedEmail.split('@')[0],
+      });
     } catch (err) {
       const message =
         err instanceof ApiError
@@ -133,35 +222,51 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
         <section className="login-panel" aria-label={mode === 'login' ? 'Sign in' : 'Create account'}>
           <header className="login-panel-header">
-            <h2>{mode === 'login' ? 'Sign in' : 'Create account'}</h2>
+            <h2>
+              {forgotMode
+                ? 'Forgot password'
+                : oauthPending
+                  ? 'Finish registration'
+                  : mode === 'login'
+                    ? 'Sign in'
+                    : 'Create account'}
+            </h2>
             <p>
-              {mode === 'login'
-                ? 'Welcome back. Continue to your visualization workspace.'
-                : 'Register once, then upload a CSV and start exploring.'}
+              {forgotMode
+                ? 'Enter your email. We’ll send a link to set or reset your AutoViz password.'
+                : oauthPending
+                  ? 'Your email was verified with Google or GitHub. Choose a username to continue.'
+                  : mode === 'login'
+                    ? 'Welcome back. Continue to your visualization workspace.'
+                    : 'Register once, then upload a CSV and start exploring.'}
             </p>
           </header>
 
-          <div className="oauth-row" role="group" aria-label="Sign in with a provider">
-            {OAUTH_PROVIDERS.map((provider) => (
-              <button
-                key={provider.id}
-                type="button"
-                className={`oauth-icon-btn oauth-icon-btn--${provider.id}`}
-                onClick={() => handleOAuthClick(provider.id)}
-                title={`Continue with ${provider.label}`}
-                aria-label={`Continue with ${provider.label}`}
-              >
-                {provider.icon}
-              </button>
-            ))}
-          </div>
+          {!oauthPending && !forgotMode && (
+            <>
+              <div className="oauth-row" role="group" aria-label="Sign in with a provider">
+                {OAUTH_PROVIDERS.map((provider) => (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    className={`oauth-icon-btn oauth-icon-btn--${provider.id}`}
+                    onClick={() => handleOAuthClick(provider.id)}
+                    title={`Continue with ${provider.label}`}
+                    aria-label={`Continue with ${provider.label}`}
+                  >
+                    {provider.icon}
+                  </button>
+                ))}
+              </div>
 
-          <div className="login-divider" role="separator">
-            <span>or</span>
-          </div>
+              <div className="login-divider" role="separator">
+                <span>or</span>
+              </div>
+            </>
+          )}
 
           <form className="login-form" onSubmit={handleSubmit} noValidate>
-            {mode === 'register' && (
+            {(mode === 'register' || oauthPending) && !forgotMode && (
               <label className="login-field">
                 <span className="login-label">Username</span>
                 <span className="login-input-wrap">
@@ -173,6 +278,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                     placeholder="Choose a username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
+                    autoFocus={Boolean(oauthPending)}
                   />
                 </span>
               </label>
@@ -190,40 +296,51 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   placeholder="you@university.edu"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  readOnly={Boolean(oauthPending)}
                 />
               </span>
             </label>
 
-            <label className="login-field">
-              <span className="login-label">Password</span>
-              <span className="login-input-wrap">
-                <Lock size={16} className="login-input-icon" aria-hidden />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="login-eye-btn"
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </span>
-            </label>
+            {!oauthPending && !forgotMode && (
+              <label className="login-field">
+                <span className="login-label">Password</span>
+                <span className="login-input-wrap">
+                  <Lock size={16} className="login-input-icon" aria-hidden />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    name="password"
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="login-eye-btn"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </span>
+              </label>
+            )}
 
-            {mode === 'login' && (
+            {mode === 'login' && !oauthPending && !forgotMode && (
               <div className="login-row">
                 <label className="login-remember">
                   <input type="checkbox" name="remember" />
                   <span>Remember me</span>
                 </label>
-                <button type="button" className="login-link-btn">
+                <button
+                  type="button"
+                  className="login-link-btn"
+                  onClick={() => {
+                    setForgotMode(true);
+                    setError('');
+                    setForgotInfo('');
+                  }}
+                >
                   Forgot password?
                 </button>
               </div>
@@ -231,19 +348,60 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
             <button type="submit" className="login-submit" disabled={submitting}>
               {submitting
-                ? mode === 'login'
-                  ? 'Signing in…'
-                  : 'Creating account…'
-                : mode === 'login'
-                  ? 'Sign in'
-                  : 'Create account'}
+                ? forgotMode
+                  ? 'Sending…'
+                  : oauthPending || mode === 'register'
+                    ? 'Creating account…'
+                    : 'Signing in…'
+                : forgotMode
+                  ? 'Send reset link'
+                  : oauthPending || mode === 'register'
+                    ? 'Create account'
+                    : 'Sign in'}
             </button>
           </form>
 
           {error && <p className="login-error" role="alert">{error}</p>}
+          {forgotInfo && (
+            <p className="login-error" role="status" style={{ color: 'var(--text-primary)' }}>
+              {forgotInfo}
+            </p>
+          )}
 
           <p className="login-footer">
-            {mode === 'login' ? (
+            {forgotMode ? (
+              <>
+                Remembered it?{' '}
+                <button
+                  type="button"
+                  className="login-link-btn"
+                  onClick={() => {
+                    setForgotMode(false);
+                    setForgotInfo('');
+                    setError('');
+                  }}
+                >
+                  Back to sign in
+                </button>
+              </>
+            ) : oauthPending ? (
+              <>
+                Wrong account?{' '}
+                <button
+                  type="button"
+                  className="login-link-btn"
+                  onClick={() => {
+                    clearOauthPending();
+                    setMode('login');
+                    setEmail('');
+                    setUsername('');
+                    setError('');
+                  }}
+                >
+                  Start over
+                </button>
+              </>
+            ) : mode === 'login' ? (
               <>
                 Don&apos;t have an account?{' '}
                 <button
@@ -252,6 +410,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   onClick={() => {
                     setMode('register');
                     setError('');
+                    setForgotMode(false);
                   }}
                 >
                   Create one
