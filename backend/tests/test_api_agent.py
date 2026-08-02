@@ -62,6 +62,44 @@ def test_analyze_happy_path(api_db):
     assert body["charts"][0]["status"] == "ok"
 
 
+def test_analyze_forwards_a_referenced_chart(api_db):
+    """The canvas attaches the chart a request is about; the route has to carry
+    it through, or a board with several charts can only ever edit the newest."""
+    reg = DatasetRegistry()
+    planner = FakePlanner(plans=[GOOD_IRIS_PLAN, GOOD_IRIS_PLAN])
+    client = _client_with_agent(planner, reg)
+    headers = _auth(client)
+
+    ds = client.post(
+        "/datasets",
+        json={"file_ref": data_path("general-testing", "iris.csv")},
+        headers=headers,
+    ).json()["dataset_id"]
+
+    first = client.post(
+        "/agent/analyze",
+        json={"request": "avg sepal length by species", "dataset_id": ds},
+        headers=headers,
+    ).json()
+    target = first["charts"][0]["chart_id"]
+    assert target
+
+    second = client.post(
+        "/agent/analyze",
+        json={
+            "request": "same as a pie chart",
+            "dataset_id": ds,
+            "thread_id": first["thread_id"],
+            "chart_id": target,
+        },
+        headers=headers,
+    )
+    assert second.status_code == 200, second.text
+    # Same chart came back, and the planner was grounded in its plan.
+    assert second.json()["charts"][0]["chart_id"] == target
+    assert planner.plan_calls[-1]["prior_plan"]["group_by"] == ["species"]
+
+
 def test_analyze_requires_auth(api_db):
     client = _client_with_agent(FakePlanner(), DatasetRegistry())
     r = client.post("/agent/analyze", json={"request": "anything", "dataset_id": "ds_x"})

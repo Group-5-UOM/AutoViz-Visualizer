@@ -32,6 +32,36 @@ def route_after_clarify(state: AutoVizState) -> str:
     return "classify_intent" if state.get("clarify_source") == "llm" else "detect_ambiguity"
 
 
+def _chart_in_history(history: list[dict], chart_id: str) -> dict | None:
+    """The record of one specific chart, wherever in the thread it was produced.
+
+    Searched across every entry rather than only the newest, because a chart the
+    user pointed at may be several requests old — that is the whole reason for
+    pointing at it.
+    """
+    for entry in reversed(history or []):
+        for chart in entry.get("charts") or []:
+            if chart.get("chart_id") == chart_id:
+                return chart
+    return None
+
+
+def _most_recent_chart(history: list[dict]) -> tuple[dict | None, dict | None]:
+    """The last plan of the last run, and the chart it produced.
+
+    The fallback when nothing was pointed at: "a refinement refines the chart you
+    just saw" is the only guess available, and it is right for the common case of
+    one chart on the canvas.
+    """
+    for entry in reversed(history or []):
+        if entry.get("plans"):
+            # Entries written before `charts` existed carry plans only; those
+            # threads keep the old append-only behaviour rather than breaking.
+            last = (entry.get("charts") or [{}])[-1]
+            return entry["plans"][-1], last
+    return None, None
+
+
 def route_after_classify(state: AutoVizState) -> str | list[Send]:
     wants_clarification = state.get("intent") == "clarification" or state.get("clarification")
     if wants_clarification and state.get("clarification_count", 0) < MAX_CLARIFICATIONS:
@@ -39,11 +69,28 @@ def route_after_classify(state: AutoVizState) -> str | list[Send]:
     tasks = state.get("tasks") or [state["user_request"]]
     resolved = state.get("resolved_slots") or {}
     prior_plan = None
-    if state.get("intent") == "refinement":
-        for entry in reversed(state.get("history", [])):
-            if entry.get("plans"):
-                prior_plan = entry["plans"][-1]
-                break
+    refines_chart_id = None
+
+    target = state.get("target_chart_id")
+    targeted = _chart_in_history(state.get("history", []), target) if target else None
+    if targeted is not None:
+        # Pointing at a chart *is* the statement of intent, so the classifier's
+        # reading does not get a vote here. It is also the only way the planner
+        # is grounded in the right plan: the fallback below can only reach the
+        # newest one, which is the wrong chart whenever the canvas has several.
+        prior_plan = targeted.get("plan")
+        if len(tasks) == 1:
+            refines_chart_id = target
+    elif state.get("intent") == "refinement":
+        # No target, or one this thread has never heard of — a chart from a
+        # dashboard reopened without its conversation. Guess, or append.
+        prior_plan, last = _most_recent_chart(state.get("history", []))
+        # Only a single-task refinement has one thing to replace. Fanning out to
+        # several charts from "make it a line chart" means the planner read it as
+        # new analysis, so nothing is superseded.
+        if len(tasks) == 1 and last:
+            refines_chart_id = last.get("chart_id")
+
     return [
         Send(
             "analysis_worker",
@@ -54,6 +101,7 @@ def route_after_classify(state: AutoVizState) -> str | list[Send]:
                 "schema": state["schema"],
                 "profile": state["profile"],
                 "prior_plan": prior_plan,
+                "refines_chart_id": refines_chart_id,
                 "plan_attempts": 0,
             },
         )

@@ -69,6 +69,13 @@ class PlannerLLM(Protocol):
 
     def compose(self, request: str, results: list[dict[str, Any]]) -> str: ...
 
+    def style_patch(
+        self,
+        request: str,
+        current_style: dict[str, Any],
+        chart_context: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
 
 def _strip_fences(text: str) -> str:
     return _FENCE.sub("", text.strip()).strip()
@@ -128,7 +135,38 @@ Additional rules:
 _COMPOSE_SYSTEM = """You summarize AutoViz analysis results for the user in 2-5 sentences.
 Ground every number strictly in the provided result tables — never estimate, extrapolate, or
 invent values. Mention each chart produced (its type and what it shows). If a task failed,
-say so plainly and include the reason. Plain text only."""
+say so plainly and include the reason. Plain text only.
+
+Each result may carry `notices`: things the user must be told about how the data was cleaned
+or how the chart must be read. Each has a pre-written `note` and a `severity`. These are
+already phrased correctly — reuse the wording rather than restating the counts yourself.
+- severity "disclosed": the numbers mean something different from the raw data. Include it,
+  in its own sentence, every time. Never omit, soften, or bury one of these.
+- severity "advisory": nothing was changed, but the chart is misread without it (for example
+  a log-scaled axis). Include it in its own sentence.
+- severity "applied": routine tidying that changed no meaning. Fold these into one short
+  closing clause, or leave them out if the answer is already long.
+Notices are not results: never treat a note's numbers as findings about the data."""
+
+
+_STYLE_SYSTEM = """You turn a plain-English request about how a chart LOOKS into a style patch.
+Output ONLY a JSON object with any of these keys — omit every key the request does not mention:
+
+{"title": str, "x_title": str, "y_title": str, "legend": bool,
+ "mark_color": "#rrggbb", "series_colors": {"<series value>": "#rrggbb"},
+ "color_scheme": ["#rrggbb", ...]}
+
+Rules:
+- Presentation only. You cannot filter, sort, aggregate, change the chart type, or touch the
+  data — if the request asks for any of those, return {} and change nothing.
+- Colours must be #rgb or #rrggbb hex. Translate colour names yourself ("orange" -> "#eb6834").
+- Use `mark_color` when the chart has no colour scale (has_color_scale is false), and
+  `series_colors` when it does. Keys of `series_colors` must be exact values from `series`.
+- `color_scheme` is for "use these colours" with no series named; it replaces the palette in
+  order.
+- The current style is given. Emit only what CHANGES. To undo something the user set earlier,
+  emit that key as null.
+- Never invent a key that is not in the list above."""
 
 
 class GeminiPlanner:
@@ -211,6 +249,30 @@ class GeminiPlanner:
             payload["validation_errors"] = errors or []
         return _json_object(self._invoke_text(_PLAN_SYSTEM, json.dumps(payload)))
 
+    def style_patch(
+        self,
+        request: str,
+        current_style: dict[str, Any],
+        chart_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """NL -> the changed fields of a ChartStyle. Presentation only.
+
+        Returns the raw object; the caller validates it against ChartStyle, so a
+        key this prompt did not authorise is rejected rather than rendered.
+        """
+        return _json_object(
+            self._invoke_text(
+                _STYLE_SYSTEM,
+                json.dumps(
+                    {
+                        "request": request,
+                        "current_style": current_style,
+                        "chart": chart_context,
+                    }
+                ),
+            )
+        )
+
     def compose(self, request: str, results: list[dict[str, Any]]) -> str:
         condensed = []
         for r in results:
@@ -223,6 +285,10 @@ class GeminiPlanner:
                     "rows": (result.get("result_table") or [])[:25],
                     "row_count": result.get("row_count"),
                     "sql": (result.get("provenance") or {}).get("sql"),
+                    # Cleaning disclosures, pre-phrased. Without these the composer
+                    # cannot tell the user what was cleaned, because nothing else in
+                    # the condensed payload mentions it.
+                    "notices": r.get("notices") or [],
                     "errors": r.get("errors") or [],
                 }
             )

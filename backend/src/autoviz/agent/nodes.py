@@ -5,6 +5,7 @@ the single source of truth for validate -> execute -> chart.
 """
 
 import time
+import uuid
 from typing import Any
 
 from langgraph.types import interrupt
@@ -23,7 +24,7 @@ from autoviz.errors import PLAN_REPAIRABLE, RETRYABLE
 from autoviz.llm.client import IntentDecision, PlannerError, PlannerLLM
 from autoviz.schema.analysis_plan import AnalysisPlan
 from autoviz.schema.clarification import Ambiguity, bind_answer
-from autoviz.services import charts, dataset, quality
+from autoviz.services import charts, dataset, fidelity, notices as notices_svc, quality
 from autoviz.services.orchestrator import run_pipeline
 from autoviz.services.registry import REGISTRY, DatasetRegistry
 
@@ -129,6 +130,19 @@ def clarify(state: AutoVizState) -> dict[str, Any]:
     }
 
 
+def _normalize_note(text: str) -> str:
+    """Fold the differences a re-typed sentence picks up but a reader ignores.
+
+    Case, run-together whitespace, and the dash family — the composer rewrites an
+    em dash as a hyphen often enough that an exact match is not a usable test of
+    "has this already been said".
+    """
+    folded = text.casefold()
+    for dash in ("—", "–", "−"):
+        folded = folded.replace(dash, "-")
+    return " ".join(folded.split())
+
+
 def compose_response(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, Any]:
     results = state.get("chart_results") or []
     usable = [r for r in results if r.get("status") in ("ok", "partial")]
@@ -145,9 +159,46 @@ def compose_response(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, A
                 chart = (r.get("chart_spec") or {}).get("type", "table")
                 parts.append(f"'{r.get('task')}': {rows} row(s), {chart} chart.")
         answer = " ".join(parts) or "No results were produced."
+    # Disclosures are owed regardless of who wrote the sentence. The composer is
+    # asked to weave them in, but "the LLM was told to" is not a guarantee — and a
+    # caveat that disappears because a model was terse or the call failed is the
+    # one failure mode this channel exists to prevent. Appended only when the
+    # answer does not already carry the wording, so the normal path stays clean.
+    # Matched on a normalized form, not raw text. An exact substring test fails
+    # the moment the composer reproduces a caveat with a hyphen where the notice
+    # had an em dash, or across a line break — and the failure mode is the user
+    # reading the same sentence twice, which reads like a bug in the analysis
+    # rather than in the prose. The `seen` set covers the other source of a
+    # double: two workers whose results carry the same disclosure.
+    spoken = _normalize_note(answer)
+    seen: set[str] = set()
+    owed = []
+    for r in results:
+        for n in r.get("notices") or []:
+            if n.get("severity") not in (notices_svc.DISCLOSED, notices_svc.ADVISORY):
+                continue
+            if not n.get("note"):
+                continue
+            key = _normalize_note(n["note"])
+            if key in seen or key in spoken:
+                continue
+            seen.add(key)
+            owed.append(n)
+    if owed:
+        answer = " ".join([answer, *(n["note"] for n in owed)]).strip()
     final = {"status": status, "answer": answer, "charts": results}
-    plans = [r["plan"] for r in results if r.get("plan")]
-    entry = {"request": state["user_request"], "plans": plans}
+    # `charts` pairs each plan with the chart it produced, so the next refinement
+    # can carry the identity forward as well as the plan. `plans` is kept in step
+    # with it because routing still reads that key from older history entries —
+    # threads outlive a deploy under the Postgres checkpointer.
+    produced = [
+        {"chart_id": r.get("chart_id"), "plan": r["plan"]} for r in results if r.get("plan")
+    ]
+    entry = {
+        "request": state["user_request"],
+        "plans": [c["plan"] for c in produced],
+        "charts": produced,
+    }
     return {"status": status, "final_response": final, "history": [entry]}
 
 
@@ -213,7 +264,9 @@ def assess_quality(
     existing = list(plan.get("preprocessing") or [])
     scope = {c for c in model.referenced_columns() if c in record.schema}
     issues = quality.scan(record, scope)
-    auto_ops, proposals = quality.recommend(issues, len(record.df))
+    auto_ops, proposals = quality.recommend(
+        issues, len(record.df), quality.plan_measure(model)
+    )
 
     resolved: dict[str, Any] = dict(state.get("cleaning_resolutions") or {})
     # An explicit instruction in the plan already answers its slot.
@@ -389,15 +442,29 @@ def chart_fallback(state: WorkerState) -> dict[str, Any]:
                         "chart_spec": spec,
                         "vega_lite_spec": built["vega_lite_spec"],
                         "warnings": built["warnings"],
+                        "notices": built.get("notices", []),
                     }
                 }
     return {"fallback_chart": None}
+
+
+def _notices_of(executed: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Disclosures from an execution result, if it got far enough to have any.
+
+    Lifted to the top level of the ChartResult because the composer's condensed
+    payload does not carry provenance — a disclosure left buried in there is a
+    disclosure the user never hears.
+    """
+    return ((executed or {}).get("provenance") or {}).get("notices") or []
 
 
 def finalize_worker(state: WorkerState) -> dict[str, Any]:
     out = state.get("pipeline_output")
     result: ChartResult = {
         "task": state["task"],
+        # A refinement is the same chart, changed — so it keeps its id and the
+        # host replaces what it already has. Everything else is a new chart.
+        "chart_id": state.get("refines_chart_id") or f"ch_{uuid.uuid4().hex[:12]}",
         "plan": state.get("analysis_plan"),
         "attempts": state.get("plan_attempts", 0),
     }
@@ -406,6 +473,22 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
             {"status": "error", "result": None, "errors": state.get("validation_errors") or []}
         )
     elif out["status"] == "ok":
+        chart_notices = list(out.get("notices") or _notices_of(out.get("result")))
+        # Anything the request named and the run did not deliver. A refusal the
+        # chart grammar forced, a substituted chart type, an ordering that never
+        # happened — all of them otherwise come back as a finished chart with
+        # nothing to distinguish "considered and declined" from "dropped".
+        chart_notices.extend(
+            n.to_wire()
+            for n in fidelity.unmet_requests(
+                state.get("task") or "",
+                fidelity.ChartOutcome(
+                    chart_type=(out.get("chart_spec") or {}).get("type", ""),
+                    vega_lite_spec=out.get("vega_lite_spec") or {},
+                    plan=state.get("analysis_plan") or {},
+                ),
+            )
+        )
         result.update(
             {
                 "status": "ok",
@@ -413,6 +496,9 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
                 "chart_spec": out["chart_spec"],
                 "vega_lite_spec": out["vega_lite_spec"],
                 "warnings": out.get("warnings", []),
+                # The pipeline merges cleaning and chart disclosures; fall back to
+                # the execution half for callers that never ran the chart step.
+                "notices": chart_notices,
                 "errors": [],
             }
         )
@@ -423,6 +509,9 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
             {
                 "status": "partial" if executed is not None else "error",
                 "result": executed,
+                # A run that failed at the chart step still cleaned data and still
+                # returned numbers, so the disclosure is owed either way.
+                "notices": _notices_of(executed),
                 "errors": [f"{out.get('failed_step')}: {e}" for e in out.get("errors", [])],
             }
         )
@@ -432,6 +521,9 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
                     "chart_spec": fallback["chart_spec"],
                     "vega_lite_spec": fallback["vega_lite_spec"],
                     "warnings": fallback["warnings"],
+                    # The substitute chart is still a chart, and can still be the
+                    # one whose axis needs explaining.
+                    "notices": [*result["notices"], *fallback.get("notices", [])],
                 }
             )
     return {"chart_results": [result]}

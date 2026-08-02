@@ -155,7 +155,11 @@ class AgentService:
         dataset_id: str | None = None,
         file_ref: str | None = None,
         thread_id: str | None = None,
+        chart_id: str | None = None,
     ) -> dict[str, Any]:
+        """Run one request. ``chart_id`` names a chart from an earlier turn on
+        this thread that the request is about ("make *this one* a line chart"),
+        so the answer modifies that chart instead of the most recent one."""
         if dataset_id is None and file_ref is not None:
             registered = dataset_service.register_dataset(file_ref, self._registry)
             if "error" in registered:
@@ -172,7 +176,10 @@ class AgentService:
         payload = {
             "user_request": request,
             "dataset_id": dataset_id,
-            # Reset per-run keys that persist in the thread checkpoint.
+            # Reset per-run keys that persist in the thread checkpoint. A target
+            # is emphatically one of them: carrying last turn's chart into an
+            # unrelated question would silently overwrite it.
+            "target_chart_id": chart_id,
             "chart_results": None,
             "clarification_answer": None,
             "clarification_count": 0,

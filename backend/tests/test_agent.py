@@ -169,6 +169,172 @@ def test_refinement_receives_prior_plan(registry, iris_id):
     assert len(out2["charts"]) == 1
 
 
+def test_refinement_keeps_the_chart_id_it_refines(registry, iris_id):
+    """A refinement is the same chart, changed — so the host can update it in
+    place instead of leaving a near-duplicate beside it."""
+    first = IntentDecision(intent="analysis", tasks=["avg sepal length by species"])
+    second = IntentDecision(intent="refinement", tasks=["same as a pie chart"])
+    third = IntentDecision(intent="refinement", tasks=["now as a line chart"])
+    refined = {**GOOD_IRIS_PLAN, "chart": {"type": "pie", "x": "species", "y": "avg_sepal_length"}}
+    again = {**GOOD_IRIS_PLAN, "chart": {"type": "line", "x": "species", "y": "avg_sepal_length"}}
+    fake = FakePlanner(
+        decisions=[first, second, third], plans=[GOOD_IRIS_PLAN, refined, again]
+    )
+    agent = AgentService(planner=fake, registry=registry)
+
+    out1 = agent.run("avg sepal length by species", dataset_id=iris_id)
+    original = out1["charts"][0]["chart_id"]
+    assert original
+
+    out2 = agent.run("same as a pie chart", dataset_id=iris_id, thread_id=out1["thread_id"])
+    assert out2["charts"][0]["chart_id"] == original
+    # Chained: the second refinement still points at the chart on screen.
+    out3 = agent.run("now as a line chart", dataset_id=iris_id, thread_id=out1["thread_id"])
+    assert out3["charts"][0]["chart_id"] == original
+
+
+def test_new_analysis_mints_a_new_chart_id(registry, iris_id):
+    fake = FakePlanner(plans=[GOOD_IRIS_PLAN, GOOD_IRIS_PLAN])
+    agent = AgentService(planner=fake, registry=registry)
+
+    out1 = agent.run("avg sepal length by species", dataset_id=iris_id)
+    out2 = agent.run("ask something else", dataset_id=iris_id, thread_id=out1["thread_id"])
+    assert out2["charts"][0]["chart_id"] != out1["charts"][0]["chart_id"]
+
+
+def test_multi_task_refinement_does_not_replace(registry, iris_id):
+    """Two charts out of one refinement means nothing single was superseded."""
+    first = IntentDecision(intent="analysis", tasks=["avg sepal length by species"])
+    second = IntentDecision(
+        intent="refinement", tasks=["as a pie chart", "and also as a line chart"]
+    )
+    fake = FakePlanner(
+        decisions=[first, second],
+        plans={
+            "avg sepal length by species": GOOD_IRIS_PLAN,
+            "as a pie chart": GOOD_IRIS_PLAN,
+            "and also as a line chart": GOOD_IRIS_PLAN,
+        },
+    )
+    agent = AgentService(planner=fake, registry=registry)
+
+    out1 = agent.run("avg sepal length by species", dataset_id=iris_id)
+    out2 = agent.run("split it up", dataset_id=iris_id, thread_id=out1["thread_id"])
+    ids = {c["chart_id"] for c in out2["charts"]}
+    assert len(ids) == 2
+    assert out1["charts"][0]["chart_id"] not in ids
+
+
+def _two_chart_thread(registry, iris_id):
+    """A thread whose last run produced two charts, newest last."""
+    first = IntentDecision(intent="analysis", tasks=["by species", "by petal width"])
+    by_width = {
+        "intent": "comparison",
+        "group_by": ["petal_width"],
+        "aggregations": [{"column": "sepal_length", "fn": "mean", "as": "avg_sepal_length"}],
+    }
+    fake = FakePlanner(
+        decisions=[first],
+        plans={"by species": GOOD_IRIS_PLAN, "by petal width": by_width},
+    )
+    agent = AgentService(planner=fake, registry=registry)
+    out = agent.run("two charts please", dataset_id=iris_id)
+    assert len(out["charts"]) == 2
+    return agent, fake, out
+
+
+def test_a_named_chart_is_refined_instead_of_the_newest(registry, iris_id):
+    """Pointing at a chart has to beat the most-recent guess — otherwise a canvas
+    with several charts can only ever edit the last one."""
+    agent, fake, out = _two_chart_thread(registry, iris_id)
+    older = next(c for c in out["charts"] if c["task"] == "by species")["chart_id"]
+
+    fake.decisions.append(IntentDecision(intent="refinement", tasks=["same as a pie chart"]))
+    fake.plans = [{**GOOD_IRIS_PLAN, "chart": {"type": "pie", "x": "species", "y": "avg_sepal_length"}}]
+    refined = agent.run(
+        "same as a pie chart",
+        dataset_id=iris_id,
+        thread_id=out["thread_id"],
+        chart_id=older,
+    )
+
+    assert refined["charts"][0]["chart_id"] == older
+    # And the planner was grounded in *that* chart's plan, not the newest one —
+    # otherwise it would return a modification of a chart nobody pointed at.
+    assert fake.plan_calls[-1]["prior_plan"]["group_by"] == ["species"]
+
+
+def test_a_named_chart_wins_even_when_read_as_new_analysis(registry, iris_id):
+    """Naming a chart is itself the statement of intent, so the classifier's
+    reading of the words does not get a vote."""
+    agent, fake, out = _two_chart_thread(registry, iris_id)
+    older = next(c for c in out["charts"] if c["task"] == "by species")["chart_id"]
+
+    fake.decisions.append(IntentDecision(intent="analysis", tasks=["show it as a pie"]))
+    fake.plans = [{**GOOD_IRIS_PLAN, "chart": {"type": "pie", "x": "species", "y": "avg_sepal_length"}}]
+    refined = agent.run(
+        "show it as a pie", dataset_id=iris_id, thread_id=out["thread_id"], chart_id=older
+    )
+
+    assert refined["charts"][0]["chart_id"] == older
+    assert fake.plan_calls[-1]["prior_plan"]["group_by"] == ["species"]
+
+
+def test_an_unknown_chart_id_falls_back_instead_of_failing(registry, iris_id):
+    """A chart from a dashboard reopened without its conversation is not in this
+    thread's history. That is a reason to append, not to error."""
+    agent, fake, out = _two_chart_thread(registry, iris_id)
+
+    fake.decisions.append(IntentDecision(intent="analysis", tasks=["something new"]))
+    fake.plans = [GOOD_IRIS_PLAN]
+    after = agent.run(
+        "something new",
+        dataset_id=iris_id,
+        thread_id=out["thread_id"],
+        chart_id="ch_never_seen",
+    )
+
+    assert after["status"] == "completed"
+    known = {c["chart_id"] for c in out["charts"]}
+    assert after["charts"][0]["chart_id"] not in known
+
+
+def test_a_target_does_not_persist_into_the_next_request(registry, iris_id):
+    """The target is per-run state on a checkpointed thread. Carrying it forward
+    would silently overwrite that chart with the answer to an unrelated question."""
+    agent, fake, out = _two_chart_thread(registry, iris_id)
+    older = next(c for c in out["charts"] if c["task"] == "by species")["chart_id"]
+
+    fake.decisions.append(IntentDecision(intent="refinement", tasks=["as a pie chart"]))
+    fake.plans = [{**GOOD_IRIS_PLAN, "chart": {"type": "pie", "x": "species", "y": "avg_sepal_length"}}]
+    agent.run("as a pie chart", dataset_id=iris_id, thread_id=out["thread_id"], chart_id=older)
+
+    fake.decisions.append(IntentDecision(intent="analysis", tasks=["a completely new question"]))
+    fake.plans = [GOOD_IRIS_PLAN]
+    unrelated = agent.run(
+        "a completely new question", dataset_id=iris_id, thread_id=out["thread_id"]
+    )
+    assert unrelated["charts"][0]["chart_id"] != older
+
+
+def test_legacy_history_entry_without_charts_still_refines(registry, iris_id):
+    """Threads checkpointed before chart ids existed must keep working."""
+    from autoviz.agent.routing import route_after_classify
+
+    sends = route_after_classify(
+        {
+            "intent": "refinement",
+            "tasks": ["same as a pie chart"],
+            "dataset_id": iris_id,
+            "schema": [],
+            "profile": {},
+            "history": [{"request": "first", "plans": [GOOD_IRIS_PLAN]}],
+        }
+    )
+    assert sends[0].arg["prior_plan"] == GOOD_IRIS_PLAN
+    assert sends[0].arg["refines_chart_id"] is None
+
+
 def test_chart_failure_keeps_partial_result(registry, iris_id):
     # Text-only result: recommend_chart_type fails (no numeric measure) and the
     # bar fallback has no numeric y either -> partial result, no chart, data kept.

@@ -291,6 +291,18 @@ def create_chart(session: Session, user_id: str, **fields) -> SavedChart:
     return chart
 
 
+def update_chart(session: Session, chart: SavedChart, **fields) -> SavedChart:
+    """Overwrite the given columns on a saved chart.
+
+    Only keys actually present are written, so a caller sending just a new spec
+    does not blank the name it did not mention.
+    """
+    for key, value in fields.items():
+        setattr(chart, key, value)
+    session.commit()
+    return chart
+
+
 def get_chart(session: Session, chart_id: str) -> SavedChart | None:
     return session.get(SavedChart, chart_id)
 

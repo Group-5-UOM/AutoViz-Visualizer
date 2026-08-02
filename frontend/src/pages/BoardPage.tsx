@@ -5,6 +5,7 @@ import { TopBar } from '../components/layout/TopBar';
 import { AccountPasswordModal } from '../components/layout/AccountPasswordModal';
 import { ChatPanel } from '../components/chat/ChatPanel';
 import { DashboardCanvas } from '../components/canvas/DashboardCanvas';
+import { StylePanel } from '../components/canvas/StylePanel';
 import { DashboardsPanel } from '../components/layout/DashboardsPanel';
 import { DatasetModal } from '../components/layout/DatasetModal';
 import { SaveDashboardModal } from '../components/layout/SaveDashboardModal';
@@ -14,7 +15,7 @@ import { fetchMe } from '../lib/auth';
 import { uploadDataset, type DatasetMetadata } from '../lib/datasets';
 import { getDashboard, getChart, type DashboardResult } from '../lib/dashboards';
 import { defaultDashboardName } from '../lib/dashboardSync';
-import type { SidebarItemId } from '../types/dashboard';
+import type { ChartStyle, SidebarItemId } from '../types/dashboard';
 import '../App.css';
 
 interface BoardPageProps {
@@ -62,8 +63,11 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     saveStatus,
     lastSavedAt,
     saveError,
+    referencedWidgetId,
+    referenceWidget,
     selectWidget,
     updateWidget,
+    editWidgetStyle,
     deleteWidget,
     sendMessage,
     saveNow,
@@ -92,6 +96,13 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             width: w.w,
             height: w.h,
             backendChartId: w.chart_id,
+            // Restored so the style panel opens showing what was actually
+            // chosen, rather than defaults over an already-styled render.
+            style: (chartData.chart_spec?.style as ChartStyle | undefined) ?? undefined,
+            // This spec is, by definition, the one the server holds. Both at
+            // zero means reopening a board does not immediately re-upload it.
+            specVersion: 0,
+            syncedSpecVersion: 0,
           };
         })
       );
@@ -104,6 +115,10 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       alert('Failed to load dashboard.');
     }
   };
+
+  // Resolved from live state rather than held in it, so the panel follows the
+  // widget through an edit and disappears with it if the chart is deleted.
+  const styleWidget = dashboard.widgets.find((w) => w.id === styleWidgetId) ?? null;
 
   const handleSidebarSelect = (id: SidebarItemId) => {
     setActiveItem(id);
@@ -231,6 +246,11 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
           onClose={() => setChatOpen(false)}
           onSend={sendMessage}
           onFocusChart={(chartId) => selectWidget(chartId)}
+          // Only charts this conversation produced: a chart restored from a
+          // saved dashboard has no thread behind it to refine against.
+          referenceable={dashboard.widgets.filter((w) => w.agentChartId)}
+          referencedWidgetId={referencedWidgetId}
+          onReference={referenceWidget}
         />
 
         <DashboardsPanel
@@ -248,9 +268,34 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
           uploadError={uploadError}
           onSelect={selectWidget}
           onUpdate={updateWidget}
+          onEditStyle={(id, request) => editWidgetStyle(id, { request })}
+          onOpenStyle={setStyleWidgetId}
+          onReference={(id) => {
+            // Toggle, so the same button detaches. Opening the chat is the point
+            // of the gesture — attaching to a panel nobody can see is a dead end.
+            referenceWidget(referencedWidgetId === id ? null : id);
+            if (referencedWidgetId !== id) {
+              setActiveItem('ai-chat');
+              setChatOpen(true);
+            }
+          }}
+          referencedWidgetId={referencedWidgetId}
           onDelete={deleteWidget}
           onCsvSelected={handleCsvSelected}
         />
+
+        {styleWidget && (
+          <StylePanel
+            widget={styleWidget}
+            busy={styleBusy}
+            onApply={async (style) => {
+              setStyleBusy(true);
+              await editWidgetStyle(styleWidget.id, { style });
+              setStyleBusy(false);
+            }}
+            onClose={() => setStyleWidgetId(null)}
+          />
+        )}
 
         {activeItem === 'data' && (
           <DatasetModal

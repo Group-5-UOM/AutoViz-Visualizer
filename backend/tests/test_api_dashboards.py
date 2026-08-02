@@ -41,6 +41,36 @@ def test_save_list_get_delete_chart(api_db):
     assert client.get(f"/charts/{chart_id}").status_code == 404
 
 
+def test_update_chart_overwrites_in_place(api_db):
+    """Editing a chart must rewrite its row, not append a second one — otherwise
+    a reopened dashboard shows the chart as first generated."""
+    client = _client_with_user("edit@example.com")
+    chart_id = _save_chart(client, "fare by class")
+
+    edited = {**_SPEC, "mark": "line"}
+    r = client.put(
+        f"/charts/{chart_id}",
+        json={"vega_lite_spec": edited, "chart_spec": {"style": {"mark_color": "#ff8800"}}},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["vega_lite_spec"]["mark"] == "line"
+    assert r.json()["chart_spec"]["style"]["mark_color"] == "#ff8800"
+
+    # Same row, and the field nobody sent is untouched.
+    assert [c["id"] for c in client.get("/charts").json()["charts"]] == [chart_id]
+    assert client.get(f"/charts/{chart_id}").json()["name"] == "fare by class"
+
+
+def test_update_chart_ownership(api_db):
+    owner = _client_with_user("chartowner@example.com")
+    chart_id = _save_chart(owner, "owned")
+
+    intruder = _client_with_user("chartintruder@example.com")
+    assert intruder.put(f"/charts/{chart_id}", json={"name": "mine now"}).status_code == 403
+    assert owner.put("/charts/does-not-exist", json={"name": "x"}).status_code == 404
+    assert owner.get(f"/charts/{chart_id}").json()["name"] == "owned"
+
+
 def test_dashboard_crud_with_widgets(api_db):
     client = _client_with_user("dash@example.com")
     chart_id = _save_chart(client, "fare by class")

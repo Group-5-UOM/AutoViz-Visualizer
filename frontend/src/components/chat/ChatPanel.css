@@ -202,6 +202,88 @@
   margin-top: 10px;
 }
 
+/* What the message is about, shown above the composer and cleared when the
+   message is sent — an attachment that outlived its message would silently
+   redirect the next, unrelated question. */
+.chat-reference {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 14px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+}
+
+.chat-reference-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-reference button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.chat-reference button:hover {
+  opacity: 1;
+}
+
+.chat-picker {
+  flex: none;
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.chat-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 12px;
+  text-align: left;
+  color: var(--text-secondary);
+}
+
+.chat-picker-item:hover,
+.chat-picker-item[aria-selected='true'] {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chat-picker-item span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Which chart a past message was about, kept in the transcript so the
+   conversation still reads correctly once the attachment is gone. */
+.chat-bubble-reference {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 4px;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
 .chat-composer {
   flex: none;
   display: flex;
@@ -210,6 +292,29 @@
   padding: 12px 14px 14px;
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-surface);
+}
+
+.chat-attach-btn {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.chat-attach-btn:hover:not(:disabled),
+.chat-attach-btn[aria-expanded='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.chat-attach-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .chat-composer textarea {

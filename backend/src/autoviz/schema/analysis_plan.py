@@ -289,10 +289,21 @@ class CleanCategories(_PreprocessOpBase):
         return {self.column}
 
 
+class RankBy(_StrictModel):
+    """The measure that decides which categories `top_n` keeps.
+
+    Same shape as an ``Aggregation`` minus the output name, because it is the
+    same quantity: the point is to rank categories by what the chart plots.
+    """
+
+    column: str
+    fn: AggFn
+
+
 class GroupRareCategories(_PreprocessOpBase):
     """Fold infrequent categories into one bucket so the chart stays readable.
 
-    Exactly one of ``top_n`` (keep the N commonest) or ``min_frequency`` (keep
+    Exactly one of ``top_n`` (keep the N best) or ``min_frequency`` (keep
     anything appearing at least N times) — they are two ways to draw the same
     line and accepting both at once would leave the precedence undefined.
 
@@ -305,6 +316,12 @@ class GroupRareCategories(_PreprocessOpBase):
     top_n: int | None = Field(default=None, ge=1, le=MAX_TOP_CATEGORIES)
     min_frequency: int | None = Field(default=None, ge=1)
     other_label: str = "Other"
+    # Which quantity decides who survives. None = row frequency, which is right
+    # for a count chart and wrong for every other one: ranking sales reps by how
+    # many orders they logged, then plotting their revenue, buries the top earner
+    # in "Other" whenever volume and value disagree. Set this to the plan's own
+    # measure so the categories kept are the ones the chart is actually about.
+    rank_by: RankBy | None = None
 
     removes_rows: ClassVar[bool] = False
     risk: ClassVar[Risk] = Risk.VALUE_CHANGING

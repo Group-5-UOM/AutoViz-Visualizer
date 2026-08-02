@@ -11,6 +11,12 @@ import { apiRequest } from './api';
 /** One planner sub-task, executed and charted. Mirrors agent.state.ChartResult. */
 export interface AgentChartResult {
   task: string;
+  /**
+   * The agent's stable identity for this chart. A refinement returns the id of
+   * the chart it changed, which is what lets the canvas update that card instead
+   * of putting a near-duplicate next to it.
+   */
+  chart_id?: string;
   status: 'ok' | 'partial' | 'error';
   result?: {
     result_table?: Record<string, unknown>[];
@@ -112,10 +118,16 @@ export function answerFor(option: CleaningOption): string {
 
 export type AgentResponse = AgentCompleted | AgentFailed | AgentWaiting;
 
+/**
+ * `chartId` names a chart from an earlier turn that this request is about, so
+ * "make it a line chart" changes the chart the user pointed at rather than
+ * whichever one happens to be newest. Omit it for an ordinary question.
+ */
 export async function analyze(
   request: string,
   datasetId: string,
   threadId?: string | null,
+  chartId?: string | null,
 ): Promise<AgentResponse> {
   return apiRequest<AgentResponse>('/agent/analyze', {
     method: 'POST',
@@ -123,6 +135,7 @@ export async function analyze(
       request,
       dataset_id: datasetId,
       ...(threadId ? { thread_id: threadId } : {}),
+      ...(chartId ? { chart_id: chartId } : {}),
     },
   });
 }

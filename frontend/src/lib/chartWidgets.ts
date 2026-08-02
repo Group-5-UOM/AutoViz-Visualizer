@@ -69,27 +69,79 @@ function explanationFor(chart: AgentChartResult): string {
   return parts.join(' — ') || 'Generated from your request.';
 }
 
+export interface AppliedCharts {
+  /** The canvas, with replacements applied in place and new charts appended. */
+  widgets: ChartWidget[];
+  /** What to select and link the chat reply to; null if nothing was charted. */
+  focusId: string | null;
+  /** How many new widgets were placed, for the caller's layout counter. */
+  placed: number;
+}
+
 /**
- * Map the agent's chart results onto canvas widgets.
+ * Fold the agent's chart results into the canvas.
+ *
+ * A result carrying the `chart_id` of a widget already on the canvas is that
+ * widget, changed — a refinement like "make it a line chart". It is updated
+ * where it sits, keeping its position, size, saved-chart row and any styling the
+ * user applied; only what the agent recomputed is replaced. Anything else is a
+ * new chart and gets a new card. A refinement whose card the user has since
+ * deleted matches nothing and appends, which is the right way to fail.
  *
  * Results without a `vega_lite_spec` (a plan that failed before charting) are
  * skipped — their error text still reaches the user through the chat answer.
  * `existingCount` continues the canvas layout below whatever is already placed.
  */
-export function widgetsFromAgent(
+export function applyAgentCharts(
+  existing: ChartWidget[],
   charts: AgentChartResult[],
   existingCount: number,
   makeId: () => string,
-): ChartWidget[] {
-  return charts
-    .filter((chart) => chart.vega_lite_spec)
-    .map((chart, i) => ({
-      id: makeId(),
+): AppliedCharts {
+  const usable = charts.filter((chart) => chart.vega_lite_spec);
+  const replacements = new Map<string, AgentChartResult>();
+  const additions: AgentChartResult[] = [];
+
+  for (const chart of usable) {
+    const target =
+      chart.chart_id && existing.find((w) => w.agentChartId === chart.chart_id);
+    if (target) replacements.set(target.id, chart);
+    else additions.push(chart);
+  }
+
+  const widgets = existing.map((widget) => {
+    const chart = replacements.get(widget.id);
+    if (!chart) return widget;
+    return {
+      ...widget,
       title: titleFor(chart.task),
       explanation: explanationFor(chart),
-      // The backend already sizes specs with width/height "container", so the
-      // spec reflows with the widget instead of needing a re-embed.
       vegaLiteSpec: chart.vega_lite_spec as Record<string, unknown>,
-      ...placement(existingCount + i),
-    }));
+      // The spec changed under a widget that may already be saved, which is the
+      // one thing autosave cannot see for itself.
+      specVersion: (widget.specVersion ?? 0) + 1,
+    };
+  });
+
+  const created = additions.map((chart, i) => ({
+    id: makeId(),
+    agentChartId: chart.chart_id,
+    title: titleFor(chart.task),
+    explanation: explanationFor(chart),
+    // The backend already sizes specs with width/height "container", so the
+    // spec reflows with the widget instead of needing a re-embed.
+    vegaLiteSpec: chart.vega_lite_spec as Record<string, unknown>,
+    ...placement(existingCount + i),
+  }));
+
+  // Focus follows the first chart the agent produced, whether it landed on an
+  // existing card or a new one — "view on canvas" has to point at what changed.
+  const first = usable[0];
+  const focusId =
+    (first &&
+      (widgets.find((w) => replacements.get(w.id) === first)?.id ??
+        created[additions.indexOf(first)]?.id)) ||
+    null;
+
+  return { widgets: [...widgets, ...created], focusId, placed: created.length };
 }

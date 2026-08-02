@@ -150,6 +150,11 @@ class Provenance(_Strict):
     # never trips the row gate, but a mean over mostly-substituted values needs
     # to say so. Empty when nothing was imputed above the notice threshold.
     imputation_notices: list[dict[str, Any]] = []
+    # The disclosure channel: the same cleaning facts as the fields above, written
+    # as finished sentences with a severity saying how loudly to say each one.
+    # Whoever composes the reply relays these rather than re-deriving them, so a
+    # disclosure cannot be softened or dropped in paraphrase. See services/notices.py.
+    notices: list[dict[str, Any]] = []
     # Logical id of the cleaned view these numbers came from — reproducible from
     # (source, preprocessing) without materialising a frame.
     preprocessing_version: str | None = None
@@ -200,6 +205,9 @@ class GenerateChartOutput(_Strict):
     vega_lite_spec: dict[str, Any] | None = None
     valid: bool
     warnings: list[str] = []
+    # Advisories about how the chart must be read — a log-scaled axis, or a
+    # linear one dominated by a single value. Empty for an unremarkable chart.
+    notices: list[dict[str, Any]] = []
 
 
 class ExportChartOutput(_Strict):
@@ -291,6 +299,10 @@ class PipelineOutput(_Strict):
     recommendation: RecommendChartOutput | None = None
     vega_lite_spec: dict[str, Any] | None = None
     warnings: list[str] = []
+    # Both halves of the disclosure, merged: what cleaning did to the numbers and
+    # what the chart had to do to make them legible. Pre-phrased with a severity —
+    # relay these rather than re-deriving them. See services/notices.py.
+    notices: list[dict[str, Any]] = []
     confirmation: ConfirmationRequired | None = None
     # Set on "partial" only: which chart step failed, and why.
     failed_step: str | None = None
@@ -303,6 +315,10 @@ class PipelineOutput(_Strict):
 
 class ChartResult(_Strict):
     task: str
+    # Stable identity for this chart across the thread. A refinement returns the
+    # id of the chart it changed, so a host can update that chart in place rather
+    # than showing a near-duplicate beside it.
+    chart_id: str | None = None
     status: Literal["ok", "partial", "error"]
     plan: dict[str, Any] | None = None
     attempts: int = 0
@@ -310,6 +326,10 @@ class ChartResult(_Strict):
     chart_spec: dict[str, Any] | None = None
     vega_lite_spec: dict[str, Any] | None = None
     warnings: list[str] = []
+    # What the user must be told about how the data was cleaned or how the chart
+    # has to be read — pre-written sentences with a severity. See
+    # services/notices.py; a "disclosed" one is owed to the user every time.
+    notices: list[dict[str, Any]] = []
     errors: list[str] = []
 
 

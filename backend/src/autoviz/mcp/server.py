@@ -373,20 +373,22 @@ async def analyze(
     dataset_id: str | None = None,
     file_ref: str | None = None,
     thread_id: str | None = None,
+    chart_id: str | None = None,
 ) -> AnalyzeOutput:
     """One-shot agentic analysis: the internal LangGraph workflow interprets a
     natural-language request, generates and repairs a validated analysis plan,
     executes it deterministically, and returns charts plus a grounded summary.
 
     Pass dataset_id (from register_dataset) or file_ref (a CSV to register).
-    Multi-part requests fan out into up to 6 charts. Reuse the returned
-    thread_id to refine previous results ("same but only 2015"). If the result
+    Multi-part requests fan out into up to 6 charts. Reuse thread_id to refine a
+    result ("same but only 2015"); pass the chart_id you mean, or the newest
+    chart is the one refined. If the result
     is {status: "waiting_for_user"}, answer with answer_clarification — check
     pause_kind to see whether you are answering a clarifying question or
     approving a data-cleaning step, and pass back interrupt_id so the answer
     reaches the right one when pending_count is above 1.
-    Requires a planner LLM key (GOOGLE_API_KEY by default); the granular tools
-    remain the host-LLM path and need no key.
+    Requires a planner LLM key (GOOGLE_API_KEY); the granular tools remain the
+    host-LLM path and need none.
     """
     await ctx.info(f"Planning analysis for: {request[:120]}")
     result = await anyio.to_thread.run_sync(
@@ -396,6 +398,7 @@ async def analyze(
             dataset_id=dataset_id,
             file_ref=file_ref,
             thread_id=thread_id,
+            chart_id=chart_id,
         ),
         abandon_on_cancel=True,
     )

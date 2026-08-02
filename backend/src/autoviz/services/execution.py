@@ -30,7 +30,7 @@ from autoviz.schema.allowlists import (
     ROW_DROP_NOTICE_FRACTION,
 )
 from autoviz.schema.analysis_plan import AnalysisPlan
-from autoviz.services import dataset
+from autoviz.services import dataset, notices as notices_svc
 from autoviz.services.dataset import _sanitize_scalar, sanitize_records
 from autoviz.services.registry import REGISTRY, DatasetRecord, DatasetRegistry
 from autoviz.services.validation import validate_analysis_plan
@@ -404,14 +404,22 @@ def _apply_preprocessing(
                 ).fetchone()[0]
             else:
                 # top_n: the keep-set is bounded by top_n, so an IN list is cheap.
-                # Same deterministic tie-break as `mode` — frequency desc, then
-                # value asc — so a tie never depends on scan order.
+                # Ranked by the plan's own measure when it has one, so the
+                # categories kept are the ones the chart is about; row frequency
+                # only when nothing better was given. Same deterministic
+                # tie-break as `mode` — measure desc, then value asc — so a tie
+                # never depends on scan order.
+                if op.rank_by is not None:
+                    rank_expr = _AGG_SQL[op.rank_by.fn].format(col=_q(op.rank_by.column))
+                else:
+                    rank_expr = "count(*)"
                 keep = [
                     row[0]
                     for row in con.execute(
                         _with(cte_defs)
                         + f"SELECT {col} FROM {current} WHERE {col} IS NOT NULL "
-                        f"GROUP BY {col} ORDER BY count(*) DESC, {col} ASC LIMIT ?",
+                        f"GROUP BY {col} ORDER BY {rank_expr} DESC NULLS LAST, "
+                        f"{col} ASC LIMIT ?",
                         list(params) + [op.top_n],
                     ).fetchall()
                 ]
@@ -437,6 +445,8 @@ def _apply_preprocessing(
                 "other_label": op.other_label,
                 **({"top_n": op.top_n} if op.top_n is not None else
                    {"min_frequency": op.min_frequency}),
+                **({"rank_by": {"column": op.rank_by.column, "fn": op.rank_by.fn}}
+                   if op.rank_by is not None else {}),
                 "rows_affected": int(bucketed), "confirmation_required": False,
             })
             current = name
@@ -853,6 +863,14 @@ def execute_analysis(
                 )
                 result = con.execute(sql, pp_params + where_params).fetchdf()
                 imputation_notices = _imputation_notices(plan, pp_report, input_rows)
+                # The unified disclosure channel. `imputation_notices` and
+                # `implicit_null_exclusions` stay as they are — they are the
+                # machine-readable record — while this is the same facts written
+                # as sentences for whoever has to tell the user.
+                user_notices = notices_svc.to_wire(
+                    notices_svc.from_preprocessing(pp_report, input_rows)
+                    + notices_svc.from_null_exclusions(null_notes, input_rows)
+                )
             except PreprocessError:
                 raise
             except Exception as exc:
@@ -898,6 +916,9 @@ def execute_analysis(
             "preprocessing_sql": pp_ctes,
             "implicit_null_exclusions": null_notes,
             "imputation_notices": imputation_notices,
+            # What to actually tell the user, already phrased. Everything else in
+            # this block is the evidence; this is the disclosure.
+            "notices": user_notices,
             # Logical id of the cleaned view these numbers came from. Reproducible
             # from (source, preprocessing) without materialising anything.
             "preprocessing_version": plan.preprocessing_version(dataset_id),

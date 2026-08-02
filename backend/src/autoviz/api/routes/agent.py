@@ -55,6 +55,7 @@ def analyze(
             dataset_id=body.dataset_id,
             file_ref=body.file_ref,
             thread_id=body.thread_id,
+            chart_id=body.chart_id,
         )
     )
 
