@@ -41,6 +41,8 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const [renameOpen, setRenameOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [hasPassword, setHasPassword] = useState(true);
+  const [styleWidgetId, setStyleWidgetId] = useState<string | null>(null);
+  const [styleBusy, setStyleBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
