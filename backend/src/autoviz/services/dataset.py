@@ -15,7 +15,7 @@ from autoviz.errors import FILE_ERROR, RESOURCE_LIMIT, UNKNOWN_DATASET, make_err
 from autoviz.services.registry import REGISTRY, DatasetRecord, DatasetRegistry
 from autoviz.services.safety import neutralize_text
 
-PREVIEW_MAX_ROWS = 50
+PREVIEW_MAX_ROWS = 5000
 
 
 def _env_int(name: str, default: int) -> int:
