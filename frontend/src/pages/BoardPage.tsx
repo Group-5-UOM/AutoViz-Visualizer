@@ -3,6 +3,13 @@ import html2canvas from 'html2canvas';
 import { Sidebar } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
 import { AccountPasswordModal } from '../components/layout/AccountPasswordModal';
+import { AddPanel } from '../components/layout/AddPanel';
+import { SetupPanel, buildChartPrompt } from '../components/layout/SetupPanel';
+import {
+  FilterPanel,
+  formatFiltersForPrompt,
+  type BoardFilters,
+} from '../components/layout/FilterPanel';
 import { ChatPanel } from '../components/chat/ChatPanel';
 import { DashboardCanvas } from '../components/canvas/DashboardCanvas';
 import { StylePanel } from '../components/canvas/StylePanel';
@@ -15,7 +22,7 @@ import { fetchMe } from '../lib/auth';
 import { uploadDataset, type DatasetMetadata } from '../lib/datasets';
 import { getDashboard, getChart, type DashboardResult } from '../lib/dashboards';
 import { defaultDashboardName } from '../lib/dashboardSync';
-import type { ChartStyle, SidebarItemId } from '../types/dashboard';
+import type { ChartStyle, ChartType, SidebarItemId } from '../types/dashboard';
 import '../App.css';
 
 interface BoardPageProps {
@@ -43,6 +50,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const [hasPassword, setHasPassword] = useState(true);
   const [styleWidgetId, setStyleWidgetId] = useState<string | null>(null);
   const [styleBusy, setStyleBusy] = useState(false);
+  const [filters, setFilters] = useState<BoardFilters>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -78,10 +86,13 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     resetForDataset,
   } = useDashboard(dataset?.datasetId ?? null, dataset?.fileName ?? null);
 
+  const closeSideTool = () => setActiveItem(chatOpen ? 'ai-chat' : null);
+
+  // Keep Setup chat focused: only the latest handful of turns.
+  const setupMessages = messages.slice(-8);
+
   const handleLoadDashboard = async (selected: DashboardResult) => {
     try {
-      // Flush first: the board being replaced may have edits still on the
-      // autosave timer, and loading throws away the state they live in.
       await saveNow();
       const fullDashboard = await getDashboard(selected.id);
 
@@ -106,10 +117,11 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             specVersion: 0,
             syncedSpecVersion: 0,
           };
-        })
+        }),
       );
 
       loadDashboardState(selected.id, selected.name, loadedWidgets);
+      setFilters({});
       setActiveItem('ai-chat');
       setChatOpen(true);
     } catch (err) {
@@ -123,6 +135,18 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const styleWidget = dashboard.widgets.find((w) => w.id === styleWidgetId) ?? null;
 
   const handleSidebarSelect = (id: SidebarItemId) => {
+    if (id === 'settings') {
+      setPasswordOpen(true);
+      return;
+    }
+    if (id === 'data') {
+      setActiveItem('data');
+      return;
+    }
+    if (activeItem === id) {
+      setActiveItem(chatOpen ? 'ai-chat' : null);
+      return;
+    }
     setActiveItem(id);
     if (id === 'ai-chat') {
       setChatOpen(true);
@@ -134,10 +158,9 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     setUploading(true);
     try {
       const result = await uploadDataset(file);
-      // Charts and the agent thread belong to the previous dataset — the new
-      // CSV has different columns, so carrying either forward is wrong.
       if (result.dataset_id !== dataset?.datasetId) {
         resetForDataset();
+        setFilters({});
       }
       setDataset({
         datasetId: result.dataset_id,
@@ -145,6 +168,8 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         rowCount: result.row_count,
         columnCount: result.column_count,
       });
+      setActiveItem('setup');
+      setChatOpen(false);
     } catch (err) {
       const message =
         err instanceof ApiError
@@ -161,6 +186,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const handleExistingDatasetSelected = (selected: DatasetMetadata) => {
     if (selected.dataset_id !== dataset?.datasetId) {
       resetForDataset();
+      setFilters({});
     }
     setDataset({
       datasetId: selected.dataset_id,
@@ -168,13 +194,10 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       rowCount: selected.row_count,
       columnCount: selected.column_count,
     });
-    setActiveItem('ai-chat');
-    setChatOpen(true);
+    setActiveItem('setup');
+    setChatOpen(false);
   };
 
-  // The canvas already saves itself. Pressing Save flushes immediately, and —
-  // the first time only — asks what the board should be called, since until
-  // then it is wearing a name autosave invented from the CSV.
   const handleSaveDashboard = () => {
     if (dashboard.nameIsAuto !== false) {
       setRenameOpen(true);
@@ -197,12 +220,27 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     }
   };
 
+  const handleSendMessage = (text: string) => {
+    const prefix = formatFiltersForPrompt(filters);
+    void sendMessage(prefix ? `${prefix}${text}` : text);
+  };
+
+  const handleSetupAsk = (chartType: ChartType, question: string) => {
+    handleSendMessage(buildChartPrompt(chartType, question));
+  };
+
+  const showChat = chatOpen && activeItem === 'ai-chat';
+  const showDashboards = activeItem === 'dashboards';
+  const showAdd = activeItem === 'add';
+  const showSetup = activeItem === 'setup';
+  const showFilter = activeItem === 'filter';
+
   return (
     <div className="board-app">
       <TopBar
         title={dashboard.dashboardName || 'Untitled dashboard'}
         sidebarCollapsed={sidebarCollapsed}
-        chatOpen={chatOpen}
+        chatOpen={chatOpen && activeItem === 'ai-chat'}
         widgetCount={dashboard.widgets.length}
         userEmail={userEmail}
         username={username}
@@ -216,6 +254,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             if (next) setActiveItem('ai-chat');
             return next;
           });
+          if (activeItem !== 'ai-chat') setActiveItem('ai-chat');
         }}
         onSave={handleSaveDashboard}
         onRename={() => setRenameOpen(true)}
@@ -239,14 +278,53 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
           onSelect={handleSidebarSelect}
         />
 
+        <AddPanel
+          open={showAdd}
+          uploading={uploading}
+          uploadError={uploadError}
+          dataset={
+            dataset
+              ? {
+                  fileName: dataset.fileName,
+                  rowCount: dataset.rowCount,
+                  columnCount: dataset.columnCount,
+                }
+              : null
+          }
+          onClose={closeSideTool}
+          onCsvSelected={handleCsvSelected}
+          onBrowseDatasets={() => setActiveItem('data')}
+        />
+
+        <SetupPanel
+          open={showSetup}
+          hasDataset={Boolean(dataset)}
+          datasetName={dataset?.fileName}
+          isThinking={isThinking}
+          messages={setupMessages}
+          onClose={closeSideTool}
+          onAsk={handleSetupAsk}
+        />
+
+        <FilterPanel
+          open={showFilter}
+          datasetId={dataset?.datasetId ?? null}
+          filters={filters}
+          onClose={closeSideTool}
+          onChange={setFilters}
+        />
+
         <ChatPanel
-          open={chatOpen && activeItem !== 'dashboards'}
+          open={showChat}
           messages={messages}
           isThinking={isThinking}
           disabled={!dataset}
           disabledReason="Add a CSV file to the canvas to start chatting."
-          onClose={() => setChatOpen(false)}
-          onSend={sendMessage}
+          onClose={() => {
+            setChatOpen(false);
+            setActiveItem(null);
+          }}
+          onSend={handleSendMessage}
           onFocusChart={(chartId) => selectWidget(chartId)}
           // Only charts this conversation produced: a chart restored from a
           // saved dashboard has no thread behind it to refine against.
@@ -256,9 +334,9 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         />
 
         <DashboardsPanel
-          open={activeItem === 'dashboards'}
+          open={showDashboards}
           currentDashboardId={dashboard.dashboardId}
-          onClose={() => setActiveItem(chatOpen ? 'ai-chat' : null)}
+          onClose={closeSideTool}
           onSelect={handleLoadDashboard}
         />
 
