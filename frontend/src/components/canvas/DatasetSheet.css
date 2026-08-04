@@ -9,99 +9,152 @@
   z-index: 5;
 }
 
-.dataset-sheet-topbar {
+/* DataLoom-style ribbon top bar */
+.dataset-ribbon {
   flex: none;
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 14px;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
 }
 
-.dataset-sheet-topbar-left {
+.dataset-ribbon-tabs {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 0;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  min-height: 36px;
 }
 
-.dataset-sheet-topbar-left > svg {
+.dataset-ribbon-tablist {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.dataset-ribbon-tab {
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.dataset-ribbon-tab:hover {
+  color: var(--text-primary);
+}
+
+.dataset-ribbon-tab.is-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.dataset-ribbon-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.dataset-ribbon-meta svg {
   color: var(--accent);
   flex: none;
 }
 
-.dataset-sheet-title-block {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.dataset-sheet-title-block strong {
-  font-size: 13px;
-  font-weight: 600;
+.dataset-ribbon-meta strong {
   color: var(--text-primary);
-  white-space: nowrap;
+  font-weight: 600;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.dataset-sheet-title-block span {
-  font-size: 11px;
+.dataset-ribbon-body {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 8px 16px;
+  min-height: 72px;
+  overflow-x: auto;
+}
+
+.dataset-ribbon-groups {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.dataset-ribbon-section {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.dataset-ribbon-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+}
+
+.dataset-ribbon-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.dataset-ribbon-group-items {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.dataset-ribbon-group-label {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--text-muted);
 }
 
-.dataset-sheet-topbar-actions {
+.dataset-ribbon-btn {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.dataset-sheet-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 10px;
+  gap: 4px;
+  min-width: 64px;
+  padding: 6px 12px;
+  border: none;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--bg-app);
-  color: var(--text-primary);
-  font-size: 12px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
   font-weight: 500;
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.dataset-sheet-btn:hover:not(:disabled) {
+.dataset-ribbon-btn:hover:not(:disabled) {
   background: var(--bg-hover);
-  border-color: var(--accent);
+  color: var(--text-primary);
 }
 
-.dataset-sheet-btn:disabled {
+.dataset-ribbon-btn.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.dataset-ribbon-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-.dataset-sheet-btn--primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.dataset-sheet-btn--primary:hover:not(:disabled) {
-  filter: brightness(1.05);
-  background: var(--accent);
-}
-
-.dataset-sheet-btn--icon {
-  width: 32px;
-  padding: 0;
-  justify-content: center;
 }
 
 .dataset-sheet-body {
@@ -119,7 +172,7 @@
 }
 
 .dataset-sheet-status.is-error {
-  color: var(--danger, #b91c1c);
+  color: var(--danger);
 }
 
 .dataset-sheet-scroll {
@@ -155,6 +208,17 @@
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.dataset-sheet-table thead th.is-selected-col,
+.dataset-sheet-table td.is-selected-col {
+  background: color-mix(in srgb, var(--accent) 8%, #fff);
+}
+
+.dataset-sheet-table thead th.is-selected-col {
+  background: color-mix(in srgb, var(--accent) 16%, #f3f4f6);
+  color: var(--accent);
 }
 
 .dataset-sheet-rownum {
@@ -168,11 +232,13 @@
   color: var(--text-muted);
   font-weight: 500;
   padding: 0 6px;
+  cursor: default;
 }
 
 .dataset-sheet-table thead .dataset-sheet-rownum {
   z-index: 3;
   background: #e5e7eb;
+  cursor: default;
 }
 
 .dataset-sheet-table tbody tr.is-selected td,
@@ -202,6 +268,56 @@
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
+.dataset-sheet-columns-panel {
+  flex: 1;
+  overflow: auto;
+  padding: 20px 24px;
+  background: var(--bg-surface);
+}
+
+.dataset-sheet-columns-panel h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dataset-sheet-columns-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.dataset-sheet-columns-panel button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-app);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.dataset-sheet-columns-panel button.is-active,
+.dataset-sheet-columns-panel button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.dataset-sheet-columns-panel em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .dataset-sheet-footer {
   flex: none;
   display: flex;
@@ -216,19 +332,18 @@
 }
 
 .dataset-sheet-dirty {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
   color: var(--accent);
+  font-weight: 500;
 }
 
 @media (max-width: 900px) {
-  .dataset-sheet-topbar {
+  .dataset-ribbon-tabs {
     flex-direction: column;
     align-items: stretch;
+    padding-top: 8px;
   }
 
-  .dataset-sheet-topbar-actions {
-    justify-content: flex-start;
+  .dataset-ribbon-meta {
+    padding-bottom: 8px;
   }
 }
