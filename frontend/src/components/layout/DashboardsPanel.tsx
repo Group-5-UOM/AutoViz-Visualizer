@@ -1,44 +1,88 @@
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, X, Calendar, Layers } from 'lucide-react';
-import { listDashboards, type DashboardResult } from '../../lib/dashboards';
+import { Calendar, Database, FileSpreadsheet, Layers, LayoutDashboard, X } from 'lucide-react';
+import { listDatasets, type DatasetMetadata } from '../../lib/datasets';
+import { getChart, listDashboards, type DashboardResult } from '../../lib/dashboards';
 import './DashboardsPanel.css';
+
+export interface SavedDatasetEntry {
+  dataset: DatasetMetadata;
+  dashboard: DashboardResult | null;
+  chartCount: number;
+}
 
 interface DashboardsPanelProps {
   open: boolean;
-  currentDashboardId?: string;
+  currentDatasetId?: string | null;
   onClose: () => void;
-  onSelect: (dashboard: DashboardResult) => void;
+  onSelect: (entry: SavedDatasetEntry) => void;
 }
 
-export function DashboardsPanel({ open, currentDashboardId, onClose, onSelect }: DashboardsPanelProps) {
-  const [dashboards, setDashboards] = useState<DashboardResult[]>([]);
+async function resolveEntries(datasets: DatasetMetadata[]): Promise<SavedDatasetEntry[]> {
+  const { dashboards } = await listDashboards();
+  const byDataset = new Map<string, { dashboard: DashboardResult; chartCount: number }>();
+
+  await Promise.all(
+    dashboards.map(async (dash) => {
+      if (dash.widgets.length === 0) return;
+      try {
+        const chart = await getChart(dash.widgets[0].chart_id);
+        if (!chart.dataset_id || byDataset.has(chart.dataset_id)) return;
+        byDataset.set(chart.dataset_id, {
+          dashboard: dash,
+          chartCount: dash.widgets.length,
+        });
+      } catch {
+        /* chart may have been deleted */
+      }
+    }),
+  );
+
+  return datasets
+    .map((dataset) => {
+      const linked = byDataset.get(dataset.dataset_id);
+      return {
+        dataset,
+        dashboard: linked?.dashboard ?? null,
+        chartCount: linked?.chartCount ?? 0,
+      };
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.dataset.created_at).getTime() - new Date(a.dataset.created_at).getTime(),
+    );
+}
+
+export function DashboardsPanel({
+  open,
+  currentDatasetId,
+  onClose,
+  onSelect,
+}: DashboardsPanelProps) {
+  const [entries, setEntries] = useState<SavedDatasetEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!open) return;
     let mounted = true;
-    async function load() {
-      try {
-        const res = await listDashboards();
-        if (mounted) {
-          const sorted = res.dashboards.sort(
-            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          );
-          setDashboards(sorted);
-        }
-      } catch (err) {
-        if (mounted) setError('Failed to load dashboards.');
-      } finally {
+    setLoading(true);
+    setError(null);
+    void listDatasets()
+      .then((res) => resolveEntries(res.datasets ?? []))
+      .then((next) => {
+        if (mounted) setEntries(next);
+      })
+      .catch(() => {
+        if (mounted) setError('Failed to load saved datasets.');
+      })
+      .finally(() => {
         if (mounted) setLoading(false);
-      }
-    }
-    load();
+      });
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [open]);
 
-  // Close on escape key
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -60,7 +104,7 @@ export function DashboardsPanel({ open, currentDashboardId, onClose, onSelect }:
   };
 
   return (
-    <section className="dashboards-panel" aria-label="Saved Dashboards">
+    <section className="dashboards-panel" aria-label="Saved datasets">
       <header className="dashboards-header">
         <div className="dashboards-header-title">
           <LayoutDashboard size={16} />
@@ -77,64 +121,71 @@ export function DashboardsPanel({ open, currentDashboardId, onClose, onSelect }:
       </header>
 
       <div className="dashboards-body">
-          {loading ? (
-            <div className="dashboard-loading">
-              <div className="spinner" />
-              <span>Loading dashboards...</span>
-            </div>
-          ) : error ? (
-            <div className="dashboard-loading">
-              <span style={{ color: 'var(--danger, #ef4444)' }}>{error}</span>
-            </div>
-          ) : dashboards.length === 0 ? (
-            <div className="dashboard-empty">
-              <LayoutDashboard size={48} strokeWidth={1} />
-              <h3>No dashboards found</h3>
-              <p>Save a dashboard to see it here.</p>
-            </div>
-          ) : (
-            <div className="dashboard-list">
-              {dashboards.map((dashboard) => {
-                const isCurrent = dashboard.id === currentDashboardId;
-                return (
-                  <div
-                    key={dashboard.id}
-                    className={`dashboard-item ${isCurrent ? 'is-current' : ''}`}
-                    onClick={() => { if (!isCurrent) onSelect(dashboard); }}
-                    style={{ cursor: isCurrent ? 'default' : 'pointer' }}
-                  >
-                    <div className="dashboard-item-info">
-                      <div className="dashboard-item-name" title={dashboard.name}>
-                        {dashboard.name}
-                        {isCurrent && <span className="current-badge">Current</span>}
-                      </div>
-                      <div className="dashboard-item-meta">
-                        <span title="Widgets">
-                          <Layers size={14} />
-                          {dashboard.widgets.length} charts
-                        </span>
-                        <span title="Created at">
-                          <Calendar size={14} />
-                          {formatDate(dashboard.created_at)}
-                        </span>
-                      </div>
+        {loading ? (
+          <div className="dashboard-loading">
+            <div className="spinner" />
+            <span>Loading saved datasets…</span>
+          </div>
+        ) : error ? (
+          <div className="dashboard-loading">
+            <span style={{ color: 'var(--danger, #ef4444)' }}>{error}</span>
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="dashboard-empty">
+            <Database size={48} strokeWidth={1} />
+            <h3>No saved datasets</h3>
+            <p>Upload a CSV with Add to see it here.</p>
+          </div>
+        ) : (
+          <div className="dashboard-list">
+            {entries.map((entry) => {
+              const isCurrent = entry.dataset.dataset_id === currentDatasetId;
+              return (
+                <div
+                  key={entry.dataset.dataset_id}
+                  className={`dashboard-item ${isCurrent ? 'is-current' : ''}`}
+                  onClick={() => {
+                    if (!isCurrent) onSelect(entry);
+                  }}
+                  style={{ cursor: isCurrent ? 'default' : 'pointer' }}
+                >
+                  <div className="dashboard-item-info">
+                    <div className="dashboard-item-name" title={entry.dataset.logical_name}>
+                      <FileSpreadsheet size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
+                      {entry.dataset.logical_name}
+                      {isCurrent && <span className="current-badge">Current</span>}
                     </div>
-                    <div className="dashboard-item-actions">
-                      {!isCurrent && (
-                        <button
-                          className="btn-load"
-                          onClick={() => onSelect(dashboard)}
-                          title="Load this dashboard"
-                        >
-                          Load
-                        </button>
-                      )}
+                    <div className="dashboard-item-meta">
+                      <span title="Charts on canvas">
+                        <Layers size={14} />
+                        {entry.chartCount} charts
+                        {entry.dashboard ? ` · ${entry.dashboard.name}` : ''}
+                      </span>
+                      <span title="Uploaded">
+                        <Calendar size={14} />
+                        {formatDate(entry.dataset.created_at)}
+                      </span>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <div className="dashboard-item-actions">
+                    {!isCurrent && (
+                      <button
+                        className="btn-load"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelect(entry);
+                        }}
+                        title="Load this dataset and canvas"
+                      >
+                        Load
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </section>
   );

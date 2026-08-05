@@ -86,6 +86,8 @@ export interface ChartWidget {
    * line chart") lands on the card it refined instead of appending a second one.
    */
   agentChartId?: string;
+  /** Agent / inferred chart type used by the canvas Filter panel. */
+  chartType?: string;
   style?: ChartStyle;
   /**
    * Bumped on every in-place change to `vegaLiteSpec` — a style edit or a

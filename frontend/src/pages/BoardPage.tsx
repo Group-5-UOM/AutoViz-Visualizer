@@ -1,30 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import html2canvas from 'html2canvas';
 import { Sidebar } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
 import { AccountPasswordModal } from '../components/layout/AccountPasswordModal';
 import { AddPanel } from '../components/layout/AddPanel';
 import { SetupPanel, buildChartPrompt } from '../components/layout/SetupPanel';
-import {
-  FilterPanel,
-  formatFiltersForPrompt,
-  type BoardFilters,
-} from '../components/layout/FilterPanel';
+import { FilterPanel } from '../components/layout/FilterPanel';
 import { ChatPanel } from '../components/chat/ChatPanel';
 import { DashboardCanvas } from '../components/canvas/DashboardCanvas';
 import { DatasetSheet } from '../components/canvas/DatasetSheet';
 import { StylePanel } from '../components/canvas/StylePanel';
-import { DashboardsPanel } from '../components/layout/DashboardsPanel';
+import {
+  DashboardsPanel,
+  type SavedDatasetEntry,
+} from '../components/layout/DashboardsPanel';
 import { DatasetModal } from '../components/layout/DatasetModal';
 import { NameUploadModal, namedCsvFile } from '../components/layout/NameUploadModal';
 import { SaveDashboardModal } from '../components/layout/SaveDashboardModal';
 import { useDashboard } from '../hooks/useDashboard';
 import { ApiError } from '../lib/api';
 import { fetchMe } from '../lib/auth';
+import { loadBoardSession, saveBoardSession } from '../lib/boardSession';
+import { inferChartType } from '../lib/chartType';
 import { uploadDataset, type DatasetMetadata } from '../lib/datasets';
 import { getDashboard, getChart, type DashboardResult } from '../lib/dashboards';
 import { defaultDashboardName } from '../lib/dashboardSync';
-import type { ChartStyle, ChartType, SidebarItemId } from '../types/dashboard';
+import type { ChartStyle, ChartType, ChartWidget, SidebarItemId } from '../types/dashboard';
 import '../App.css';
 
 interface BoardPageProps {
@@ -45,8 +46,43 @@ function boardTitle(
   datasetFileName: string | null | undefined,
 ): string {
   if (dashboardName?.trim()) return dashboardName.trim();
-  const fromFile = defaultDashboardName(datasetFileName);
-  return fromFile;
+  return defaultDashboardName(datasetFileName);
+}
+
+function openAiChat(
+  setActiveItem: (id: SidebarItemId | null) => void,
+  setChatOpen: (v: boolean) => void,
+) {
+  setActiveItem('ai-chat');
+  setChatOpen(true);
+}
+
+async function widgetsFromDashboard(selected: DashboardResult): Promise<ChartWidget[]> {
+  const fullDashboard = await getDashboard(selected.id);
+  return Promise.all(
+    fullDashboard.widgets.map(async (w) => {
+      const chartData = await getChart(w.chart_id);
+      const chartType =
+        typeof chartData.chart_spec?.type === 'string'
+          ? chartData.chart_spec.type
+          : undefined;
+      return {
+        id: `chart-${w.id}`,
+        title: chartData.name,
+        explanation: '',
+        vegaLiteSpec: chartData.vega_lite_spec,
+        x: w.x,
+        y: w.y,
+        width: w.w,
+        height: w.h,
+        backendChartId: w.chart_id,
+        chartType,
+        style: (chartData.chart_spec?.style as ChartStyle | undefined) ?? undefined,
+        specVersion: 0,
+        syncedSpecVersion: 0,
+      };
+    }),
+  );
 }
 
 export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
@@ -61,7 +97,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const [hasPassword, setHasPassword] = useState(true);
   const [styleWidgetId, setStyleWidgetId] = useState<string | null>(null);
   const [styleBusy, setStyleBusy] = useState(false);
-  const [filters, setFilters] = useState<BoardFilters>({});
+  const [chartTypeFilter, setChartTypeFilter] = useState<ChartType[]>([]);
   const [browseOpen, setBrowseOpen] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<File | null>(null);
 
@@ -72,7 +108,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         if (!cancelled) setHasPassword(Boolean(me.has_password));
       })
       .catch(() => {
-        /* ignore — password button still works */
+        /* ignore */
       });
     return () => {
       cancelled = true;
@@ -93,56 +129,89 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     saveNow,
     renameDashboard,
     loadDashboardState,
+    replaceMessages,
     resetForDataset,
   } = useDashboard(dataset?.datasetId ?? null, dataset?.fileName ?? null);
 
-  const closeSideTool = () => setActiveItem(chatOpen ? 'ai-chat' : null);
+  // Persist chat + dashboard link per dataset so Dashboards can restore them.
+  useEffect(() => {
+    if (!dataset?.datasetId) return;
+    saveBoardSession(dataset.datasetId, {
+      dashboardId: dashboard.dashboardId ?? null,
+      messages,
+    });
+  }, [dataset?.datasetId, dashboard.dashboardId, messages]);
 
-  // Keep Setup chat focused: only the latest handful of turns.
+  const closeSideTool = () => setActiveItem(chatOpen ? 'ai-chat' : null);
   const setupMessages = messages.slice(-8);
 
-  const handleLoadDashboard = async (selected: DashboardResult) => {
-    try {
-      await saveNow();
-      const fullDashboard = await getDashboard(selected.id);
-
-      const loadedWidgets = await Promise.all(
-        fullDashboard.widgets.map(async (w) => {
-          const chartData = await getChart(w.chart_id);
-          return {
-            id: `chart-${w.id}`,
-            title: chartData.name,
-            explanation: '',
-            vegaLiteSpec: chartData.vega_lite_spec,
-            x: w.x,
-            y: w.y,
-            width: w.w,
-            height: w.h,
-            backendChartId: w.chart_id,
-            // Restored so the style panel opens showing what was actually
-            // chosen, rather than defaults over an already-styled render.
-            style: (chartData.chart_spec?.style as ChartStyle | undefined) ?? undefined,
-            // This spec is, by definition, the one the server holds. Both at
-            // zero means reopening a board does not immediately re-upload it.
-            specVersion: 0,
-            syncedSpecVersion: 0,
-          };
-        }),
-      );
-
-      loadDashboardState(selected.id, selected.name, loadedWidgets);
-      setFilters({});
-      setActiveItem('ai-chat');
-      setChatOpen(true);
-    } catch (err) {
-      console.error('Failed to load dashboard:', err);
-      alert('Failed to load dashboard.');
+  const chartCounts = useMemo(() => {
+    const counts: Partial<Record<ChartType | 'other', number>> = {};
+    for (const w of dashboard.widgets) {
+      const t = inferChartType(w);
+      counts[t] = (counts[t] ?? 0) + 1;
     }
+    return counts;
+  }, [dashboard.widgets]);
+
+  const visibleWidgets = useMemo(() => {
+    if (chartTypeFilter.length === 0) return dashboard.widgets;
+    return dashboard.widgets.filter((w) => {
+      const t = inferChartType(w);
+      return t !== 'other' && chartTypeFilter.includes(t);
+    });
+  }, [dashboard.widgets, chartTypeFilter]);
+
+  const styleWidget = dashboard.widgets.find((w) => w.id === styleWidgetId) ?? null;
+
+  const applyLoadedCanvas = async (
+    selected: DashboardResult,
+    restoredMessages?: typeof messages,
+  ) => {
+    const loadedWidgets = await widgetsFromDashboard(selected);
+    loadDashboardState(selected.id, selected.name, loadedWidgets, restoredMessages);
   };
 
-  // Resolved from live state rather than held in it, so the panel follows the
-  // widget through an edit and disappears with it if the chart is deleted.
-  const styleWidget = dashboard.widgets.find((w) => w.id === styleWidgetId) ?? null;
+  const handleLoadSavedDataset = async (entry: SavedDatasetEntry) => {
+    try {
+      if (dataset?.datasetId && dataset.datasetId !== entry.dataset.dataset_id) {
+        await saveNow();
+        saveBoardSession(dataset.datasetId, {
+          dashboardId: dashboard.dashboardId ?? null,
+          messages,
+        });
+        resetForDataset();
+      }
+
+      setChartTypeFilter([]);
+      setDataset({
+        datasetId: entry.dataset.dataset_id,
+        fileName: entry.dataset.logical_name,
+        rowCount: entry.dataset.row_count,
+        columnCount: entry.dataset.column_count,
+      });
+
+      const session = loadBoardSession(entry.dataset.dataset_id);
+      const title = defaultDashboardName(entry.dataset.logical_name);
+
+      if (entry.dashboard) {
+        await applyLoadedCanvas(entry.dashboard, session?.messages);
+        if (!session?.messages?.length) {
+          /* loadDashboardState already set a loaded message */
+        }
+      } else {
+        renameDashboard(title);
+        if (session?.messages?.length) {
+          replaceMessages(session.messages);
+        }
+      }
+
+      openAiChat(setActiveItem, setChatOpen);
+    } catch (err) {
+      console.error('Failed to load saved dataset:', err);
+      alert('Failed to load dataset canvas.');
+    }
+  };
 
   const handleSidebarSelect = (id: SidebarItemId) => {
     if (id === 'settings') {
@@ -177,10 +246,16 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     setUploadError(null);
     setUploading(true);
     try {
+      if (dataset?.datasetId) {
+        saveBoardSession(dataset.datasetId, {
+          dashboardId: dashboard.dashboardId ?? null,
+          messages,
+        });
+      }
       const result = await uploadDataset(file);
       if (result.dataset_id !== dataset?.datasetId) {
         resetForDataset();
-        setFilters({});
+        setChartTypeFilter([]);
       }
       const savedName = result.logical_name || file.name;
       setDataset({
@@ -192,8 +267,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       if (boardName?.trim()) {
         renameDashboard(boardName.trim());
       }
-      setActiveItem('data');
-      setChatOpen(false);
+      openAiChat(setActiveItem, setChatOpen);
       setBrowseOpen(false);
       setPendingUpload(null);
     } catch (err) {
@@ -215,21 +289,26 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     void handleCsvSelected(named, displayName.trim());
   };
 
-  const handleExistingDatasetSelected = (selected: DatasetMetadata) => {
-    if (selected.dataset_id !== dataset?.datasetId) {
-      resetForDataset();
-      setFilters({});
-    }
-    setDataset({
-      datasetId: selected.dataset_id,
-      fileName: selected.logical_name,
-      rowCount: selected.row_count,
-      columnCount: selected.column_count,
-    });
-    renameDashboard(defaultDashboardName(selected.logical_name));
-    setActiveItem('data');
-    setChatOpen(false);
+  const handleExistingDatasetSelected = async (selected: DatasetMetadata) => {
     setBrowseOpen(false);
+    let dashboard: DashboardResult | null = null;
+    let chartCount = 0;
+    try {
+      const { listDashboards } = await import('../lib/dashboards');
+      const { dashboards } = await listDashboards();
+      for (const dash of dashboards) {
+        if (!dash.widgets.length) continue;
+        const chart = await getChart(dash.widgets[0].chart_id);
+        if (chart.dataset_id === selected.dataset_id) {
+          dashboard = dash;
+          chartCount = dash.widgets.length;
+          break;
+        }
+      }
+    } catch {
+      /* optional enrichment */
+    }
+    await handleLoadSavedDataset({ dataset: selected, dashboard, chartCount });
   };
 
   const handleExportDashboard = async () => {
@@ -247,8 +326,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   };
 
   const handleSendMessage = (text: string) => {
-    const prefix = formatFiltersForPrompt(filters);
-    void sendMessage(prefix ? `${prefix}${text}` : text);
+    void sendMessage(text);
   };
 
   const handleSetupAsk = (chartType: ChartType, question: string) => {
@@ -296,18 +374,8 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
           open={showAdd}
           uploading={uploading}
           uploadError={uploadError}
-          dataset={
-            dataset
-              ? {
-                  fileName: dataset.fileName,
-                  rowCount: dataset.rowCount,
-                  columnCount: dataset.columnCount,
-                }
-              : null
-          }
           onClose={closeSideTool}
           onCsvSelected={handleCsvPicked}
-          onBrowseDatasets={() => setBrowseOpen(true)}
         />
 
         <SetupPanel
@@ -322,10 +390,10 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
 
         <FilterPanel
           open={showFilter}
-          datasetId={dataset?.datasetId ?? null}
-          filters={filters}
+          selectedTypes={chartTypeFilter}
+          chartCounts={chartCounts}
           onClose={closeSideTool}
-          onChange={setFilters}
+          onChange={setChartTypeFilter}
         />
 
         <ChatPanel
@@ -340,8 +408,6 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
           }}
           onSend={handleSendMessage}
           onFocusChart={(chartId) => selectWidget(chartId)}
-          // Only charts this conversation produced: a chart restored from a
-          // saved dashboard has no thread behind it to refine against.
           referenceable={dashboard.widgets.filter((w) => w.agentChartId)}
           referencedWidgetId={referencedWidgetId}
           onReference={referenceWidget}
@@ -349,9 +415,9 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
 
         <DashboardsPanel
           open={showDashboards}
-          currentDashboardId={dashboard.dashboardId}
+          currentDatasetId={dataset?.datasetId}
           onClose={closeSideTool}
-          onSelect={handleLoadDashboard}
+          onSelect={(entry) => void handleLoadSavedDataset(entry)}
         />
 
         {showDatasetSheet && dataset ? (
@@ -360,12 +426,12 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             fileName={dataset.fileName}
             rowCount={dataset.rowCount}
             columnCount={dataset.columnCount}
-            onClose={() => setActiveItem(chatOpen ? 'ai-chat' : null)}
+            onClose={() => openAiChat(setActiveItem, setChatOpen)}
             onSaved={handleCsvSelected}
           />
         ) : (
           <DashboardCanvas
-            widgets={dashboard.widgets}
+            widgets={visibleWidgets}
             selectedWidgetId={dashboard.selectedWidgetId}
             dataset={dataset}
             uploading={uploading}
@@ -377,8 +443,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             onReference={(id) => {
               referenceWidget(referencedWidgetId === id ? null : id);
               if (referencedWidgetId !== id) {
-                setActiveItem('ai-chat');
-                setChatOpen(true);
+                openAiChat(setActiveItem, setChatOpen);
               }
             }}
             referencedWidgetId={referencedWidgetId}
