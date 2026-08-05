@@ -418,3 +418,42 @@
 .tool-setup-compose button:hover:not(:disabled) {
   filter: brightness(1.05);
 }
+
+.tool-filter-types {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tool-filter-type {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-app);
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.tool-filter-type input {
+  margin: 0;
+}
+
+.tool-filter-type span {
+  flex: 1;
+  font-weight: 500;
+}
+
+.tool-filter-type em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.tool-filter-type.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}

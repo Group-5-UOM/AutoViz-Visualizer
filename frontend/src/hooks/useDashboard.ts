@@ -423,7 +423,12 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
   );
 
   const loadDashboardState = useCallback(
-    (dashboardId: string, dashboardName: string, widgets: ChartWidget[]) => {
+    (
+      dashboardId: string,
+      dashboardName: string,
+      widgets: ChartWidget[],
+      restoredMessages?: ChatMessage[],
+    ) => {
       cancelPendingSave();
       threadId.current = null;
       awaitingAnswer.current = false;
@@ -445,12 +450,25 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
       setSaveStatus('saved');
       setSaveError(null);
       setLastSavedAt(null);
-      setMessages([
-        { id: uid('msg'), role: 'assistant', content: `Loaded dashboard: ${dashboardName}`, timestamp: Date.now() },
-      ]);
+      setMessages(
+        restoredMessages && restoredMessages.length > 0
+          ? restoredMessages
+          : [
+              {
+                id: uid('msg'),
+                role: 'assistant',
+                content: `Loaded dashboard: ${dashboardName}`,
+                timestamp: Date.now(),
+              },
+            ],
+      );
     },
-    [cancelPendingSave]
+    [cancelPendingSave],
   );
+
+  const replaceMessages = useCallback((next: ChatMessage[]) => {
+    setMessages(next);
+  }, []);
 
   /** Drop canvas + conversation state when a different dataset is uploaded. */
   const resetForDataset = useCallback(() => {
@@ -487,6 +505,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     saveNow,
     renameDashboard,
     loadDashboardState,
+    replaceMessages,
     resetForDataset,
   };
 }
