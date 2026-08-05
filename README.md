@@ -62,8 +62,10 @@ Edit `backend/.env` and set at least:
 | `AUTOVIZ_PLANNER_MODEL` | LangChain model id, e.g. `openai:gpt-4o-mini` or `google_genai:gemini-3.5-flash` |
 | `GITHUB_OAUTH_CLIENT_ID` / `SECRET` | GitHub OAuth App credentials |
 | `GOOGLE_OAUTH_CLIENT_ID` / `SECRET` | Google OAuth Web client credentials |
-| `AUTOVIZ_FRONTEND_URL` | Frontend origin for OAuth return (`http://localhost:5173`) |
-| `AUTOVIZ_API_PUBLIC_URL` | Backend public URL for OAuth callbacks (`http://127.0.0.1:8000`) |
+| `AUTOVIZ_FRONTEND_URL` | Frontend origin for OAuth return — local `http://localhost:5173`, hosted `https://autoviz.duckdns.org` |
+| `AUTOVIZ_API_PUBLIC_URL` | Backend public URL for OAuth callbacks — local `http://127.0.0.1:8000`, hosted `https://autoviz.duckdns.org` |
+| `GITHUB_OAUTH_REDIRECT_URI` | Optional override (blank → `{AUTOVIZ_API_PUBLIC_URL}/auth/oauth/github/callback`) |
+| `GOOGLE_OAUTH_REDIRECT_URI` | Optional override (blank → `{AUTOVIZ_API_PUBLIC_URL}/auth/oauth/google/callback`) |
 
 For system Postgres (pgAdmin, port `5432`) — create a database named `autoviz`, then:
 
@@ -86,15 +88,31 @@ DATABASE_URL=postgresql://autoviz:autoviz@localhost:5434/autoviz
 
 ### OAuth console URLs
 
-Register these exact callback URLs in the provider consoles:
+Register **both** local and hosted callbacks in the provider consoles so the same OAuth app works in either environment. The app picks which one to use from `AUTOVIZ_API_PUBLIC_URL` (or the optional `*_OAUTH_REDIRECT_URI` overrides).
 
-| Provider | Setting | Value |
-| --- | --- | --- |
-| GitHub OAuth App | Authorization callback URL | `http://127.0.0.1:8000/auth/oauth/github/callback` |
-| Google Cloud OAuth client | Authorized JavaScript origins | `http://localhost:5173` |
-| Google Cloud OAuth client | Authorized redirect URIs | `http://127.0.0.1:8000/auth/oauth/google/callback` |
+| Provider | Setting | Local | Hosted |
+| --- | --- | --- | --- |
+| GitHub OAuth App | Authorization callback URL | `http://127.0.0.1:8000/auth/oauth/github/callback` | `https://autoviz.duckdns.org/auth/oauth/github/callback` |
+| Google Cloud OAuth client | Authorized JavaScript origins | `http://localhost:5173` | `https://autoviz.duckdns.org` |
+| Google Cloud OAuth client | Authorized redirect URIs | `http://127.0.0.1:8000/auth/oauth/google/callback` | `https://autoviz.duckdns.org/auth/oauth/google/callback` |
 
-Google treats `localhost` and `127.0.0.1` as different hosts. The redirect URI must match `AUTOVIZ_API_PUBLIC_URL` in `backend/.env` character-for-character.
+**Local `.env`:**
+
+```env
+AUTOVIZ_FRONTEND_URL=http://localhost:5173
+AUTOVIZ_API_PUBLIC_URL=http://127.0.0.1:8000
+```
+
+**Hosted server `.env`:**
+
+```env
+AUTOVIZ_FRONTEND_URL=https://autoviz.duckdns.org
+AUTOVIZ_API_PUBLIC_URL=https://autoviz.duckdns.org
+AUTOVIZ_CORS_ORIGINS=https://autoviz.duckdns.org
+AUTOVIZ_EXPOSE_RESET_TOKENS=false
+```
+
+Do not hardcode duckdns URLs in source. Google treats `localhost` and `127.0.0.1` as different hosts — the redirect URI must match the env value character-for-character.
 
 ---
 
