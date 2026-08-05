@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useRef, type ChangeEvent } from 'react';
 import { FileSpreadsheet, Table, Upload } from 'lucide-react';
 import { ChartWidgetCard } from './ChartWidget';
-import { previewDataset } from '../../lib/datasets';
 import type { ChartWidget } from '../../types/dashboard';
 import './DashboardCanvas.css';
 
@@ -29,7 +28,7 @@ interface DashboardCanvasProps {
   referencedWidgetId: string | null;
   onDelete: (id: string) => void;
   onCsvSelected: (file: File) => void;
-  /** Open the full spreadsheet / dataset editor view. */
+  /** Open the spreadsheet view (Data tab). */
   onOpenData?: () => void;
 }
 
@@ -51,39 +50,7 @@ export function DashboardCanvas({
 }: DashboardCanvasProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const showUploadPrompt = widgets.length === 0 && !dataset;
-  const showDatasetPreview = widgets.length === 0 && Boolean(dataset);
-
-  const [previewColumns, setPreviewColumns] = useState<string[]>([]);
-  const [previewRows, setPreviewRows] = useState<Record<string, unknown>[]>([]);
-  const [previewLoading, setPreviewLoading] = useState(false);
-
-  useEffect(() => {
-    if (!dataset || widgets.length > 0) {
-      setPreviewColumns([]);
-      setPreviewRows([]);
-      return;
-    }
-    let cancelled = false;
-    setPreviewLoading(true);
-    void previewDataset(dataset.datasetId, 25)
-      .then((res) => {
-        if (cancelled) return;
-        const cols = res.rows.length > 0 ? Object.keys(res.rows[0]) : [];
-        setPreviewColumns(cols);
-        setPreviewRows(res.rows);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setPreviewColumns([]);
-        setPreviewRows([]);
-      })
-      .finally(() => {
-        if (!cancelled) setPreviewLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [dataset?.datasetId, widgets.length]);
+  const showReadyHint = widgets.length === 0 && Boolean(dataset);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -138,31 +105,34 @@ export function DashboardCanvas({
         </div>
       )}
 
-      {showDatasetPreview && dataset && (
-        <div
-          className="canvas-dataset-preview"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <div className="canvas-dataset-preview-header">
-            <div>
-              <h2>{dataset.fileName}</h2>
-              <p>
-                {dataset.rowCount.toLocaleString()} rows × {dataset.columnCount} columns
-                {previewLoading ? ' · loading preview…' : ''}
-              </p>
+      {showReadyHint && dataset && (
+        <div className="canvas-empty">
+          <div className="canvas-empty-card">
+            <div className="canvas-upload-icon" aria-hidden>
+              <FileSpreadsheet size={28} strokeWidth={1.75} />
             </div>
+            <h2>{dataset.fileName}</h2>
+            <p>
+              {dataset.rowCount.toLocaleString()} rows ×{' '}
+              {dataset.columnCount} columns. Use Setup or AI Chat to build
+              charts, or open Data to view the spreadsheet.
+            </p>
             <div className="canvas-dataset-preview-actions">
-              <button
-                type="button"
-                className="canvas-upload-btn"
-                onClick={onOpenData}
-              >
-                <Table size={16} />
-                Open spreadsheet
-              </button>
+              {onOpenData && (
+                <button
+                  type="button"
+                  className="canvas-upload-btn"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={onOpenData}
+                >
+                  <Table size={16} />
+                  Open Data
+                </button>
+              )}
               <button
                 type="button"
                 className="canvas-upload-btn canvas-upload-btn--secondary"
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
               >
@@ -170,52 +140,20 @@ export function DashboardCanvas({
                 {uploading ? 'Uploading…' : 'Replace CSV'}
               </button>
             </div>
-          </div>
-
-          {uploadError && (
-            <p className="canvas-upload-error" role="alert">
-              {uploadError}
-            </p>
-          )}
-
-          <div className="canvas-dataset-preview-table-wrap">
-            {previewColumns.length > 0 ? (
-              <table className="canvas-dataset-preview-table">
-                <thead>
-                  <tr>
-                    {previewColumns.map((col) => (
-                      <th key={col}>{col}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {previewRows.map((row, i) => (
-                    <tr key={i}>
-                      {previewColumns.map((col) => (
-                        <td key={col}>
-                          {row[col] === null || row[col] === undefined
-                            ? '—'
-                            : String(row[col])}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              !previewLoading && (
-                <p className="canvas-dataset-preview-empty">No preview rows available.</p>
-              )
+            {uploadError && (
+              <p className="canvas-upload-error" role="alert">
+                {uploadError}
+              </p>
             )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="canvas-file-input"
+              onChange={handleFileChange}
+              disabled={uploading}
+            />
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,text/csv"
-            className="canvas-file-input"
-            onChange={handleFileChange}
-            disabled={uploading}
-          />
         </div>
       )}
 

@@ -1,9 +1,16 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type UIEvent,
+} from 'react';
 import {
   ArrowUpDown,
-  Columns3,
   CopyMinus,
-  Download,
   Eraser,
   FileSpreadsheet,
   Plus,
@@ -11,7 +18,6 @@ import {
   Scissors,
   Trash2,
   Undo2,
-  X,
 } from 'lucide-react';
 import { ApiError } from '../../lib/api';
 import { previewDataset } from '../../lib/datasets';
@@ -27,7 +33,6 @@ interface DatasetSheetProps {
 }
 
 type CellMatrix = string[][];
-type RibbonTab = 'File' | 'Data' | 'View';
 
 interface RibbonItem {
   label: string;
@@ -35,7 +40,6 @@ interface RibbonItem {
   onClick: () => void;
   disabled?: boolean;
   hover: string;
-  active?: boolean;
 }
 
 interface RibbonGroup {
@@ -43,13 +47,10 @@ interface RibbonGroup {
   items: RibbonItem[];
 }
 
-const RIBBON_TABS: RibbonTab[] = ['File', 'Data', 'View'];
-
-const TAB_DESCRIPTIONS: Record<RibbonTab, string> = {
-  File: 'Save, export, discard edits, or close the spreadsheet.',
-  Data: 'Add or remove rows and clean values in the sheet.',
-  View: 'Inspect columns and sheet status.',
-};
+/** Rows kept in the browser for editing (matches backend PREVIEW_MAX_ROWS). */
+const LOAD_LIMIT = 5000;
+const ROW_HEIGHT = 32;
+const OVERSCAN = 8;
 
 function escapeCsvCell(value: string): string {
   if (/[",\n\r]/.test(value)) {
@@ -86,11 +87,10 @@ function RibbonButton({ item }: { item: RibbonItem }) {
   return (
     <button
       type="button"
-      className={`dataset-ribbon-btn ${item.active ? 'is-active' : ''}`}
+      className="dataset-ribbon-btn"
       title={item.hover}
       onClick={item.onClick}
       disabled={item.disabled}
-      data-testid={`toolbar-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
     >
       <Icon size={20} strokeWidth={1.75} />
       <span>{item.label}</span>
@@ -118,12 +118,111 @@ function RibbonGroups({ groups }: { groups: RibbonGroup[] }) {
   );
 }
 
+/** Uncontrolled cell — typing does not re-render the whole sheet. */
+const SheetCell = memo(function SheetCell({
+  value,
+  colName,
+  rowIndex,
+  colIndex,
+  colSelected,
+  onCommit,
+  onFocusCell,
+}: {
+  value: string;
+  colName: string;
+  rowIndex: number;
+  colIndex: number;
+  colSelected: boolean;
+  onCommit: (row: number, col: number, value: string) => void;
+  onFocusCell: (row: number, col: number) => void;
+}) {
+  const draftRef = useRef(value);
+  const committedRef = useRef(value);
+
+  useEffect(() => {
+    draftRef.current = value;
+    committedRef.current = value;
+  }, [value]);
+
+  useEffect(() => {
+    return () => {
+      if (draftRef.current !== committedRef.current) {
+        onCommit(rowIndex, colIndex, draftRef.current);
+      }
+    };
+  }, [rowIndex, colIndex, onCommit]);
+
+  return (
+    <td className={colSelected ? 'is-selected-col' : undefined}>
+      <input
+        type="text"
+        defaultValue={value}
+        key={value}
+        aria-label={`${colName} row ${rowIndex + 1}`}
+        onChange={(e) => {
+          draftRef.current = e.target.value;
+        }}
+        onBlur={(e) => {
+          if (e.target.value !== committedRef.current) {
+            onCommit(rowIndex, colIndex, e.target.value);
+            committedRef.current = e.target.value;
+          }
+        }}
+        onFocus={() => onFocusCell(rowIndex, colIndex)}
+      />
+    </td>
+  );
+});
+
+const SheetRow = memo(function SheetRow({
+  row,
+  rowIndex,
+  columns,
+  selected,
+  selectedCol,
+  onCommit,
+  onFocusCell,
+  onSelectRow,
+}: {
+  row: string[];
+  rowIndex: number;
+  columns: string[];
+  selected: boolean;
+  selectedCol: number | null;
+  onCommit: (row: number, col: number, value: string) => void;
+  onFocusCell: (row: number, col: number) => void;
+  onSelectRow: (row: number) => void;
+}) {
+  return (
+    <tr
+      className={selected ? 'is-selected' : undefined}
+      style={{ height: ROW_HEIGHT }}
+      onClick={() => onSelectRow(rowIndex)}
+    >
+      <th scope="row" className="dataset-sheet-rownum">
+        {rowIndex + 1}
+      </th>
+      {row.map((cell, cIdx) => (
+        <SheetCell
+          key={cIdx}
+          value={cell}
+          colName={columns[cIdx] ?? `col_${cIdx + 1}`}
+          rowIndex={rowIndex}
+          colIndex={cIdx}
+          colSelected={selectedCol === cIdx}
+          onCommit={onCommit}
+          onFocusCell={onFocusCell}
+        />
+      ))}
+    </tr>
+  );
+});
+
 export function DatasetSheet({
   datasetId,
   fileName,
   rowCount,
   columnCount,
-  onClose,
   onSaved,
 }: DatasetSheetProps) {
   const [columns, setColumns] = useState<string[]>([]);
@@ -135,14 +234,15 @@ export function DatasetSheet({
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [activeTab, setActiveTab] = useState<RibbonTab>('File');
-  const [showColumns, setShowColumns] = useState(false);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(480);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    const limit = Math.max(rowCount || 100, 100);
+    const limit = Math.min(Math.max(rowCount || 100, 100), LOAD_LIMIT);
     void previewDataset(datasetId, limit)
       .then((res) => {
         if (cancelled) return;
@@ -157,6 +257,7 @@ export function DatasetSheet({
         setDirty(false);
         setSelectedRow(null);
         setSelectedCol(null);
+        setScrollTop(0);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -176,6 +277,16 @@ export function DatasetSheet({
     };
   }, [datasetId, rowCount, columnCount]);
 
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const sync = () => setViewportHeight(el.clientHeight || 480);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [loading, columns.length]);
+
   const truncated = useMemo(
     () => rowCount > 0 && rows.length > 0 && rows.length < rowCount,
     [rowCount, rows.length],
@@ -184,14 +295,36 @@ export function DatasetSheet({
   const busy = loading || saving;
   const sheetReady = !loading && columns.length > 0;
 
-  const updateCell = (r: number, c: number, value: string) => {
+  const visibleCount = Math.ceil(viewportHeight / ROW_HEIGHT) + OVERSCAN * 2;
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIndex = Math.min(rows.length, startIndex + visibleCount);
+  const padTop = startIndex * ROW_HEIGHT;
+  const padBottom = Math.max(0, (rows.length - endIndex) * ROW_HEIGHT);
+
+  const handleScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  }, []);
+
+  const commitCell = useCallback((r: number, c: number, value: string) => {
     setRows((prev) => {
-      const next = prev.map((row, i) => (i === r ? [...row] : row));
-      next[r][c] = value;
+      if (prev[r]?.[c] === value) return prev;
+      const next = prev.slice();
+      const row = next[r].slice();
+      row[c] = value;
+      next[r] = row;
       return next;
     });
     setDirty(true);
-  };
+  }, []);
+
+  const focusCell = useCallback((r: number, c: number) => {
+    setSelectedRow(r);
+    setSelectedCol(c);
+  }, []);
+
+  const selectRow = useCallback((r: number) => {
+    setSelectedRow(r);
+  }, []);
 
   const addRow = () => {
     setRows((prev) => [...prev, columns.map(() => '')]);
@@ -211,16 +344,6 @@ export function DatasetSheet({
     setDirty(false);
     setSelectedRow(null);
     setSelectedCol(null);
-  };
-
-  const downloadCsv = () => {
-    const blob = new Blob([toCsv(columns, rows)], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName.endsWith('.csv') ? fileName : `${fileName}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const saveChanges = async () => {
@@ -295,134 +418,90 @@ export function DatasetSheet({
     setDirty(true);
   };
 
-  const ribbonByTab: Record<RibbonTab, RibbonGroup[]> = {
-    File: [
-      {
-        group: 'Save',
-        items: [
-          {
-            label: 'Save',
-            icon: Save,
-            onClick: () => void saveChanges(),
-            disabled: !dirty || busy || !sheetReady,
-            hover: dirty
-              ? 'Save edits by uploading a new CSV version to AutoViz.'
-              : 'No unsaved edits.',
-          },
-          {
-            label: 'Export',
-            icon: Download,
-            onClick: downloadCsv,
-            disabled: !sheetReady || busy,
-            hover: 'Download the current sheet as a CSV file.',
-          },
-          {
-            label: 'Discard',
-            icon: Undo2,
-            onClick: discardEdits,
-            disabled: !dirty || busy,
-            hover: 'Discard unsaved edits and restore the last loaded sheet.',
-          },
-        ],
-      },
-      {
-        group: 'Workspace',
-        items: [
-          {
-            label: 'Close',
-            icon: X,
-            onClick: onClose,
-            hover: 'Return to the dashboard canvas.',
-          },
-        ],
-      },
-    ],
-    Data: [
-      {
-        group: 'Rows',
-        items: [
-          {
-            label: 'Add Row',
-            icon: Plus,
-            onClick: addRow,
-            disabled: !sheetReady || busy,
-            hover: 'Append an empty row to the bottom of the sheet.',
-          },
-          {
-            label: 'Delete Row',
-            icon: Trash2,
-            onClick: deleteSelectedRow,
-            disabled: selectedRow === null || busy,
-            hover:
-              selectedRow === null
-                ? 'Select a row first, then delete it.'
-                : 'Delete the selected row.',
-          },
-          {
-            label: 'Clear Row',
-            icon: Eraser,
-            onClick: clearSelectedRow,
-            disabled: selectedRow === null || busy,
-            hover:
-              selectedRow === null
-                ? 'Select a row first, then clear its cells.'
-                : 'Clear all cells in the selected row.',
-          },
-        ],
-      },
-      {
-        group: 'Transform',
-        items: [
-          {
-            label: 'Sort',
-            icon: ArrowUpDown,
-            onClick: sortBySelectedColumn,
-            disabled: selectedCol === null || busy || !sheetReady,
-            hover:
-              selectedCol === null
-                ? 'Click a column header or cell to choose the sort column.'
-                : `Sort rows by “${columns[selectedCol]}”.`,
-          },
-          {
-            label: 'Drop Dup',
-            icon: CopyMinus,
-            onClick: dropDuplicateRows,
-            disabled: !sheetReady || busy,
-            hover: 'Remove duplicate rows from the sheet.',
-          },
-          {
-            label: 'Trim',
-            icon: Scissors,
-            onClick: trimWhitespace,
-            disabled: !sheetReady || busy,
-            hover: 'Trim leading and trailing spaces from every cell.',
-          },
-        ],
-      },
-    ],
-    View: [
-      {
-        group: 'Inspect',
-        items: [
-          {
-            label: 'Columns',
-            icon: Columns3,
-            onClick: () => setShowColumns((v) => !v),
-            active: showColumns,
-            disabled: !sheetReady,
-            hover: 'Show or hide the column list for this dataset.',
-          },
-          {
-            label: 'Sheet',
-            icon: FileSpreadsheet,
-            onClick: () => setShowColumns(false),
-            active: !showColumns,
-            hover: 'Show the editable spreadsheet grid.',
-          },
-        ],
-      },
-    ],
-  };
+  const editGroups: RibbonGroup[] = [
+    {
+      group: 'Rows',
+      items: [
+        {
+          label: 'Add Row',
+          icon: Plus,
+          onClick: addRow,
+          disabled: !sheetReady || busy,
+          hover: 'Append an empty row to the bottom of the sheet.',
+        },
+        {
+          label: 'Delete Row',
+          icon: Trash2,
+          onClick: deleteSelectedRow,
+          disabled: selectedRow === null || busy,
+          hover:
+            selectedRow === null
+              ? 'Select a row first, then delete it.'
+              : 'Delete the selected row.',
+        },
+        {
+          label: 'Clear Row',
+          icon: Eraser,
+          onClick: clearSelectedRow,
+          disabled: selectedRow === null || busy,
+          hover:
+            selectedRow === null
+              ? 'Select a row first, then clear its cells.'
+              : 'Clear all cells in the selected row.',
+        },
+      ],
+    },
+    {
+      group: 'Transform',
+      items: [
+        {
+          label: 'Sort',
+          icon: ArrowUpDown,
+          onClick: sortBySelectedColumn,
+          disabled: selectedCol === null || busy || !sheetReady,
+          hover:
+            selectedCol === null
+              ? 'Click a column header or cell to choose the sort column.'
+              : `Sort rows by “${columns[selectedCol]}”.`,
+        },
+        {
+          label: 'Drop Dup',
+          icon: CopyMinus,
+          onClick: dropDuplicateRows,
+          disabled: !sheetReady || busy,
+          hover: 'Remove duplicate rows from the sheet.',
+        },
+        {
+          label: 'Trim',
+          icon: Scissors,
+          onClick: trimWhitespace,
+          disabled: !sheetReady || busy,
+          hover: 'Trim leading and trailing spaces from every cell.',
+        },
+      ],
+    },
+    {
+      group: 'Edits',
+      items: [
+        {
+          label: 'Save',
+          icon: Save,
+          onClick: () => void saveChanges(),
+          disabled: !dirty || busy || !sheetReady,
+          hover: dirty
+            ? 'Save edits by uploading a new CSV version to AutoViz.'
+            : 'No unsaved edits.',
+        },
+        {
+          label: 'Discard',
+          icon: Undo2,
+          onClick: discardEdits,
+          disabled: !dirty || busy,
+          hover: 'Discard unsaved edits and restore the last loaded sheet.',
+        },
+      ],
+    },
+  ];
 
   let body: ReactNode;
   if (loading) {
@@ -435,30 +514,14 @@ export function DatasetSheet({
     );
   } else if (columns.length === 0) {
     body = <div className="dataset-sheet-status">This dataset has no columns.</div>;
-  } else if (showColumns) {
-    body = (
-      <div className="dataset-sheet-columns-panel">
-        <h3>Columns ({columns.length})</h3>
-        <ul>
-          {columns.map((col, idx) => (
-            <li key={col}>
-              <button
-                type="button"
-                className={selectedCol === idx ? 'is-active' : undefined}
-                onClick={() => setSelectedCol(idx)}
-              >
-                <span>{col}</span>
-                <em>col {idx + 1}</em>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
   } else {
     body = (
-      <div className="dataset-sheet-scroll">
-        <table className="dataset-sheet-table">
+      <div
+        className="dataset-sheet-scroll"
+        ref={scrollRef}
+        onScroll={handleScroll}
+      >
+        <table className="dataset-sheet-table dataset-sheet-table--virtual">
           <thead>
             <tr>
               <th className="dataset-sheet-rownum" scope="col">
@@ -478,34 +541,38 @@ export function DatasetSheet({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, rIdx) => (
-              <tr
-                key={rIdx}
-                className={selectedRow === rIdx ? 'is-selected' : undefined}
-                onClick={() => setSelectedRow(rIdx)}
-              >
-                <th scope="row" className="dataset-sheet-rownum">
-                  {rIdx + 1}
-                </th>
-                {row.map((cell, cIdx) => (
-                  <td
-                    key={`${rIdx}-${cIdx}`}
-                    className={selectedCol === cIdx ? 'is-selected-col' : undefined}
-                  >
-                    <input
-                      type="text"
-                      value={cell}
-                      aria-label={`${columns[cIdx]} row ${rIdx + 1}`}
-                      onChange={(e) => updateCell(rIdx, cIdx, e.target.value)}
-                      onFocus={() => {
-                        setSelectedRow(rIdx);
-                        setSelectedCol(cIdx);
-                      }}
-                    />
-                  </td>
-                ))}
+            {padTop > 0 && (
+              <tr aria-hidden className="dataset-sheet-spacer">
+                <td
+                  colSpan={columns.length + 1}
+                  style={{ height: padTop, padding: 0, border: 0 }}
+                />
               </tr>
-            ))}
+            )}
+            {rows.slice(startIndex, endIndex).map((row, offset) => {
+              const rIdx = startIndex + offset;
+              return (
+                <SheetRow
+                  key={rIdx}
+                  row={row}
+                  rowIndex={rIdx}
+                  columns={columns}
+                  selected={selectedRow === rIdx}
+                  selectedCol={selectedCol}
+                  onCommit={commitCell}
+                  onFocusCell={focusCell}
+                  onSelectRow={selectRow}
+                />
+              );
+            })}
+            {padBottom > 0 && (
+              <tr aria-hidden className="dataset-sheet-spacer">
+                <td
+                  colSpan={columns.length + 1}
+                  style={{ height: padBottom, padding: 0, border: 0 }}
+                />
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -515,36 +582,22 @@ export function DatasetSheet({
   return (
     <section className="dataset-sheet" aria-label="Dataset spreadsheet">
       <header className="dataset-ribbon">
-        <div className="dataset-ribbon-tabs">
-          <div className="dataset-ribbon-tablist" role="tablist" aria-label="Dataset editor">
-            {RIBBON_TABS.map((tabName) => (
-              <button
-                key={tabName}
-                type="button"
-                role="tab"
-                aria-selected={activeTab === tabName}
-                data-testid={`tab-${tabName.toLowerCase()}`}
-                title={TAB_DESCRIPTIONS[tabName]}
-                className={`dataset-ribbon-tab ${activeTab === tabName ? 'is-active' : ''}`}
-                onClick={() => setActiveTab(tabName)}
-              >
-                {tabName}
-              </button>
-            ))}
-          </div>
+        <div className="dataset-ribbon-meta-bar">
           <div className="dataset-ribbon-meta" title={fileName}>
             <FileSpreadsheet size={14} />
             <strong>{fileName}</strong>
             <span>
               {rows.length.toLocaleString()} × {columns.length || columnCount}
               {dirty ? ' · Unsaved' : ''}
-              {truncated ? ` · first ${rows.length.toLocaleString()} of ${rowCount.toLocaleString()}` : ''}
+              {truncated
+                ? ` · first ${rows.length.toLocaleString()} of ${rowCount.toLocaleString()}`
+                : ''}
             </span>
           </div>
         </div>
 
-        <div className="dataset-ribbon-body" role="tabpanel">
-          <RibbonGroups groups={ribbonByTab[activeTab]} />
+        <div className="dataset-ribbon-body">
+          <RibbonGroups groups={editGroups} />
         </div>
       </header>
 
@@ -554,7 +607,7 @@ export function DatasetSheet({
         <span>
           {selectedCol !== null
             ? `Column “${columns[selectedCol]}” selected.`
-            : 'Click a cell to edit. Use the ribbon to save, transform, or close.'}
+            : 'Click a cell to edit. Changes apply when you leave the cell.'}
         </span>
         {dirty && <span className="dataset-sheet-dirty">Changes not saved</span>}
       </footer>

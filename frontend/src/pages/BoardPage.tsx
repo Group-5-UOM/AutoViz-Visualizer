@@ -72,9 +72,6 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     dashboard,
     messages,
     isThinking,
-    saveStatus,
-    lastSavedAt,
-    saveError,
     referencedWidgetId,
     referenceWidget,
     selectWidget,
@@ -207,14 +204,6 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     setBrowseOpen(false);
   };
 
-  const handleSaveDashboard = () => {
-    if (dashboard.nameIsAuto !== false) {
-      setRenameOpen(true);
-      return;
-    }
-    void saveNow();
-  };
-
   const handleExportDashboard = async () => {
     const el = document.querySelector('.dashboard-canvas') as HTMLElement;
     if (!el) return;
@@ -250,23 +239,10 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       <TopBar
         title={dashboard.dashboardName || 'Untitled dashboard'}
         sidebarCollapsed={sidebarCollapsed}
-        chatOpen={chatOpen && activeItem === 'ai-chat'}
-        widgetCount={dashboard.widgets.length}
         userEmail={userEmail}
         username={username}
-        saveStatus={saveStatus}
-        lastSavedAt={lastSavedAt}
-        saveError={saveError}
+        canExport={dashboard.widgets.length > 0}
         onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
-        onToggleChat={() => {
-          setChatOpen((v) => {
-            const next = !v;
-            if (next) setActiveItem('ai-chat');
-            return next;
-          });
-          if (activeItem !== 'ai-chat') setActiveItem('ai-chat');
-        }}
-        onSave={handleSaveDashboard}
         onRename={() => setRenameOpen(true)}
         onExport={handleExportDashboard}
         onSetPassword={() => setPasswordOpen(true)}

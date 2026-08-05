@@ -16,41 +16,14 @@
   border-bottom: 1px solid var(--border);
 }
 
-.dataset-ribbon-tabs {
+.dataset-ribbon-meta-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   padding: 0 16px;
   border-bottom: 1px solid var(--border);
   min-height: 36px;
-}
-
-.dataset-ribbon-tablist {
-  display: flex;
-  align-items: center;
-  gap: 0;
-}
-
-.dataset-ribbon-tab {
-  padding: 8px 16px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-}
-
-.dataset-ribbon-tab:hover {
-  color: var(--text-primary);
-}
-
-.dataset-ribbon-tab.is-active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
 }
 
 .dataset-ribbon-meta {
@@ -255,12 +228,22 @@
 .dataset-sheet-table td input {
   width: 100%;
   min-width: 120px;
+  height: 32px;
+  box-sizing: border-box;
   border: none;
   background: transparent;
   padding: 7px 10px;
   font: inherit;
   color: var(--text-primary);
   outline: none;
+}
+
+.dataset-sheet-table--virtual tbody tr:not(.dataset-sheet-spacer) {
+  height: 32px;
+}
+
+.dataset-sheet-spacer td {
+  background: transparent !important;
 }
 
 .dataset-sheet-table td input:focus {
@@ -337,13 +320,9 @@
 }
 
 @media (max-width: 900px) {
-  .dataset-ribbon-tabs {
-    flex-direction: column;
-    align-items: stretch;
+  .dataset-ribbon-meta-bar {
+    justify-content: flex-start;
     padding-top: 8px;
-  }
-
-  .dataset-ribbon-meta {
     padding-bottom: 8px;
   }
 }
