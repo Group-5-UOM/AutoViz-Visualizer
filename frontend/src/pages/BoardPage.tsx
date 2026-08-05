@@ -439,7 +439,9 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             onSelect={selectWidget}
             onUpdate={updateWidget}
             onEditStyle={(id, request) => editWidgetStyle(id, { request })}
-            onOpenStyle={setStyleWidgetId}
+            onOpenStyle={(id) => {
+              setStyleWidgetId(id);
+            }}
             onReference={(id) => {
               referenceWidget(referencedWidgetId === id ? null : id);
               if (referencedWidgetId !== id) {
@@ -447,7 +449,10 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
               }
             }}
             referencedWidgetId={referencedWidgetId}
-            onDelete={deleteWidget}
+            onDelete={(id) => {
+              if (styleWidgetId === id) setStyleWidgetId(null);
+              deleteWidget(id);
+            }}
             onCsvSelected={handleCsvPicked}
             onOpenData={() => {
               if (dataset) {

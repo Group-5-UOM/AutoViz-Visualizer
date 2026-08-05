@@ -23,6 +23,7 @@ export interface StyleChartResult {
 export interface StyleChartRejected {
   valid: false;
   warnings: string[];
+  error?: string;
 }
 
 export async function styleChart(
@@ -30,7 +31,7 @@ export async function styleChart(
   style?: ChartStyle,
   request?: string,
 ): Promise<StyleChartResult> {
-  return apiRequest<StyleChartResult>('/charts/style', {
+  const res = await apiRequest<StyleChartResult | StyleChartRejected>('/charts/style', {
     method: 'POST',
     body: {
       vega_lite_spec: vegaLiteSpec,
@@ -38,4 +39,13 @@ export async function styleChart(
       ...(request ? { request } : {}),
     },
   });
+  if (!res || res.valid === false || !('vega_lite_spec' in res)) {
+    const rejected = res as StyleChartRejected | null;
+    const message =
+      rejected?.error ||
+      rejected?.warnings?.[0] ||
+      'Could not update chart style.';
+    throw new Error(message);
+  }
+  return res;
 }

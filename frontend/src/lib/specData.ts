@@ -6,15 +6,54 @@
  * chart drew are already in hand.
  */
 
+function asRowArray(values: unknown): Record<string, unknown>[] | null {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  if (typeof values[0] !== 'object' || values[0] === null) return null;
+  return values as Record<string, unknown>[];
+}
+
+function valuesFromDataNode(
+  data: unknown,
+  datasets: Record<string, unknown> | undefined,
+): Record<string, unknown>[] | null {
+  if (!data || typeof data !== 'object') return null;
+  const node = data as { values?: unknown; name?: unknown };
+  const inline = asRowArray(node.values);
+  if (inline) return inline;
+  if (typeof node.name === 'string' && datasets) {
+    return asRowArray(datasets[node.name]);
+  }
+  return null;
+}
+
 /** Rows a generated spec carries inline, or null if it has none. */
 export function specRows(
   spec: Record<string, unknown> | undefined,
 ): Record<string, unknown>[] | null {
-  const data = spec?.data as { values?: unknown } | undefined;
-  const values = data?.values;
-  if (!Array.isArray(values) || values.length === 0) return null;
-  if (typeof values[0] !== 'object' || values[0] === null) return null;
-  return values as Record<string, unknown>[];
+  if (!spec) return null;
+  const datasets = spec.datasets as Record<string, unknown> | undefined;
+
+  const top = valuesFromDataNode(spec.data, datasets);
+  if (top) return top;
+
+  const layers = spec.layer;
+  if (Array.isArray(layers)) {
+    for (const layer of layers) {
+      if (!layer || typeof layer !== 'object') continue;
+      const rows = valuesFromDataNode((layer as { data?: unknown }).data, datasets);
+      if (rows) return rows;
+    }
+  }
+
+  // Some specs only stash values under datasets without a named top-level data.
+  if (datasets) {
+    for (const value of Object.values(datasets)) {
+      const rows = asRowArray(value);
+      if (rows) return rows;
+    }
+  }
+
+  return null;
 }
 
 /** Rows past this are not rendered; 5k rows of DOM janks the whole canvas. */
