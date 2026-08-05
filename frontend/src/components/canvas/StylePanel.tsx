@@ -39,6 +39,64 @@ interface StylePanelProps {
   onClose: () => void;
 }
 
+/** Same idea as backend `primary_layer` / `specData.primaryLayer`. */
+function primaryLayer(spec: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!spec) return {};
+  const layers = spec.layer;
+  if (Array.isArray(layers) && layers.length > 0 && layers[0] && typeof layers[0] === 'object') {
+    return layers[0] as Record<string, unknown>;
+  }
+  return spec;
+}
+
+function readTitleText(title: unknown): string | null {
+  if (typeof title === 'string' && title.trim()) return title;
+  if (title && typeof title === 'object') {
+    const text = (title as { text?: unknown }).text;
+    if (typeof text === 'string' && text.trim()) return text;
+  }
+  return null;
+}
+
+/**
+ * What the chart actually shows for title / axes.
+ * Generated specs often omit explicit titles; Vega-Lite then uses the encoding
+ * field name, and the card title is `widget.title` rather than `spec.title`.
+ */
+function inferredLabels(widget: ChartWidget): { title: string; x: string; y: string } {
+  const style = widget.style ?? {};
+  const spec = widget.vegaLiteSpec;
+  const layer = primaryLayer(spec);
+  const encoding = (layer.encoding ?? {}) as Record<string, unknown>;
+
+  const channelLabel = (ch: unknown): string => {
+    if (!ch || typeof ch !== 'object') return '';
+    const enc = ch as { axis?: { title?: unknown }; title?: unknown; field?: unknown };
+    return (
+      readTitleText(enc.axis?.title) ??
+      readTitleText(enc.title) ??
+      (typeof enc.field === 'string' ? enc.field : '') ??
+      ''
+    );
+  };
+
+  return {
+    title:
+      (typeof style.title === 'string' && style.title) ||
+      readTitleText(spec?.title) ||
+      widget.title ||
+      '',
+    x:
+      (typeof style.x_title === 'string' && style.x_title) ||
+      channelLabel(encoding.x) ||
+      '',
+    y:
+      (typeof style.y_title === 'string' && style.y_title) ||
+      channelLabel(encoding.y) ||
+      '',
+  };
+}
+
 function ColorField({
   label,
   value,
@@ -101,22 +159,24 @@ function ColorField({
 export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) {
   const style = widget.style ?? {};
   const series = specSeries(widget.vegaLiteSpec);
+  const labels = inferredLabels(widget);
 
   // Text is edited locally and committed on blur or Enter: firing a request per
   // keystroke would be one round trip and one autosave per character typed.
   const [titles, setTitles] = useState({
-    title: style.title ?? '',
-    x_title: style.x_title ?? '',
-    y_title: style.y_title ?? '',
+    title: labels.title,
+    x_title: labels.x,
+    y_title: labels.y,
   });
 
   useEffect(() => {
+    const next = inferredLabels(widget);
     setTitles({
-      title: widget.style?.title ?? '',
-      x_title: widget.style?.x_title ?? '',
-      y_title: widget.style?.y_title ?? '',
+      title: next.title,
+      x_title: next.x,
+      y_title: next.y,
     });
-  }, [widget.id, widget.style]);
+  }, [widget.id, widget.title, widget.style, widget.vegaLiteSpec]);
 
   // Always the whole block: the backend treats it as the widget's styling state,
   // not a diff, so an omitted field would read as a revert.
@@ -124,8 +184,18 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
 
   const commitText = (key: 'title' | 'x_title' | 'y_title') => {
     const next = titles[key].trim();
-    if (next === (style[key] ?? '')) return;
-    patch({ [key]: next || null } as ChartStyle);
+    const stored = typeof style[key] === 'string' ? style[key] : null;
+    const effective = key === 'title' ? labels.title : key === 'x_title' ? labels.x : labels.y;
+
+    if (stored !== null) {
+      if (next === stored) return;
+      // Empty clears the override and restores the chart's natural label.
+      patch({ [key]: next || null } as ChartStyle);
+      return;
+    }
+    // No override yet — only persist when the user changed the shown default.
+    if (!next || next === effective) return;
+    patch({ [key]: next } as ChartStyle);
   };
 
   const textField = (key: 'title' | 'x_title' | 'y_title', label: string) => (

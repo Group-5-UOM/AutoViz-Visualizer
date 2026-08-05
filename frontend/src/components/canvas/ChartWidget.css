@@ -59,6 +59,9 @@
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   flex: none;
+  cursor: pointer;
+  border: none;
+  background: transparent;
 }
 
 .chart-header-btn:hover {
@@ -108,6 +111,14 @@
   font-size: 13px;
 }
 
+.chart-table-empty {
+  margin: 0;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 /* Says what a brush selected, so the count is visible without opening the table. */
 .chart-brush-status {
   flex: none;
@@ -133,7 +144,13 @@
 
 /* Sits where the explanation would, so opening it does not resize the chart. */
 .chart-edit-bar {
-  flex: none;
+  /* Pinned footer: keep input/buttons visible without covering the chart. */
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -173,6 +190,11 @@
 .chart-edit-bar button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Reserve space for the pinned edit bar so the chart never hides under it. */
+.chart-widget-body:not(.is-table) {
+  padding-bottom: 56px;
 }
 
 .chart-edit-error {
