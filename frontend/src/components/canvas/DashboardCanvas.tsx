@@ -1,5 +1,5 @@
 import { useRef, type ChangeEvent } from 'react';
-import { FileSpreadsheet, Upload } from 'lucide-react';
+import { FileSpreadsheet, Table, Upload } from 'lucide-react';
 import { ChartWidgetCard } from './ChartWidget';
 import type { ChartWidget } from '../../types/dashboard';
 import './DashboardCanvas.css';
@@ -28,6 +28,8 @@ interface DashboardCanvasProps {
   referencedWidgetId: string | null;
   onDelete: (id: string) => void;
   onCsvSelected: (file: File) => void;
+  /** Open the spreadsheet view (Data tab). */
+  onOpenData?: () => void;
 }
 
 export function DashboardCanvas({
@@ -44,9 +46,11 @@ export function DashboardCanvas({
   referencedWidgetId,
   onDelete,
   onCsvSelected,
+  onOpenData,
 }: DashboardCanvasProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const showUploadPrompt = widgets.length === 0 && !dataset;
+  const showReadyHint = widgets.length === 0 && Boolean(dataset);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -101,29 +105,41 @@ export function DashboardCanvas({
         </div>
       )}
 
-      {widgets.length === 0 && dataset && (
+      {showReadyHint && dataset && (
         <div className="canvas-empty">
           <div className="canvas-empty-card">
-            <div className="canvas-upload-icon is-ready" aria-hidden>
+            <div className="canvas-upload-icon" aria-hidden>
               <FileSpreadsheet size={28} strokeWidth={1.75} />
             </div>
-            <h2>Dataset ready</h2>
+            <h2>{dataset.fileName}</h2>
             <p>
-              <strong>{dataset.fileName}</strong> is loaded on the server
-              ({dataset.rowCount.toLocaleString()} rows × {dataset.columnCount}{' '}
-              cols). Ask the AI chat to create a visualization — charts will
-              appear here.
+              {dataset.rowCount.toLocaleString()} rows ×{' '}
+              {dataset.columnCount} columns. Use Setup or AI Chat to build
+              charts, or open Data to view the spreadsheet.
             </p>
-            <button
-              type="button"
-              className="canvas-upload-btn canvas-upload-btn--secondary"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-            >
-              <Upload size={16} />
-              {uploading ? 'Uploading…' : 'Replace CSV'}
-            </button>
+            <div className="canvas-dataset-preview-actions">
+              {onOpenData && (
+                <button
+                  type="button"
+                  className="canvas-upload-btn"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={onOpenData}
+                >
+                  <Table size={16} />
+                  Open Data
+                </button>
+              )}
+              <button
+                type="button"
+                className="canvas-upload-btn canvas-upload-btn--secondary"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                <Upload size={16} />
+                {uploading ? 'Uploading…' : 'Replace CSV'}
+              </button>
+            </div>
             {uploadError && (
               <p className="canvas-upload-error" role="alert">
                 {uploadError}

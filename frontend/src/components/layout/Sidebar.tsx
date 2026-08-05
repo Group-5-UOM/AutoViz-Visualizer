@@ -21,12 +21,12 @@ const topItems: { id: SidebarItemId; label: string; icon: typeof Plus }[] = [
   { id: 'add', label: 'Add', icon: Plus },
   { id: 'setup', label: 'Setup', icon: Pencil },
   { id: 'filter', label: 'Filter', icon: Filter },
-  { id: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
   { id: 'ai-chat', label: 'AI Chat', icon: BotMessageSquare },
+  { id: 'data', label: 'Data', icon: Database },
+  { id: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
 ];
 
 const bottomItems: { id: SidebarItemId; label: string; icon: typeof Plus }[] = [
-  { id: 'data', label: 'Data', icon: Database },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
