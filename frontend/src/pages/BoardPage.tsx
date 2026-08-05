@@ -16,6 +16,7 @@ import { DatasetSheet } from '../components/canvas/DatasetSheet';
 import { StylePanel } from '../components/canvas/StylePanel';
 import { DashboardsPanel } from '../components/layout/DashboardsPanel';
 import { DatasetModal } from '../components/layout/DatasetModal';
+import { NameUploadModal, namedCsvFile } from '../components/layout/NameUploadModal';
 import { SaveDashboardModal } from '../components/layout/SaveDashboardModal';
 import { useDashboard } from '../hooks/useDashboard';
 import { ApiError } from '../lib/api';
@@ -39,6 +40,15 @@ interface DatasetInfo {
   columnCount: number;
 }
 
+function boardTitle(
+  dashboardName: string | undefined,
+  datasetFileName: string | null | undefined,
+): string {
+  if (dashboardName?.trim()) return dashboardName.trim();
+  const fromFile = defaultDashboardName(datasetFileName);
+  return fromFile;
+}
+
 export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
@@ -53,6 +63,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const [styleBusy, setStyleBusy] = useState(false);
   const [filters, setFilters] = useState<BoardFilters>({});
   const [browseOpen, setBrowseOpen] = useState(false);
+  const [pendingUpload, setPendingUpload] = useState<File | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,7 +168,12 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     }
   };
 
-  const handleCsvSelected = async (file: File) => {
+  const handleCsvPicked = async (file: File) => {
+    setUploadError(null);
+    setPendingUpload(file);
+  };
+
+  const handleCsvSelected = async (file: File, boardName?: string) => {
     setUploadError(null);
     setUploading(true);
     try {
@@ -166,15 +182,20 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         resetForDataset();
         setFilters({});
       }
+      const savedName = result.logical_name || file.name;
       setDataset({
         datasetId: result.dataset_id,
-        fileName: result.logical_name || file.name,
+        fileName: savedName,
         rowCount: result.row_count,
         columnCount: result.column_count,
       });
+      if (boardName?.trim()) {
+        renameDashboard(boardName.trim());
+      }
       setActiveItem('data');
       setChatOpen(false);
       setBrowseOpen(false);
+      setPendingUpload(null);
     } catch (err) {
       const message =
         err instanceof ApiError
@@ -188,6 +209,12 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     }
   };
 
+  const handleConfirmUploadName = (displayName: string) => {
+    if (!pendingUpload) return;
+    const named = namedCsvFile(pendingUpload, displayName);
+    void handleCsvSelected(named, displayName.trim());
+  };
+
   const handleExistingDatasetSelected = (selected: DatasetMetadata) => {
     if (selected.dataset_id !== dataset?.datasetId) {
       resetForDataset();
@@ -199,6 +226,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       rowCount: selected.row_count,
       columnCount: selected.column_count,
     });
+    renameDashboard(defaultDashboardName(selected.logical_name));
     setActiveItem('data');
     setChatOpen(false);
     setBrowseOpen(false);
@@ -237,7 +265,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   return (
     <div className="board-app">
       <TopBar
-        title={dashboard.dashboardName || 'Untitled dashboard'}
+        title={boardTitle(dashboard.dashboardName, dataset?.fileName)}
         sidebarCollapsed={sidebarCollapsed}
         userEmail={userEmail}
         username={username}
@@ -278,7 +306,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
               : null
           }
           onClose={closeSideTool}
-          onCsvSelected={handleCsvSelected}
+          onCsvSelected={handleCsvPicked}
           onBrowseDatasets={() => setBrowseOpen(true)}
         />
 
@@ -355,7 +383,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             }}
             referencedWidgetId={referencedWidgetId}
             onDelete={deleteWidget}
-            onCsvSelected={handleCsvSelected}
+            onCsvSelected={handleCsvPicked}
             onOpenData={() => {
               if (dataset) {
                 setActiveItem('data');
@@ -385,13 +413,20 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             currentDatasetId={dataset?.datasetId}
             onClose={() => setBrowseOpen(false)}
             onSelect={handleExistingDatasetSelected}
-            onCsvSelected={handleCsvSelected}
+            onCsvSelected={handleCsvPicked}
             uploading={uploading}
+          />
+        )}
+        {pendingUpload && (
+          <NameUploadModal
+            file={pendingUpload}
+            onCancel={() => setPendingUpload(null)}
+            onConfirm={handleConfirmUploadName}
           />
         )}
         {renameOpen && (
           <SaveDashboardModal
-            initialName={dashboard.dashboardName ?? defaultDashboardName(dataset?.fileName)}
+            initialName={boardTitle(dashboard.dashboardName, dataset?.fileName)}
             onCancel={() => setRenameOpen(false)}
             onConfirm={(name) => {
               renameDashboard(name);
