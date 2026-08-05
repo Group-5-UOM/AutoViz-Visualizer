@@ -45,3 +45,14 @@ export async function previewDataset(datasetId: string, limit: number = 10): Pro
     method: 'GET',
   });
 }
+
+export interface DatasetColumn {
+  name: string;
+  type: string;
+}
+
+export async function fetchDatasetSchema(datasetId: string) {
+  return apiRequest<{ columns: DatasetColumn[] }>(`/datasets/${datasetId}/schema`, {
+    method: 'GET',
+  });
+}

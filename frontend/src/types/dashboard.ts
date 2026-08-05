@@ -7,7 +7,18 @@ export type SidebarItemId =
   | 'data'
   | 'settings';
 
-export type ChartType = 'bar' | 'line' | 'pie' | 'scatter' | 'area';
+export type ChartType =
+  | 'bar'
+  | 'line'
+  | 'pie'
+  | 'scatter'
+  | 'area'
+  | 'histogram'
+  | 'heatmap'
+  | 'boxplot'
+  | 'grouped_bar'
+  | 'donut';
+
 
 /**
  * One offered answer. `label` is both the button text and the reply sent back,
