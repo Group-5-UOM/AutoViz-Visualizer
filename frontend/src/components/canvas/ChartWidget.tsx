@@ -23,6 +23,17 @@ import {
 } from '../../lib/specData';
 import './ChartWidget.css';
 
+/**
+ * The part of a Vega view this card drives. Structural rather than imported so
+ * the component keeps its one dependency on `vega-embed` and does not grow a
+ * direct one on `vega` for a type.
+ */
+interface ChartView {
+  width: (px: number) => unknown;
+  height: (px: number) => unknown;
+  resize: () => { runAsync: () => Promise<unknown> };
+}
+
 interface ChartWidgetCardProps {
   widget: ChartWidget;
   selected: boolean;
@@ -53,6 +64,10 @@ export function ChartWidgetCard({
   onResize,
 }: ChartWidgetCardProps) {
   const chartRef = useRef<HTMLDivElement>(null);
+  // Held so the resize observer below can drive the live view. Not state: it
+  // changes on re-embed, which already re-renders, and nothing reads it during
+  // render.
+  const viewRef = useRef<ChartView | null>(null);
   const [brush, setBrush] = useState<BrushExtent | null>(null);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState('');
@@ -89,6 +104,7 @@ export function ChartWidgetCard({
           return;
         }
         view = result;
+        viewRef.current = result.view as unknown as ChartView;
         try {
           result.view.addSignalListener(BRUSH_SIGNAL, (_name, value) => {
             setBrush(value as BrushExtent);
@@ -107,10 +123,56 @@ export function ChartWidgetCard({
 
     return () => {
       cancelled = true;
+      viewRef.current = null;
       view?.finalize();
       el.innerHTML = '';
     };
   }, [widget.vegaLiteSpec]);
+
+  /**
+   * Keep the chart the size of its card.
+   *
+   * The spec asks for `width`/`height: "container"`, but Vega-Lite compiles that
+   * to a signal that measures the container once and re-measures on one event
+   * only — `window:resize`. Dragging the resize handle changes this card's box
+   * and fires nothing of the sort, so without this the card grows and the chart
+   * inside it does not. vega-embed installs no observer of its own.
+   *
+   * The element is created on the first render and never replaced, so this
+   * mounts once and survives every re-embed.
+   */
+  useEffect(() => {
+    const el = chartRef.current;
+    if (!el) return;
+
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      // A drag reports on every pointer frame, and a relayout is not free on a
+      // chart with many marks — coalesce to one per painted frame.
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const view = viewRef.current;
+        if (!view) return;
+        // What `containerSize()` reads: vega-embed initialises the view against
+        // the wrapper it inserts, not the element it was handed. Falling back to
+        // `el` is still right — that is the container when there is no wrapper.
+        const box = el.querySelector<HTMLElement>('.chart-wrapper') ?? el;
+        // Mid-teardown, or a hidden card: a zero-size view is not worth drawing
+        // and would leave the chart collapsed once it came back.
+        if (!box.clientWidth || !box.clientHeight) return;
+        view.width(box.clientWidth);
+        view.height(box.clientHeight);
+        void view.resize().runAsync();
+      });
+    });
+
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
 
   useEffect(() => {
     const onPointerMove = (e: PointerEvent) => {
