@@ -142,6 +142,78 @@ def recommend_chart_type(
     return result
 
 
+# The column role each chart type needs on (x, y, color). "num" is a measure,
+# "cat" a discrete class, "dim" either a time axis or a category; None means the
+# type does not use that channel. This is the same knowledge
+# `recommend_chart_type` applies when it is choosing — stated as a table because
+# retyping has to run it backwards, from a wanted type to the columns for it.
+_TYPE_ROLES: dict[str, tuple[str, str | None, str | None]] = {
+    "bar": ("dim", "num", None),
+    "line": ("dim", "num", None),
+    "area": ("dim", "num", None),
+    "pie": ("cat", "num", None),
+    "donut": ("cat", "num", None),
+    "scatter": ("num", "num", None),
+    "histogram": ("num", None, None),  # y is the binned count, not a column
+    "boxplot": ("dim", "num", None),
+    "grouped_bar": ("cat", "num", "cat"),
+    "heatmap": ("cat", "cat", "num"),
+}
+
+
+def _role_pool(
+    role: str, numeric: list[str], temporal: list[str], categorical: list[str]
+) -> list[str]:
+    if role == "num":
+        return numeric
+    if role == "cat":
+        return categorical
+    return [*temporal, *categorical]  # "dim": a time axis first, else a category
+
+
+def retype_chart_spec(
+    chart_spec: dict[str, Any], chart_type: str, result_schema: list[dict[str, str]]
+) -> dict[str, Any] | None:
+    """`chart_spec` redrawn as `chart_type`, or None if these columns cannot carry it.
+
+    Exists for the case where the user picked a type outright instead of letting
+    the recommendation stand. A type is not just a mark swap — a histogram has no
+    y, a heatmap needs a measure on colour — so the channels are reassigned by
+    role rather than carried over blindly.
+
+    Returning None is the honest answer, not a failure: asking for a scatter of
+    one numeric column, or a pie with nothing to slice by, describes a chart that
+    does not exist. The caller keeps the recommendation and the substitution is
+    disclosed to the user.
+    """
+    roles = _TYPE_ROLES.get(chart_type)
+    if roles is None:
+        return None
+    if chart_spec.get("type") == chart_type:
+        return dict(chart_spec)
+
+    numeric, temporal, categorical = _split_columns(result_schema)
+    retyped = {k: v for k, v in chart_spec.items() if k not in ("x", "y", "color")}
+    retyped["type"] = chart_type
+    used: set[str] = set()
+    for channel, role in zip(("x", "y", "color"), roles):
+        if role is None:
+            continue
+        # Each channel needs its own column: a scatter of one number against
+        # itself, or a heatmap gridded on one category twice, is not the chart
+        # that was asked for.
+        pool = [c for c in _role_pool(role, numeric, temporal, categorical) if c not in used]
+        if not pool:
+            return None
+        # Keep what the spec already had wherever it still suits the role, so a
+        # swap moves as little as possible and the axes stay recognisable.
+        current = chart_spec.get(channel)
+        pick = current if current in pool else pool[0]
+        retyped[channel] = pick
+        used.add(pick)
+    return retyped
+
+
 def _encoding_type(values: list[Any], column_schema: dict[str, str] | None, name: str) -> str:
     if column_schema and name in column_schema:
         return {"number": "quantitative", "datetime": "temporal"}.get(

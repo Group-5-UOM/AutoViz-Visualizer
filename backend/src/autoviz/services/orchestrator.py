@@ -17,7 +17,7 @@ from autoviz.errors import (
 )
 from autoviz.schema.allowlists import DATE_DERIVE_FNS, NUMERIC_DERIVE_FNS
 from autoviz.schema.analysis_plan import AnalysisPlan
-from autoviz.services.charts import generate_chart, recommend_chart_type
+from autoviz.services.charts import generate_chart, recommend_chart_type, retype_chart_spec
 from autoviz.services.execution import execute_analysis
 from autoviz.services.registry import REGISTRY, DatasetRegistry
 from autoviz.services.validation import validate_analysis_plan
@@ -33,6 +33,7 @@ def run_pipeline(
     approved_preprocessing_hash: str | None = None,
     on_progress: Callable[[int, int, str], None] | None = None,
     cancel_event: "threading.Event | None" = None,
+    preferred_chart_type: str | None = None,
 ) -> dict[str, Any]:
     """Validate, execute, pick a chart, and build it — as one call.
 
@@ -41,6 +42,13 @@ def run_pipeline(
     forwards it to the host as a progress notification. ``cancel_event`` aborts
     a running DuckDB query. Both are optional and default to today's behaviour,
     so the FastAPI callers are unaffected.
+
+    ``preferred_chart_type`` is a type the caller chose outright rather than
+    described — the UI's chart-type buttons. It is applied here, after execution,
+    because this is the first point at which the columns the chart would have to
+    carry are known; before that, whether a pie or a histogram is even drawable
+    is a guess. A type these columns cannot carry leaves the recommendation
+    standing rather than failing the run.
     """
 
     def progress(step: int, message: str) -> None:
@@ -119,13 +127,13 @@ def run_pipeline(
         effective_types[a.as_] = "number"
 
     progress(4, "Selecting chart type")
+    result_schema = [
+        {"name": c, "type": effective_types.get(c, "string")} for c in result_columns
+    ]
     if plan.chart is not None:
         chart_spec: dict[str, Any] = plan.chart.model_dump(exclude_none=True)
         recommendation = None
     else:
-        result_schema = [
-            {"name": c, "type": effective_types.get(c, "string")} for c in result_columns
-        ]
         recommendation = recommend_chart_type(result_schema, plan.intent)
         if "error" in recommendation:
             return {
@@ -144,15 +152,39 @@ def run_pipeline(
         if recommendation.get("color"):
             chart_spec["color"] = recommendation["color"]
 
-    # Encoding hint so each channel renders with the right Vega-Lite type — in
-    # particular coded categories go nominal (discrete legend/axis), not a
-    # continuous quantitative scale. Applies to host-supplied charts too.
-    chart_spec["column_types"] = {c: effective_types.get(c, "string") for c in result_columns}
-    # Same pattern: plan metadata the renderer needs but the chart grammar does
-    # not carry. Intent is what tells a bar chart it is a ranking and must sort.
-    chart_spec["intent"] = plan.intent
+    # A type the caller picked outright overrides the one chosen for them, but
+    # only where these columns can carry it. A boxplot is refused over aggregated
+    # results whatever the columns look like: quartiles need the raw values, and
+    # drawing one from a column of means would be a chart that lies.
+    declined_spec: dict[str, Any] | None = None
+    if preferred_chart_type and chart_spec.get("type") != preferred_chart_type:
+        retyped = (
+            None
+            if preferred_chart_type == "boxplot" and plan.aggregations
+            else retype_chart_spec(chart_spec, preferred_chart_type, result_schema)
+        )
+        if retyped is not None:
+            declined_spec, chart_spec = chart_spec, retyped
+
+    def annotate(spec: dict[str, Any]) -> dict[str, Any]:
+        # Encoding hint so each channel renders with the right Vega-Lite type — in
+        # particular coded categories go nominal (discrete legend/axis), not a
+        # continuous quantitative scale. Applies to host-supplied charts too.
+        spec["column_types"] = {c: effective_types.get(c, "string") for c in result_columns}
+        # Same pattern: plan metadata the renderer needs but the chart grammar does
+        # not carry. Intent is what tells a bar chart it is a ranking and must sort.
+        spec["intent"] = plan.intent
+        return spec
+
+    chart_spec = annotate(chart_spec)
     progress(5, "Building visualization")
     chart = generate_chart(result_table, chart_spec)
+    if not chart["valid"] and declined_spec is not None:
+        # The forced type survived the role check and still could not be drawn.
+        # Falling back to the chart that can be beats returning none at all — the
+        # numbers are already computed, and the substitution is disclosed.
+        chart_spec = annotate(declined_spec)
+        chart = generate_chart(result_table, chart_spec)
     if not chart["valid"]:
         return {
             "status": "error",

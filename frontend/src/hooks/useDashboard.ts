@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   ChartStyle,
+  ChartType,
   ChartWidget,
   ChatMessage,
   DashboardState,
@@ -241,7 +242,10 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
   );
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    // `chartType` is set only when the user picked a type from a list rather
+    // than describing one, so it is an argument and not hook state: a pick
+    // belongs to the one message it was made for.
+    async (text: string, chartType?: ChartType | null) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       if (!datasetId) {
@@ -272,10 +276,16 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
       try {
         const res =
           awaitingAnswer.current && threadId.current
-            ? // A paused run is answering its own question; an attachment has
-              // nothing to do with that decision.
+            ? // A paused run is answering its own question; neither an attachment
+              // nor a chart-type pick has anything to do with that decision.
               await answerClarification(threadId.current, trimmed, pendingInterruptId.current)
-            : await analyze(trimmed, datasetId, threadId.current, referenced?.agentChartId);
+            : await analyze(
+                trimmed,
+                datasetId,
+                threadId.current,
+                referenced?.agentChartId,
+                chartType,
+              );
         applyResponse(res);
       } catch (err) {
         // A paused run is left paused on transport failure, so a retry resumes

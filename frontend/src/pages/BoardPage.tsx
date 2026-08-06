@@ -325,12 +325,15 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     }
   };
 
-  const handleSendMessage = (text: string) => {
-    void sendMessage(text);
+  const handleSendMessage = (text: string, chartType?: ChartType | null) => {
+    void sendMessage(text, chartType);
   };
 
+  // The type goes both ways on purpose: as a field the backend enforces against
+  // the plan, and in the prompt, which is what lets the answer explain itself
+  // when the data cannot support the pick and a substitute is drawn instead.
   const handleSetupAsk = (chartType: ChartType, question: string) => {
-    handleSendMessage(buildChartPrompt(chartType, question));
+    handleSendMessage(buildChartPrompt(chartType, question), chartType);
   };
 
   const showChat = chatOpen && activeItem === 'ai-chat';

@@ -82,6 +82,11 @@ class AutoVizState(TypedDict, total=False):
     # can only ever mean "the most recent chart" and is wrong the moment a canvas
     # holds more than one. Unset for an ordinary request.
     target_chart_id: str | None
+    # A chart type the caller chose from a list rather than described in prose.
+    # Unlike a type merely mentioned in the request, this one is applied to the
+    # plan deterministically wherever the data supports it. Unset for a plain
+    # natural-language question.
+    preferred_chart_type: str | None
     tasks: list[str]
     clarification: dict[str, Any] | None
     clarification_answer: str | None
@@ -112,6 +117,8 @@ class WorkerState(TypedDict, total=False):
     # Set only on a single-task refinement: the chart_id this worker's output
     # supersedes. finalize_worker inherits it instead of minting a new one.
     refines_chart_id: str | None
+    # Inherited from the parent state: the caller's explicit chart-type pick.
+    preferred_chart_type: str | None
     analysis_plan: dict[str, Any] | None
     rejected_plan: dict[str, Any] | None
     validation_errors: list[str]

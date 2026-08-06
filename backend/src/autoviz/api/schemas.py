@@ -11,7 +11,9 @@ already return.
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from autoviz.schema.allowlists import CHART_TYPES
 
 
 class PlanRequest(BaseModel):
@@ -56,6 +58,20 @@ class AnalyzeRequest(BaseModel):
     # chart" modifies the chart the user pointed at rather than the newest one.
     # Read from the `chart_id` on a previous response's chart results.
     chart_id: str | None = None
+    # A chart type the caller picked explicitly (the Setup panel's type buttons),
+    # as opposed to one merely named in `request`. Enforced deterministically
+    # against the plan the planner returns; see agent/nodes.plan_node.
+    chart_type: str | None = None
+
+    @field_validator("chart_type")
+    @classmethod
+    def _known_chart_type(cls, value: str | None) -> str | None:
+        # Rejected at the edge rather than carried into the graph: an unknown type
+        # can only ever fail plan validation, and failing there would look like the
+        # data was unsuitable instead of the request being malformed.
+        if value is not None and value not in CHART_TYPES:
+            raise ValueError(f"unknown chart type '{value}'")
+        return value
 
 
 class ClarificationRequest(BaseModel):

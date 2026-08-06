@@ -1,4 +1,9 @@
-from autoviz.services.charts import generate_chart, primary_layer, recommend_chart_type
+from autoviz.services.charts import (
+    generate_chart,
+    primary_layer,
+    recommend_chart_type,
+    retype_chart_spec,
+)
 from autoviz.services.orchestrator import run_pipeline
 
 
@@ -157,3 +162,82 @@ def test_pipeline_structured_error_names_failed_step(registry, iris_id):
     out = run_pipeline(iris_id, plan, registry)
     assert out["status"] == "error"
     assert out["failed_step"] == "validate_analysis_plan"
+
+
+# --- an explicitly chosen chart type ------------------------------------------
+
+_CAT_MEASURE = [{"name": "species", "type": "string"}, {"name": "avg", "type": "number"}]
+
+
+def test_retype_reassigns_channels_by_role():
+    spec = {"type": "bar", "x": "species", "y": "avg"}
+    out = retype_chart_spec(spec, "donut", _CAT_MEASURE)
+    assert out == {"type": "donut", "x": "species", "y": "avg"}
+
+
+def test_retype_to_histogram_drops_y_and_takes_the_measure():
+    spec = {"type": "bar", "x": "species", "y": "avg"}
+    out = retype_chart_spec(spec, "histogram", _CAT_MEASURE)
+    # A histogram bins one number; its y is the count, not a column.
+    assert out == {"type": "histogram", "x": "avg"}
+
+
+def test_retype_refused_when_a_channel_has_no_column_for_its_role():
+    # A scatter needs two measures against each other; there is only one here.
+    assert retype_chart_spec({"type": "bar", "x": "species", "y": "avg"}, "scatter", _CAT_MEASURE) is None
+    # A heatmap needs two categories to grid on.
+    assert retype_chart_spec({"type": "bar", "x": "species", "y": "avg"}, "heatmap", _CAT_MEASURE) is None
+
+
+def test_retype_keeps_unrelated_spec_keys():
+    spec = {"type": "bar", "x": "species", "y": "avg", "intent": "comparison"}
+    assert retype_chart_spec(spec, "line", _CAT_MEASURE)["intent"] == "comparison"
+
+
+def test_pipeline_honours_a_chosen_chart_type(registry, iris_id):
+    plan = {
+        "dataset_id": iris_id,
+        "intent": "comparison",
+        "group_by": ["species"],
+        "aggregations": [{"column": "sepal_length", "fn": "mean", "as": "avg"}],
+    }
+    assert run_pipeline(iris_id, plan, registry)["chart_spec"]["type"] == "bar"
+    forced = run_pipeline(iris_id, plan, registry, preferred_chart_type="line")
+    assert forced["status"] == "ok"
+    assert forced["chart_spec"]["type"] == "line"
+    assert primary_layer(forced["vega_lite_spec"])["mark"]
+
+
+def test_pipeline_keeps_the_recommendation_when_the_choice_cannot_be_drawn(registry, iris_id):
+    plan = {
+        "dataset_id": iris_id,
+        "intent": "comparison",
+        "group_by": ["species"],
+        "aggregations": [{"column": "sepal_length", "fn": "mean", "as": "avg"}],
+    }
+    out = run_pipeline(iris_id, plan, registry, preferred_chart_type="scatter")
+    assert out["status"] == "ok"  # a refused type is not a failed run
+    assert out["chart_spec"]["type"] == "bar"
+
+
+def test_pipeline_refuses_a_boxplot_over_aggregated_values(registry, iris_id):
+    """Quartiles need the raw values; a boxplot of means would be a chart that lies."""
+    plan = {
+        "dataset_id": iris_id,
+        "intent": "comparison",
+        "group_by": ["species"],
+        "aggregations": [{"column": "sepal_length", "fn": "mean", "as": "avg"}],
+    }
+    out = run_pipeline(iris_id, plan, registry, preferred_chart_type="boxplot")
+    assert out["chart_spec"]["type"] == "bar"
+
+
+def test_pipeline_honours_a_boxplot_over_raw_values(registry, iris_id):
+    plan = {
+        "dataset_id": iris_id,
+        "intent": "distribution",
+        "select": ["species", "sepal_length"],
+    }
+    out = run_pipeline(iris_id, plan, registry, preferred_chart_type="boxplot")
+    assert out["status"] == "ok"
+    assert out["chart_spec"]["type"] == "boxplot"

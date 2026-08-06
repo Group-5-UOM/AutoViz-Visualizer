@@ -102,6 +102,9 @@ def route_after_classify(state: AutoVizState) -> str | list[Send]:
                 "profile": state["profile"],
                 "prior_plan": prior_plan,
                 "refines_chart_id": refines_chart_id,
+                # Every worker gets the pick: the fan-out splits one request into
+                # sub-tasks, and the type the user chose applies to all of them.
+                "preferred_chart_type": state.get("preferred_chart_type"),
                 "plan_attempts": 0,
             },
         )

@@ -336,6 +336,7 @@ def execute_node(state: WorkerState, *, registry: DatasetRegistry = REGISTRY) ->
             state["analysis_plan"],
             registry,
             approved_preprocessing_hash=state.get("approved_preprocessing_hash"),
+            preferred_chart_type=state.get("preferred_chart_type"),
         )
         if (
             out["status"] == "ok"

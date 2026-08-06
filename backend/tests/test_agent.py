@@ -356,3 +356,77 @@ def test_unknown_dataset_fails_before_planning(registry):
     assert out["status"] == "failed"
     assert any("ds_nope" in e for e in out["errors"])
     assert fake.plan_calls == []
+
+
+# --- a chart type the caller chose rather than described -----------------------
+
+
+def test_chosen_chart_type_overrides_the_recommendation(registry, iris_id):
+    agent = AgentService(planner=FakePlanner(plans=[GOOD_IRIS_PLAN]), registry=registry)
+    out = agent.run(
+        "average sepal length by species", dataset_id=iris_id, chart_type="line"
+    )
+    assert out["status"] == "completed", out
+    # Left alone these columns recommend a bar; the pick is what changes it.
+    assert out["charts"][0]["chart_spec"]["type"] == "line"
+
+
+def test_chosen_chart_type_is_declined_and_disclosed(registry, iris_id):
+    """A pick these columns cannot carry must not fail the run — but the user has
+    to be told, or a scatter request that came back as bars looks like a bug."""
+    agent = AgentService(planner=FakePlanner(plans=[GOOD_IRIS_PLAN]), registry=registry)
+    out = agent.run(
+        "average sepal length by species as a scatter plot",
+        dataset_id=iris_id,
+        chart_type="scatter",
+    )
+    assert out["status"] == "completed", out
+    chart = out["charts"][0]
+    assert chart["status"] == "ok"
+    assert chart["chart_spec"]["type"] == "bar"
+    substitutions = [n for n in chart["notices"] if n["kind"] == "request_not_applied"]
+    assert any(n["detail"].get("requested") == "scatter" for n in substitutions)
+
+
+def test_chosen_chart_type_does_not_leak_into_the_next_turn(registry, iris_id):
+    """The pick belongs to the message it was made on. Carried over in the thread
+    checkpoint it would silently retype an unrelated follow-up question."""
+    agent = AgentService(
+        planner=FakePlanner(plans=[GOOD_IRIS_PLAN, GOOD_IRIS_PLAN]), registry=registry
+    )
+    first = agent.run(
+        "average sepal length by species", dataset_id=iris_id, chart_type="line"
+    )
+    assert first["charts"][0]["chart_spec"]["type"] == "line"
+
+    second = agent.run(
+        "average sepal length by species",
+        dataset_id=iris_id,
+        thread_id=first["thread_id"],
+    )
+    assert second["status"] == "completed", second
+    assert second["charts"][0]["chart_spec"]["type"] == "bar"
+
+
+def test_chosen_chart_type_reaches_every_fanned_out_worker(registry, titanic_id):
+    fare_task = "average fare by class"
+    age_task = "average age by class"
+    decision = IntentDecision(intent="analysis", tasks=[fare_task, age_task])
+    plans = {
+        fare_task: {
+            "intent": "comparison",
+            "group_by": ["class"],
+            "aggregations": [{"column": "fare", "fn": "mean", "as": "avg_fare"}],
+        },
+        age_task: {
+            "intent": "comparison",
+            "group_by": ["class"],
+            "aggregations": [{"column": "age", "fn": "mean", "as": "avg_age"}],
+        },
+    }
+    agent = AgentService(planner=FakePlanner(decisions=[decision], plans=plans), registry=registry)
+    out = agent.run(
+        "average fare and average age by class", dataset_id=titanic_id, chart_type="line"
+    )
+    assert out["status"] == "completed", out
+    assert {c["chart_spec"]["type"] for c in out["charts"]} == {"line"}

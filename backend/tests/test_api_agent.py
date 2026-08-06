@@ -185,3 +185,66 @@ def test_answer_without_an_interrupt_id_still_works(api_db):
     )
     assert r.status_code == 200
     assert r.json()["status"] == "completed", r.json()
+
+
+def _owned_iris(client, headers):
+    registered = client.post(
+        "/datasets",
+        json={"file_ref": data_path("general-testing", "iris.csv")},
+        headers=headers,
+    )
+    assert registered.status_code == 201
+    return registered.json()["dataset_id"]
+
+
+def test_analyze_forwards_a_chosen_chart_type(api_db):
+    """The Setup panel's type buttons are a choice, not a phrase in the prompt —
+    the route has to carry the field or the pick is only ever a suggestion."""
+    reg = DatasetRegistry()
+    client = _client_with_agent(FakePlanner(plans=[GOOD_IRIS_PLAN]), reg)
+    headers = _auth(client)
+    ds = _owned_iris(client, headers)
+
+    r = client.post(
+        "/agent/analyze",
+        json={
+            "request": 'Create a Line chart (chart type must be "line") that answers this: '
+            "avg sepal length by species",
+            "dataset_id": ds,
+            "chart_type": "line",
+        },
+        headers=headers,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "completed", body
+    assert body["charts"][0]["chart_spec"]["type"] == "line"
+
+
+def test_analyze_rejects_an_unknown_chart_type(api_db):
+    reg = DatasetRegistry()
+    client = _client_with_agent(FakePlanner(plans=[GOOD_IRIS_PLAN]), reg)
+    headers = _auth(client)
+    ds = _owned_iris(client, headers)
+
+    r = client.post(
+        "/agent/analyze",
+        json={"request": "avg sepal length", "dataset_id": ds, "chart_type": "sunburst"},
+        headers=headers,
+    )
+    assert r.status_code == 422
+
+
+def test_analyze_without_a_chart_type_is_unchanged(api_db):
+    reg = DatasetRegistry()
+    client = _client_with_agent(FakePlanner(plans=[GOOD_IRIS_PLAN]), reg)
+    headers = _auth(client)
+    ds = _owned_iris(client, headers)
+
+    r = client.post(
+        "/agent/analyze",
+        json={"request": "avg sepal length by species", "dataset_id": ds},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["charts"][0]["chart_spec"]["type"] == "bar"

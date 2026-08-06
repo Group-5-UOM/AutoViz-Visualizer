@@ -146,7 +146,7 @@ def test_routing_ok_finalizes():
 def test_execute_node_retries_infrastructure_faults(monkeypatch):
     calls = {"n": 0}
 
-    def fake_run_pipeline(dataset_id, plan, registry, approved_preprocessing_hash=None):
+    def fake_run_pipeline(dataset_id, plan, registry, **kwargs):
         calls["n"] += 1
         return {"status": "error", "failed_step": "execute_analysis",
                 "error_code": EXECUTION_ERROR, "errors": ["boom"]}
@@ -163,7 +163,7 @@ def test_execute_node_retries_infrastructure_faults(monkeypatch):
 def test_execute_node_does_not_retry_plan_errors(monkeypatch):
     calls = {"n": 0}
 
-    def fake_run_pipeline(dataset_id, plan, registry, approved_preprocessing_hash=None):
+    def fake_run_pipeline(dataset_id, plan, registry, **kwargs):
         calls["n"] += 1
         return {"status": "error", "failed_step": "execute_analysis",
                 "error_code": INVALID_PLAN, "errors": ["bad column"]}

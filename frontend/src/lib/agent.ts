@@ -122,12 +122,18 @@ export type AgentResponse = AgentCompleted | AgentFailed | AgentWaiting;
  * `chartId` names a chart from an earlier turn that this request is about, so
  * "make it a line chart" changes the chart the user pointed at rather than
  * whichever one happens to be newest. Omit it for an ordinary question.
+ *
+ * `chartType` is a type the user picked outright — the Setup panel's buttons —
+ * rather than one they described. The backend applies it to the plan wherever
+ * the data supports it, instead of leaving the planner to read it out of the
+ * prose. Omit it for a free-text question, which names no type.
  */
 export async function analyze(
   request: string,
   datasetId: string,
   threadId?: string | null,
   chartId?: string | null,
+  chartType?: string | null,
 ): Promise<AgentResponse> {
   return apiRequest<AgentResponse>('/agent/analyze', {
     method: 'POST',
@@ -136,6 +142,7 @@ export async function analyze(
       dataset_id: datasetId,
       ...(threadId ? { thread_id: threadId } : {}),
       ...(chartId ? { chart_id: chartId } : {}),
+      ...(chartType ? { chart_type: chartType } : {}),
     },
   });
 }
