@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from autoviz.errors import UNKNOWN_DATASET, make_error
 from autoviz.models import (
+    ChatMessage,
+    Conversation,
     Dashboard,
     DashboardWidget,
     OAuthAccount,
@@ -354,4 +356,69 @@ def set_dashboard_widgets(session: Session, dashboard: Dashboard, widgets: list[
 
 def delete_dashboard(session: Session, dashboard: Dashboard) -> None:
     session.delete(dashboard)
+    session.commit()
+
+
+# --- conversations -----------------------------------------------------------
+
+
+def get_conversation(session: Session, user_id: str, dataset_id: str) -> Conversation | None:
+    return session.scalar(
+        select(Conversation).where(
+            Conversation.user_id == user_id,
+            Conversation.dataset_id == dataset_id,
+        )
+    )
+
+
+def set_conversation(
+    session: Session,
+    user_id: str,
+    dataset_id: str,
+    *,
+    messages: list[dict],
+    thread_id: str | None = None,
+    set_thread_id: bool = True,
+) -> Conversation:
+    """Upsert a board's transcript, replacing every message it had.
+
+    Replace rather than append because the client holds the whole transcript in
+    state and is the only writer: an append endpoint would have to reason about
+    which messages the server already saw, and would drift the moment a save was
+    retried after a timeout that had in fact succeeded.
+
+    ``set_thread_id=False`` leaves a stored thread alone, for the caller that is
+    only writing messages and does not know what the agent thread currently is.
+    """
+    conversation = get_conversation(session, user_id, dataset_id)
+    if conversation is None:
+        conversation = Conversation(user_id=user_id, dataset_id=dataset_id)
+        session.add(conversation)
+    if set_thread_id:
+        conversation.thread_id = thread_id
+
+    conversation.messages.clear()
+    for i, m in enumerate(messages):
+        conversation.messages.append(
+            ChatMessage(
+                seq=i,
+                client_id=m.get("client_id"),
+                role=m["role"],
+                content=m.get("content") or "",
+                chart_id=m.get("chart_id"),
+                referenced_title=m.get("referenced_title"),
+                options=m.get("options"),
+                timestamp_ms=m.get("timestamp_ms"),
+            )
+        )
+    # Touch it even on a messages-only change: onupdate does not fire for a
+    # parent whose own columns did not change, and "when did this board last get
+    # talked to" is the one thing the column is for.
+    conversation.updated_at = _now()
+    session.commit()
+    return conversation
+
+
+def delete_conversation(session: Session, conversation: Conversation) -> None:
+    session.delete(conversation)
     session.commit()

@@ -9,6 +9,7 @@ from autoviz.models.dataset import UserDataset  # noqa: F401
 from autoviz.models.dataset_blob import DatasetBlob  # noqa: F401
 from autoviz.models.chart import SavedChart  # noqa: F401
 from autoviz.models.dashboard import Dashboard, DashboardWidget  # noqa: F401
+from autoviz.models.conversation import ChatMessage, Conversation  # noqa: F401
 
 __all__ = [
     "Base",
@@ -21,4 +22,6 @@ __all__ = [
     "SavedChart",
     "Dashboard",
     "DashboardWidget",
+    "Conversation",
+    "ChatMessage",
 ]

@@ -57,7 +57,19 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
 
   // Conversation continuity: the backend keys refinements ("make it a bar
   // chart") and paused clarification runs off thread_id.
+  //
+  // Held twice on purpose. The ref is what `sendMessage` reads, because a send
+  // fired in the same tick as the response that set it must see the new value.
+  // The state copy is what makes the thread persistable: a ref changing does not
+  // re-render, so the effect that saves the transcript would never learn the
+  // thread had moved and would keep writing a stale one.
   const threadId = useRef<string | null>(null);
+  const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
+
+  const setThread = useCallback((next: string | null) => {
+    threadId.current = next;
+    setCurrentThreadId(next);
+  }, []);
   // Set while a run is paused on a question — the next message resumes that run
   // via /agent/answer instead of starting a new analysis.
   const awaitingAnswer = useRef(false);
@@ -174,7 +186,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
   /** Turn one agent envelope into chat messages and (on success) canvas widgets. */
   const applyResponse = useCallback(
     (res: AgentResponse) => {
-      threadId.current = res.thread_id ?? threadId.current;
+      if (res.thread_id && res.thread_id !== threadId.current) setThread(res.thread_id);
 
       if (res.status === 'waiting_for_user') {
         awaitingAnswer.current = true;
@@ -238,7 +250,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
         selectedWidgetId: applied.focusId,
       }));
     },
-    [pushAssistant],
+    [pushAssistant, setThread],
   );
 
   const sendMessage = useCallback(
@@ -438,9 +450,17 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
       dashboardName: string,
       widgets: ChartWidget[],
       restoredMessages?: ChatMessage[],
+      restoredThreadId?: string | null,
     ) => {
       cancelPendingSave();
-      threadId.current = null;
+      // Restoring the thread is what makes a reopened board continuable: without
+      // it "make that a line chart" starts a cold run with no idea which chart
+      // "that" is. A thread the backend has since forgotten is not a problem —
+      // the agent falls back to treating the message as a fresh request.
+      setThread(restoredThreadId ?? null);
+      // Not restored: no interrupt id comes back with the transcript, so a run
+      // that was paused mid-question is treated as abandoned rather than
+      // resumed against a decision the backend can no longer identify.
       awaitingAnswer.current = false;
       pendingInterruptId.current = null;
       placedCount.current = widgets.length;
@@ -473,17 +493,27 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
             ],
       );
     },
-    [cancelPendingSave],
+    [cancelPendingSave, setThread],
   );
 
-  const replaceMessages = useCallback((next: ChatMessage[]) => {
-    setMessages(next);
-  }, []);
+  /**
+   * Restore a transcript onto a board with no saved canvas — a dataset that was
+   * chatted about before any chart was produced.
+   */
+  const replaceMessages = useCallback(
+    (next: ChatMessage[], restoredThreadId?: string | null) => {
+      setThread(restoredThreadId ?? null);
+      awaitingAnswer.current = false;
+      pendingInterruptId.current = null;
+      setMessages(next);
+    },
+    [setThread],
+  );
 
   /** Drop canvas + conversation state when a different dataset is uploaded. */
   const resetForDataset = useCallback(() => {
     cancelPendingSave();
-    threadId.current = null;
+    setThread(null);
     awaitingAnswer.current = false;
     pendingInterruptId.current = null;
     placedCount.current = 0;
@@ -496,11 +526,12 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     setSaveError(null);
     setLastSavedAt(null);
     setMessages([{ id: uid('msg'), role: 'assistant', content: WELCOME, timestamp: Date.now() }]);
-  }, [cancelPendingSave]);
+  }, [cancelPendingSave, setThread]);
 
   return {
     dashboard,
     messages,
+    threadId: currentThreadId,
     isThinking,
     saveStatus,
     lastSavedAt,
