@@ -21,6 +21,7 @@ import { useDashboard } from '../hooks/useDashboard';
 import { ApiError } from '../lib/api';
 import { fetchMe } from '../lib/auth';
 import { loadBoardSession, saveBoardSession } from '../lib/boardSession';
+import { fetchConversation, saveConversation, type Conversation } from '../lib/conversations';
 import { inferChartType } from '../lib/chartType';
 import { uploadDataset, type DatasetMetadata } from '../lib/datasets';
 import { getDashboard, getChart, type DashboardResult } from '../lib/dashboards';
@@ -115,9 +116,24 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     };
   }, []);
 
+  // Which dataset the transcript currently in `messages` belongs to.
+  //
+  // Set only once a board's history has actually been established — restored
+  // from the server, or started fresh on upload. Until then the save effect
+  // stays out of the way: selecting a dataset renders with the new id beside the
+  // *previous* board's messages for the tick before the fetch lands, and saving
+  // that would overwrite the very history being fetched.
+  //
+  // State rather than a ref so the save effect re-runs when it is set. As a ref
+  // it would have to be assigned before React flushed the restore's own state
+  // updates, which happens to hold today and would break silently the first time
+  // an await moved.
+  const [hydratedDatasetId, setHydratedDatasetId] = useState<string | null>(null);
+
   const {
     dashboard,
     messages,
+    threadId,
     isThinking,
     referencedWidgetId,
     referenceWidget,
@@ -133,14 +149,33 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     resetForDataset,
   } = useDashboard(dataset?.datasetId ?? null, dataset?.fileName ?? null);
 
-  // Persist chat + dashboard link per dataset so Dashboards can restore them.
+  // Persist chat + dashboard link per dataset so the board can be restored.
+  //
+  // Two destinations, on purpose. The server copy is the real one — it is what
+  // makes the history follow the dashboard onto another browser or machine.
+  // `localStorage` stays as a fallback for when that write fails, so a backend
+  // blip costs the user nothing they can see.
   useEffect(() => {
-    if (!dataset?.datasetId) return;
-    saveBoardSession(dataset.datasetId, {
+    const datasetId = dataset?.datasetId;
+    if (!datasetId || hydratedDatasetId !== datasetId) return;
+
+    saveBoardSession(datasetId, {
       dashboardId: dashboard.dashboardId ?? null,
       messages,
     });
-  }, [dataset?.datasetId, dashboard.dashboardId, messages]);
+
+    // Debounced because a single exchange moves `messages` several times — the
+    // user's turn, then the reply — and each save rewrites every row.
+    const timer = window.setTimeout(() => {
+      void saveConversation(datasetId, messages, threadId).catch((err) => {
+        // Deliberately quiet: the transcript is on screen and in localStorage
+        // either way, and a toast here would interrupt a conversation to report
+        // something the next message will retry anyway.
+        console.warn('Failed to save chat history:', err);
+      });
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [dataset?.datasetId, hydratedDatasetId, dashboard.dashboardId, messages, threadId]);
 
   const closeSideTool = () => setActiveItem(chatOpen ? 'ai-chat' : null);
   const setupMessages = messages.slice(-8);
@@ -167,45 +202,83 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const applyLoadedCanvas = async (
     selected: DashboardResult,
     restoredMessages?: typeof messages,
+    restoredThreadId?: string | null,
   ) => {
     const loadedWidgets = await widgetsFromDashboard(selected);
-    loadDashboardState(selected.id, selected.name, loadedWidgets, restoredMessages);
+    loadDashboardState(
+      selected.id,
+      selected.name,
+      loadedWidgets,
+      restoredMessages,
+      restoredThreadId,
+    );
+  };
+
+  /**
+   * The transcript for a board being opened.
+   *
+   * The server holds it; `localStorage` is consulted only when that read fails
+   * or comes back empty, which covers a board whose history predates the
+   * conversations table. An empty result is a real answer — a board nobody has
+   * chatted on — so it is returned as such rather than treated as a miss.
+   */
+  const restoreConversation = async (datasetId: string): Promise<Conversation> => {
+    try {
+      const stored = await fetchConversation(datasetId);
+      if (stored.messages.length > 0) return stored;
+    } catch (err) {
+      console.warn('Failed to load chat history from server:', err);
+    }
+    const session = loadBoardSession(datasetId);
+    return { messages: session?.messages ?? [], threadId: null };
   };
 
   const handleLoadSavedDataset = async (entry: SavedDatasetEntry) => {
+    const nextDatasetId = entry.dataset.dataset_id;
     try {
-      if (dataset?.datasetId && dataset.datasetId !== entry.dataset.dataset_id) {
+      if (dataset?.datasetId && dataset.datasetId !== nextDatasetId) {
         await saveNow();
         saveBoardSession(dataset.datasetId, {
           dashboardId: dashboard.dashboardId ?? null,
           messages,
         });
+        // Flush the outgoing board's chat before its messages are replaced —
+        // the debounced save in the effect above would otherwise be cancelled
+        // by this very switch and lose the last exchange.
+        await saveConversation(dataset.datasetId, messages, threadId).catch((err) => {
+          console.warn('Failed to save chat history:', err);
+        });
         resetForDataset();
       }
 
+      // Nothing may be written for this dataset until its own history is back.
+      setHydratedDatasetId(null);
+
       setChartTypeFilter([]);
       setDataset({
-        datasetId: entry.dataset.dataset_id,
+        datasetId: nextDatasetId,
         fileName: entry.dataset.logical_name,
         rowCount: entry.dataset.row_count,
         columnCount: entry.dataset.column_count,
       });
 
-      const session = loadBoardSession(entry.dataset.dataset_id);
+      const conversation = await restoreConversation(nextDatasetId);
       const title = defaultDashboardName(entry.dataset.logical_name);
 
       if (entry.dashboard) {
-        await applyLoadedCanvas(entry.dashboard, session?.messages);
-        if (!session?.messages?.length) {
-          /* loadDashboardState already set a loaded message */
-        }
+        await applyLoadedCanvas(
+          entry.dashboard,
+          conversation.messages.length > 0 ? conversation.messages : undefined,
+          conversation.threadId,
+        );
       } else {
         renameDashboard(title);
-        if (session?.messages?.length) {
-          replaceMessages(session.messages);
+        if (conversation.messages.length > 0) {
+          replaceMessages(conversation.messages, conversation.threadId);
         }
       }
 
+      setHydratedDatasetId(nextDatasetId);
       openAiChat(setActiveItem, setChatOpen);
     } catch (err) {
       console.error('Failed to load saved dataset:', err);
@@ -251,9 +324,14 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
           dashboardId: dashboard.dashboardId ?? null,
           messages,
         });
+        await saveConversation(dataset.datasetId, messages, threadId).catch((err) => {
+          console.warn('Failed to save chat history:', err);
+        });
       }
       const result = await uploadDataset(file);
-      if (result.dataset_id !== dataset?.datasetId) {
+      const isSwitch = result.dataset_id !== dataset?.datasetId;
+      if (isSwitch) {
+        setHydratedDatasetId(null);
         resetForDataset();
         setChartTypeFilter([]);
       }
@@ -267,6 +345,17 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       if (boardName?.trim()) {
         renameDashboard(boardName.trim());
       }
+      if (isSwitch) {
+        // Re-uploading a CSV returns the dataset id it already had, so this is
+        // not always a blank board: a file uploaded again in a new browser must
+        // come back with the conversation it already has, not overwrite it with
+        // a fresh welcome message.
+        const conversation = await restoreConversation(result.dataset_id);
+        if (conversation.messages.length > 0) {
+          replaceMessages(conversation.messages, conversation.threadId);
+        }
+      }
+      setHydratedDatasetId(result.dataset_id);
       openAiChat(setActiveItem, setChatOpen);
       setBrowseOpen(false);
       setPendingUpload(null);
