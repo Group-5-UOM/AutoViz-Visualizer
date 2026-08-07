@@ -532,7 +532,9 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             onUpdate={updateWidget}
             onEditStyle={(id, request) => editWidgetStyle(id, { request })}
             onOpenStyle={(id) => {
-              setStyleWidgetId(id);
+              // Toggles, so the palette button that opened the panel also closes
+              // it — the panel's own close button was removed with its header.
+              setStyleWidgetId((current) => (current === id ? null : id));
             }}
             onReference={(id) => {
               referenceWidget(referencedWidgetId === id ? null : id);

@@ -484,7 +484,12 @@ _DEFAULT_TOOLS = [
     # decision explicit rather than guessed. Read-only, so it is safe everywhere.
     (analyze_data_quality, _QUALITY_DESC),
     (run_analysis_pipeline, _PIPELINE_DESC),
+    # analyze and answer_clarification are one feature and must ship together: a
+    # run that returns {status: "waiting_for_user"} can only be finished by the
+    # resume tool, so exposing analyze without it strands the host on a pause it
+    # was told to answer.
     (analyze, None),
+    (answer_clarification, None),
     (export_chart, None),
 ]
 
@@ -499,7 +504,6 @@ _ADVANCED_ONLY_TOOLS = [
     (execute_analysis, _EXECUTE_DESC),
     (recommend_chart_type, None),
     (generate_chart, None),
-    (answer_clarification, None),
 ]
 
 PROFILES = {

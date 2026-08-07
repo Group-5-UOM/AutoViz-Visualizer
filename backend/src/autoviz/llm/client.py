@@ -154,7 +154,8 @@ Output ONLY a JSON object with any of these keys — omit every key the request 
 
 {"title": str, "x_title": str, "y_title": str, "legend": bool,
  "mark_color": "#rrggbb", "series_colors": {"<series value>": "#rrggbb"},
- "color_scheme": ["#rrggbb", ...]}
+ "color_scheme": ["#rrggbb", ...],
+ "font": "sans"|"system"|"serif"|"mono", "font_size": int}
 
 Rules:
 - Presentation only. You cannot filter, sort, aggregate, change the chart type, or touch the
@@ -164,6 +165,11 @@ Rules:
   `series_colors` when it does. Keys of `series_colors` must be exact values from `series`.
 - `color_scheme` is for "use these colours" with no series named; it replaces the palette in
   order.
+- `font` is one of those four names only — never a family like "Helvetica". Map what was asked
+  to the nearest: a typewriter or code look is "mono", anything bookish is "serif".
+- `font_size` is the TICK LABEL size in px, 8 to 28; axis titles, the legend and the chart
+  title keep their own step above it, so one number resizes all the text. The default is 11 —
+  read "bigger"/"smaller" as a step or two from whatever font_size the current style shows.
 - The current style is given. Emit only what CHANGES. To undo something the user set earlier,
   emit that key as null.
 - Never invent a key that is not in the list above."""

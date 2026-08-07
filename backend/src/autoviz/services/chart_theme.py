@@ -30,6 +30,7 @@ properties rather than the palette reference, so charts read as native rather
 than as embedded images.
 """
 
+import copy
 from typing import Any
 
 # --- series colour -----------------------------------------------------------
@@ -69,6 +70,18 @@ BASELINE = "#d9dde3"       # --border; axis domain and ticks
 # The app loads DM Sans; the fallbacks cover exported HTML and MCP consumers,
 # where that webfont is not present.
 FONT = "'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif"
+
+# The closed set a ChartStyle may choose from, for the same reason colours are
+# closed hex: a free-text family is a place for a planner to ask for a font that
+# is not there, and a chart silently falling back to Times is worse than a
+# rejected patch. Every stack here resolves without a webfont, because an
+# exported HTML file and an MCP consumer load none.
+FONT_STACKS: dict[str, str] = {
+    "sans": FONT,
+    "system": "system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif",
+    "serif": "Georgia, Cambria, 'Times New Roman', Times, serif",
+    "mono": "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace",
+}
 
 
 THEME: dict[str, Any] = {
@@ -122,13 +135,51 @@ THEME: dict[str, Any] = {
 }
 
 
+# --- typography ---------------------------------------------------------------
+
+# What a user-chosen text size is measured against: the size of a tick label in
+# the theme above. Read from THEME rather than repeated, so the two cannot drift.
+BASE_FONT_SIZE: int = THEME["axis"]["labelFontSize"]
+
+# The chart title has no THEME entry — it renders at Vega-Lite's own default, and
+# baking one in would change every existing chart. It gets a size only once the
+# user asks for one, which is why this is an offset and not a THEME key.
+TITLE_SIZE_OFFSET = 3
+
+
+def scaled_text(base: int) -> dict[str, dict[str, int]]:
+    """THEME's text sizes shifted to sit around `base`.
+
+    Offsets rather than absolutes: the theme puts axis titles one step above tick
+    labels, and that hierarchy is the thing worth preserving when someone asks
+    for bigger text. Returned as config fragments, ready to merge.
+    """
+    delta = base - BASE_FONT_SIZE
+    return {
+        "axis": {
+            "labelFontSize": THEME["axis"]["labelFontSize"] + delta,
+            "titleFontSize": THEME["axis"]["titleFontSize"] + delta,
+        },
+        "legend": {
+            "labelFontSize": THEME["legend"]["labelFontSize"] + delta,
+            "titleFontSize": THEME["legend"]["titleFontSize"] + delta,
+        },
+        "title": {"fontSize": BASE_FONT_SIZE + TITLE_SIZE_OFFSET + delta},
+    }
+
+
 def attach(spec: dict[str, Any]) -> dict[str, Any]:
     """Merge the theme into a spec's config, in place.
 
     A config the caller already set wins — a host-supplied spec that themes
     itself is not overridden.
+
+    The values are copied in. THEME's nested dicts are module state, and handing
+    a live reference to a spec means anything later writing `config.axis` — which
+    is exactly what a font-size override does — would edit the theme itself for
+    the rest of the process.
     """
     config = spec.setdefault("config", {})
     for key, value in THEME.items():
-        config.setdefault(key, value)
+        config.setdefault(key, copy.deepcopy(value))
     return spec

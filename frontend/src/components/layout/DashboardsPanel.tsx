@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Calendar, Database, FileSpreadsheet, Layers, LayoutDashboard, X } from 'lucide-react';
+import { Calendar, Database, FileSpreadsheet, Layers } from 'lucide-react';
+import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import { listDatasets, type DatasetMetadata } from '../../lib/datasets';
 import { getChart, listDashboards, type DashboardResult } from '../../lib/dashboards';
 import './DashboardsPanel.css';
@@ -83,14 +84,7 @@ export function DashboardsPanel({
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose]);
+  useEscapeToClose(onClose, open);
 
   if (!open) return null;
 
@@ -105,21 +99,6 @@ export function DashboardsPanel({
 
   return (
     <section className="dashboards-panel" aria-label="Saved datasets">
-      <header className="dashboards-header">
-        <div className="dashboards-header-title">
-          <LayoutDashboard size={16} />
-          <span>Dashboards</span>
-        </div>
-        <button
-          type="button"
-          className="dashboards-close-btn"
-          onClick={onClose}
-          aria-label="Close dashboards panel"
-        >
-          <X size={16} />
-        </button>
-      </header>
-
       <div className="dashboards-body">
         {loading ? (
           <div className="dashboard-loading">

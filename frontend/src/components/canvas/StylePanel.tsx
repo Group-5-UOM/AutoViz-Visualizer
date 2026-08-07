@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Palette, X } from 'lucide-react';
-import type { ChartStyle, ChartWidget } from '../../types/dashboard';
+import { useEscapeToClose } from '../../hooks/useEscapeToClose';
+import type { ChartFont, ChartStyle, ChartWidget } from '../../types/dashboard';
 import { specSeries } from '../../lib/specData';
 import './StylePanel.css';
 
@@ -31,6 +31,27 @@ const PRESETS = [
 ];
 
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/**
+ * Mirrors backend `schema/chart_style.FontFamily`. The labels are ours; the
+ * values are the contract, so renaming one here breaks the patch, not the copy.
+ */
+const FONTS: { value: ChartFont; label: string }[] = [
+  { value: 'sans', label: 'Sans (default)' },
+  { value: 'system', label: 'System' },
+  { value: 'serif', label: 'Serif' },
+  { value: 'mono', label: 'Monospace' },
+];
+
+/**
+ * Offered sizes, inside backend MIN_FONT_SIZE..MAX_FONT_SIZE. A discrete list
+ * rather than a slider or a spinner: every change here is a request and a
+ * re-render, and a slider would fire one per step of the drag.
+ */
+const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28];
+
+/** Backend `chart_theme.BASE_FONT_SIZE` — what "Default" resolves to. */
+const DEFAULT_FONT_SIZE = 11;
 
 interface StylePanelProps {
   widget: ChartWidget;
@@ -161,6 +182,11 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
   const series = specSeries(widget.vegaLiteSpec);
   const labels = inferredLabels(widget);
 
+  // This panel has no sidebar entry to toggle it shut, and it stops pointer-down
+  // so the canvas deselect cannot reach it either. With its close button gone,
+  // Escape and the chart's palette button are the only ways out.
+  useEscapeToClose(onClose);
+
   // Text is edited locally and committed on blur or Enter: firing a request per
   // keystroke would be one round trip and one autosave per character typed.
   const [titles, setTitles] = useState({
@@ -223,16 +249,6 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
       // moment anyone reached for a control in it.
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <header className="style-panel-header">
-        <div className="style-panel-title">
-          <Palette size={16} />
-          <span>Chart style</span>
-        </div>
-        <button type="button" className="style-close-btn" aria-label="Close style options" onClick={onClose}>
-          <X size={16} />
-        </button>
-      </header>
-
       <div className="style-panel-body">
         <p className="style-panel-subject" title={widget.title}>
           {widget.title}
@@ -241,6 +257,40 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
         {textField('title', 'Title')}
         {textField('x_title', 'X-axis label')}
         {textField('y_title', 'Y-axis label')}
+
+        <label className="style-field">
+          <span>Font</span>
+          <select
+            value={style.font ?? ''}
+            disabled={busy}
+            onChange={(e) => patch({ font: (e.target.value || null) as ChartFont | null })}
+          >
+            <option value="">Default</option>
+            {FONTS.map(({ value, label }) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="style-field">
+          <span>Text size</span>
+          <select
+            value={style.font_size ?? ''}
+            disabled={busy}
+            onChange={(e) =>
+              patch({ font_size: e.target.value ? Number(e.target.value) : null })
+            }
+          >
+            <option value="">Default ({DEFAULT_FONT_SIZE} px)</option>
+            {FONT_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {size} px
+              </option>
+            ))}
+          </select>
+        </label>
 
         {series.length > 0 ? (
           <>
