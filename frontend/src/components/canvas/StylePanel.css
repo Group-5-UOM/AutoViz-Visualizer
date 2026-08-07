@@ -37,6 +37,16 @@
   gap: 4px;
 }
 
+.style-error {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--danger);
+  background: #fdecec;
+  border-radius: var(--radius-sm);
+}
+
 .style-field > span,
 .style-color-label {
   font-size: 11px;

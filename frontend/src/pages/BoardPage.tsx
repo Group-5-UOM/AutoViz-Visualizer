@@ -565,8 +565,12 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             busy={styleBusy}
             onApply={async (style) => {
               setStyleBusy(true);
-              await editWidgetStyle(styleWidget.id, { style });
+              // Returned, not discarded: a rejected block leaves the chart
+              // exactly as it was, so without this the control moves and
+              // nothing happens anywhere.
+              const error = await editWidgetStyle(styleWidget.id, { style });
               setStyleBusy(false);
+              return error;
             }}
             onClose={() => setStyleWidgetId(null)}
           />

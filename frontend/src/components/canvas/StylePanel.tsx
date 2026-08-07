@@ -56,7 +56,8 @@ const DEFAULT_FONT_SIZE = 11;
 interface StylePanelProps {
   widget: ChartWidget;
   busy: boolean;
-  onApply: (style: ChartStyle) => void;
+  /** Resolves to an error message when the block was rejected, else null. */
+  onApply: (style: ChartStyle) => Promise<string | null>;
   onClose: () => void;
 }
 
@@ -204,9 +205,16 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
     });
   }, [widget.id, widget.title, widget.style, widget.vegaLiteSpec]);
 
+  // A rejected block is not a thrown error and not a changed chart — the spec
+  // comes back untouched. Nothing here would show that on its own, so a failed
+  // edit used to look identical to one the backend had never heard of.
+  const [error, setError] = useState<string | null>(null);
+
   // Always the whole block: the backend treats it as the widget's styling state,
   // not a diff, so an omitted field would read as a revert.
-  const patch = (change: ChartStyle) => onApply({ ...style, ...change });
+  const patch = async (change: ChartStyle) => {
+    setError(await onApply({ ...style, ...change }));
+  };
 
   const commitText = (key: 'title' | 'x_title' | 'y_title') => {
     const next = titles[key].trim();
@@ -253,6 +261,12 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
         <p className="style-panel-subject" title={widget.title}>
           {widget.title}
         </p>
+
+        {error && (
+          <p className="style-error" role="alert">
+            {error}
+          </p>
+        )}
 
         {textField('title', 'Title')}
         {textField('x_title', 'X-axis label')}
