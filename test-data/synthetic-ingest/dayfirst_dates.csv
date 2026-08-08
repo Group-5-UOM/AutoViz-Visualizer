@@ -1,0 +1,6 @@
+city,country_code,orders,revenue,order_date
+Windhoek,WH,12,1234.50,25/12/2026
+Cape Town,ZA,34,2200.00,13/01/2026
+Nairobi,KE,7,845.25,07/03/2026
+Cairo,EG,21,1990.75,30/06/2026
+Lagos,NG,15,1102.40,19/11/2026

@@ -870,6 +870,11 @@ def execute_analysis(
                 user_notices = notices_svc.to_wire(
                     notices_svc.from_preprocessing(pp_report, input_rows)
                     + notices_svc.from_null_exclusions(null_notes, input_rows)
+                    # How the file was read predates every op and survives every
+                    # plan, so it belongs on each answer the file produces — a
+                    # semicolon read as a decimal point is wrong on the tenth
+                    # chart as much as the first. Empty for a well-formed file.
+                    + notices_svc.from_ingest((record.profile or {}).get("ingest"))
                 )
             except PreprocessError:
                 raise

@@ -81,6 +81,11 @@ class RegisterDatasetOutput(_Strict):
     dataset_id: str
     row_count: int
     column_count: int
+    # How the file had to be read (services/ingest.py): encoding, delimiter, which
+    # line the header sat on, and an `assumptions` list naming the choices that
+    # were guesses. Present on the tool that does the reading so a host learns of
+    # a mis-sniffed file at upload, not from a chart that looks odd later.
+    ingest: dict[str, Any] = {}
 
 
 class ListDatasetsOutput(_Strict):

@@ -3,6 +3,7 @@
 from fastapi.testclient import TestClient
 
 import autoviz.services.dataset as dataset_service
+import autoviz.services.ingest as ingest_service
 from autoviz.api.deps import get_registry
 from autoviz.api.main import create_app
 from autoviz.services.registry import DatasetRegistry
@@ -96,7 +97,7 @@ def test_unknown_dataset_404(api_db):
 
 
 def test_oversized_upload_413(api_db, monkeypatch):
-    monkeypatch.setattr(dataset_service, "MAX_FILE_BYTES", 8)
+    monkeypatch.setattr(ingest_service, "MAX_FILE_BYTES", 8)
     client = TestClient(_app_with_registry())
     token = _token(client, "d@example.com")
     r = client.post(

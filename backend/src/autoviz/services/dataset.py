@@ -11,31 +11,17 @@ from typing import Any
 
 import pandas as pd
 
-from autoviz.errors import FILE_ERROR, RESOURCE_LIMIT, UNKNOWN_DATASET, make_error
+from autoviz.errors import FILE_ERROR, UNKNOWN_DATASET, make_error
+from autoviz.services import ingest
+from autoviz.services.ingest import IngestError, IngestReport
 from autoviz.services.registry import REGISTRY, DatasetRecord, DatasetRegistry
 from autoviz.services.safety import neutralize_text
 
 PREVIEW_MAX_ROWS = 5000
 
-
-def _env_int(name: str, default: int) -> int:
-    """Read a positive int limit from the environment, falling back on default."""
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        return default
-    return value if value > 0 else default
-
-
-# Ingestion ceilings enforced *before* a CSV is trusted into memory. pd.read_csv
-# would otherwise load the whole file before any check, so the byte cap is the
-# real memory guard; the row/column caps bound downstream work. All overridable.
-MAX_FILE_BYTES = _env_int("AUTOVIZ_MAX_FILE_BYTES", 50 * 1024 * 1024)  # 50 MiB
-MAX_ROWS = _env_int("AUTOVIZ_MAX_ROWS", 1_000_000)
-MAX_COLUMNS = _env_int("AUTOVIZ_MAX_COLUMNS", 512)
+# The ingestion ceilings live in services/ingest.py, next to the reads they guard
+# (a byte cap that is not checked immediately before opening the file is not a
+# memory guard at all).
 
 # Categorical columns at/under this distinct-value count get their values profiled
 # (see sample_values below) — enough to disambiguate references, small enough to
@@ -117,8 +103,15 @@ def _categorical_numeric_columns(df: pd.DataFrame, schema: dict[str, str]) -> li
     return coded
 
 
-def _coerce_datetimes(df: pd.DataFrame) -> pd.DataFrame:
-    """Promote object columns that parse cleanly as dates to datetime."""
+def _coerce_datetimes(df: pd.DataFrame, dayfirst: bool = False) -> pd.DataFrame:
+    """Promote object columns that parse cleanly as dates to datetime.
+
+    ``dayfirst`` comes from the ingest probe, which reads it off the data when the
+    data settles it. It has to be threaded through rather than left at pandas'
+    default: for a file whose dates run ``25/12/2024`` the default reading is not
+    merely different, it is unparseable in half the rows and silently
+    month-swapped in the other half.
+    """
     for col in df.columns:
         # pandas 3.x infers text as the 'str' dtype, older versions as 'object'.
         if not (df[col].dtype == object or pd.api.types.is_string_dtype(df[col])):
@@ -126,10 +119,12 @@ def _coerce_datetimes(df: pd.DataFrame) -> pd.DataFrame:
         sample = df[col].dropna()
         if sample.empty:
             continue
-        parsed = pd.to_datetime(sample, errors="coerce", format="mixed")
+        parsed = pd.to_datetime(sample, errors="coerce", format="mixed", dayfirst=dayfirst)
         # Require every non-null value to parse — avoids misreading plain strings.
         if parsed.notna().all():
-            df[col] = pd.to_datetime(df[col], errors="coerce", format="mixed")
+            df[col] = pd.to_datetime(
+                df[col], errors="coerce", format="mixed", dayfirst=dayfirst
+            )
     return df
 
 
@@ -211,48 +206,20 @@ def register_dataset(
             + "; ".join(str(r) for r in DATA_ROOTS),
         )
 
-    # Pre-read guards: reject oversized files before loading them into memory,
-    # and reject too-wide files from the header alone (a cheap read).
+    # Reading, and the ceilings that bound it, both live in services/ingest.py —
+    # which also reports how the file had to be read to be read at all.
     try:
-        size = path.stat().st_size
-    except OSError as exc:
-        return make_error(FILE_ERROR, f"Could not stat file: {exc}")
-    if size > MAX_FILE_BYTES:
-        return make_error(
-            RESOURCE_LIMIT,
-            f"File is {size} bytes; the limit is {MAX_FILE_BYTES} bytes.",
-        )
-    try:
-        column_count = len(pd.read_csv(path, nrows=0).columns)
-    except Exception as exc:
-        return make_error(FILE_ERROR, f"Could not read CSV: {exc}")
-    if column_count > MAX_COLUMNS:
-        return make_error(
-            RESOURCE_LIMIT,
-            f"Dataset has {column_count} columns; the limit is {MAX_COLUMNS}.",
-        )
+        df, report = ingest.read_table(path)
+    except IngestError as exc:
+        return make_error(exc.code, exc.message, **({"hint": exc.hint} if exc.hint else {}))
 
-    try:
-        df = pd.read_csv(path)
-    except Exception as exc:
-        return make_error(FILE_ERROR, f"Could not read CSV: {exc}")
-    if df.shape[0] == 0 or df.shape[1] == 0:
-        return make_error(
-            FILE_ERROR,
-            "CSV has no data rows (an empty or header-only file is not analysable).",
-        )
-    if len(df) > MAX_ROWS:
-        return make_error(
-            RESOURCE_LIMIT,
-            f"Dataset has {len(df)} rows; the limit is {MAX_ROWS}.",
-        )
-
-    record = build_record(df, str(path), registry)
+    record = build_record(df, str(path), registry, ingest_report=report)
     registry.add(record)
     return {
         "dataset_id": record.dataset_id,
         "row_count": int(len(df)),
         "column_count": int(len(df.columns)),
+        "ingest": report.to_wire(),
     }
 
 
@@ -262,6 +229,7 @@ def build_record(
     registry: DatasetRegistry,
     *,
     lineage: dict[str, Any] | None = None,
+    ingest_report: IngestReport | None = None,
 ) -> DatasetRecord:
     """Type, profile, and identify a frame as a registered dataset.
 
@@ -270,11 +238,11 @@ def build_record(
     reported its nulls differently from a fresh upload of the same rows would be
     worse than useless.
 
-    ``lineage`` is stored inside the profile rather than as its own record field
-    so it survives the existing Parquet-blob round trip (``storage/blobs.py``
-    persists ``profile_json``) without a schema migration.
+    ``lineage`` and ``ingest_report`` are stored inside the profile rather than as
+    their own record fields so they survive the existing Parquet-blob round trip
+    (``storage/blobs.py`` persists ``profile_json``) without a schema migration.
     """
-    df = _coerce_datetimes(df)
+    df = _coerce_datetimes(df, dayfirst=bool(ingest_report and ingest_report.dayfirst))
     schema = {col: _logical_type(df[col]) for col in df.columns}
     categorical_numeric = _categorical_numeric_columns(df, schema)
     profile = _build_profile(df, schema)
@@ -283,6 +251,8 @@ def build_record(
     profile["categorical_numeric"] = [neutralize_text(c) for c in categorical_numeric]
     if lineage is not None:
         profile["lineage"] = lineage
+    if ingest_report is not None:
+        profile["ingest"] = ingest_report.to_wire()
     return DatasetRecord(
         dataset_id=registry.new_id(source),
         source=source,

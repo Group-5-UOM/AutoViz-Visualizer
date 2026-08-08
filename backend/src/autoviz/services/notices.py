@@ -245,6 +245,158 @@ def from_null_exclusions(exclusions: dict[str, int], input_rows: int) -> list[No
     return out
 
 
+# --- how the file had to be read ----------------------------------------------
+# Reading is the one stage that happens before there is anything to disclose *about*
+# — no op ran, no row moved, and yet a mis-sniffed delimiter or a swapped date order
+# changes every number downstream. These are ADVISORY for exactly the reason the
+# severity exists: nothing was altered, and the chart is still misread without them.
+#
+# Each check reads the wire form of an IngestReport (as stored on the profile)
+# rather than the dataclass, so a dataset restored from a Parquet blob discloses
+# the same things as one still in memory.
+
+_ENCODING_NAMES = {
+    "cp1252": "Windows-1252",
+    "latin-1": "Latin-1",
+    "utf-16": "UTF-16",
+}
+
+
+def _ingest_encoding(report: dict[str, Any]) -> Notice | None:
+    encoding = str(report.get("encoding") or "")
+    name = _ENCODING_NAMES.get(encoding, encoding)
+    return Notice(
+        kind="ingest_encoding",
+        severity=ADVISORY,
+        note=(
+            f"This file is not UTF-8, so it was read as {name}. If any accented or "
+            "non-English text looks wrong, that guess is why."
+        ),
+        technique=f"decoded as {encoding}",
+        detail={"encoding": encoding},
+    )
+
+
+def _ingest_delimiter(report: dict[str, Any]) -> Notice | None:
+    delimiter = str(report.get("delimiter") or ",")
+    shown = {"\t": "a tab", ";": "a semicolon", "|": "a pipe"}.get(delimiter, f"'{delimiter}'")
+    return Notice(
+        kind="ingest_delimiter",
+        severity=ADVISORY,
+        note=f"Columns in this file are separated by {shown}, not a comma, and were split that way.",
+        technique=f"delimiter {delimiter!r}",
+        detail={"delimiter": delimiter},
+    )
+
+
+def _ingest_header_row(report: dict[str, Any]) -> Notice | None:
+    skipped = int(report.get("header_row") or 0)
+    return Notice(
+        kind="ingest_header_row",
+        severity=ADVISORY,
+        note=(
+            f"The first {skipped} line(s) of this file were a title or notes above the "
+            "table rather than data, so the column names were taken from line "
+            f"{skipped + 1}."
+        ),
+        technique=f"header on row {skipped}",
+        detail={"header_row": skipped},
+    )
+
+
+def _ingest_decimal_comma(report: dict[str, Any]) -> Notice | None:
+    return Notice(
+        kind="ingest_decimal_comma",
+        severity=ADVISORY,
+        note=(
+            "Numbers in this file are written the European way (1.234,56), so a comma "
+            "was read as the decimal point and a full stop as the thousands separator."
+        ),
+        technique="decimal=',' thousands='.'",
+        detail={"decimal": ","},
+    )
+
+
+def _ingest_ambiguous_dates(report: dict[str, Any]) -> Notice | None:
+    return Notice(
+        kind="ingest_ambiguous_dates",
+        severity=ADVISORY,
+        note=(
+            "Dates in this file are written like 01/02/2024, which could mean 1 February "
+            "or 2 January — the file does not say which. They were read month-first."
+        ),
+        technique="dayfirst=False (undetermined)",
+        detail={"dayfirst": False},
+    )
+
+
+def _ingest_na_exclusion(report: dict[str, Any]) -> Notice | None:
+    exclusions = report.get("na_exclusions") or {}
+    if not exclusions:
+        return None
+    cols = sorted(exclusions)
+    return Notice(
+        kind="ingest_na_exclusion",
+        severity=ADVISORY,
+        note=(
+            f"'NA' in {_columns_phrase(cols)} was kept as a value rather than read as "
+            "missing: the column holds two-letter codes, where NA is Namibia."
+        ),
+        column=neutralize_text(cols[0]) if len(cols) == 1 else None,
+        technique="na_values exclusion",
+        detail={"columns": [neutralize_text(c) for c in cols]},
+    )
+
+
+def _ingest_extra_sheets(report: dict[str, Any]) -> Notice | None:
+    others = report.get("other_sheets") or []
+    if not others:
+        return None
+    sheet = report.get("sheet") or "the first sheet"
+    rest = ", ".join(f"'{s}'" for s in others)
+    return Notice(
+        kind="ingest_extra_sheets",
+        severity=ADVISORY,
+        note=(
+            f"This workbook has {len(others)} other sheet(s) — only '{sheet}' was read. "
+            f"The rest ({rest}) are not in this analysis."
+        ),
+        technique=f"read sheet '{sheet}'",
+        detail={"sheet": sheet, "other_sheets": list(others)},
+    )
+
+
+_INGEST_CHECKS = {
+    "encoding": _ingest_encoding,
+    "delimiter": _ingest_delimiter,
+    "header_row": _ingest_header_row,
+    "decimal_comma": _ingest_decimal_comma,
+    "ambiguous_dates": _ingest_ambiguous_dates,
+    "na_exclusion": _ingest_na_exclusion,
+    "extra_sheets": _ingest_extra_sheets,
+}
+
+
+def from_ingest(report: dict[str, Any] | None) -> list[Notice]:
+    """Advisories for the reading decisions a user could reasonably dispute.
+
+    Driven off ``report["assumptions"]``, which the probe leaves **empty** for a
+    well-formed UTF-8 comma CSV. That emptiness is the point: an advisory attached
+    to every upload is one nobody reads by the time it matters.
+    """
+    if not report:
+        return []
+    out: list[Notice] = []
+    for kind in report.get("assumptions") or []:
+        check = _INGEST_CHECKS.get(str(kind))
+        if check is None:
+            continue
+        notice = check(report)
+        if notice is not None:
+            out.append(notice)
+    return out
+
+
 def order(notices: list[Notice]) -> list[Notice]:
     """Most consequential first, largest effect first within a severity."""
     return sorted(
