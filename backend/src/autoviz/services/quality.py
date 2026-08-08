@@ -172,12 +172,19 @@ def scan(record: DatasetRecord, columns: set[str] | None = None) -> list[Quality
         # Case variants: only a finding when folding actually merges groups. Two
         # spellings of one category are two bars on a chart, which is the concrete
         # harm — a column that is merely mixed-case but unambiguous is left alone.
+        #
+        # The two findings below are independent, not alternatives. A column can
+        # easily have both, and when this was an `elif` the case-variant finding
+        # masked the other: normalize_case then quietly repaired the spellings, no
+        # grouping proposal was ever offered, and the user got an unreadable chart
+        # of 300 categories with nothing having gone visibly wrong.
         non_blank = stripped[stripped != ""]
         if not non_blank.empty:
             distinct = non_blank.nunique()
-            folded = non_blank.str.lower().nunique()
+            folded_values = non_blank.str.lower()
+            folded = folded_values.nunique()
             if folded < distinct:
-                affected = int((non_blank != non_blank.str.lower()).sum())
+                affected = int((non_blank != folded_values).sum())
                 issues.append(
                     QualityIssue(
                         kind="case_variants", column=col, affected=affected,
@@ -185,11 +192,14 @@ def scan(record: DatasetRecord, columns: set[str] | None = None) -> list[Quality
                         detail={"distinct": int(distinct), "after_folding": int(folded)},
                     )
                 )
-            elif distinct > HIGH_CARDINALITY:
+            # Judged on the *folded* count, because normalize_case is a SAFE repair
+            # that runs first: the number of categories the chart actually has to
+            # draw is the count after merging, not before.
+            if folded > HIGH_CARDINALITY:
                 issues.append(
                     QualityIssue(
-                        kind="high_cardinality", column=col, affected=int(distinct),
-                        fraction=0.0, detail={"distinct": int(distinct)},
+                        kind="high_cardinality", column=col, affected=int(folded),
+                        fraction=0.0, detail={"distinct": int(folded)},
                     )
                 )
 

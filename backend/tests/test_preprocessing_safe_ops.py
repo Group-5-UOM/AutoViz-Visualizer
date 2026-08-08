@@ -202,3 +202,113 @@ def test_cast_column_refuses_an_already_typed_column(registry, nulls_id):
     )
     assert not v["valid"]
     assert any("already typed" in e for e in v["errors"])
+
+
+# --- parse_number ---------------------------------------------------------------
+# The op exists because cast_column cannot: TRY_CAST('$1,234.50' AS DOUBLE) is
+# null, so a money column stayed text that no aggregation would accept. What keeps
+# it SAFE is not that it strips less, but that it strips a *closed set* and then
+# demands the remainder convert in full.
+
+
+def test_parse_number_declares_the_safe_tier():
+    plan = AnalysisPlan.model_validate(
+        {
+            "dataset_id": "ds_x",
+            "intent": "comparison",
+            "preprocessing": [{"op": "parse_number", "columns": ["a"]}],
+        }
+    )
+    op = plan.preprocessing[0]
+    assert op.risk is Risk.SAFE and op.removes_rows is False
+
+
+def _sum_amount(registry, tmp_path, name, body, **op_fields):
+    ds = _register(registry, tmp_path, name, body)
+    plan = _plan(
+        ds,
+        preprocessing=[{"op": "parse_number", "columns": ["amount"], **op_fields}],
+        aggregations=[{"column": "amount", "fn": "sum", "as": "total"}],
+    )
+    return ds, plan, execute_analysis(ds, plan, registry)
+
+
+def test_parse_number_reads_us_currency(registry, tmp_path):
+    _ds, _plan_, out = _sum_amount(
+        registry, tmp_path, "usd.csv",
+        'amount\n"$1,234.50"\n"$2,000.00"\n', thousands=",",
+    )
+    assert out["result_table"][0]["total"] == 3234.50
+
+
+def test_parse_number_reads_european_notation(registry, tmp_path):
+    """Quoted, because unquoted European decimals in a comma-delimited file are
+    genuinely ambiguous — 1.234,50 is two fields by every rule the reader has, and
+    services/ingest.py only treats a comma as a decimal point behind a semicolon
+    delimiter. Quoting is what real exports do, and it is what leaves the value
+    intact for this op to parse."""
+    _ds, _plan_, out = _sum_amount(
+        registry, tmp_path, "eur.csv",
+        'amount\n"1.234,50"\n"2.000,00"\n', decimal=",", thousands=".",
+    )
+    assert out["result_table"][0]["total"] == 3234.50
+
+
+def test_parse_number_makes_the_column_numeric_for_validation(registry, tmp_path):
+    """sum() on a string column is a type error; the override is what admits it."""
+    ds, plan, _out = _sum_amount(
+        registry, tmp_path, "typed.csv", 'amount\n"$10.00"\n"$20.00"\n', thousands=","
+    )
+    assert validate_analysis_plan(ds, plan, registry)["valid"] is True
+
+
+def test_parse_number_refuses_text_that_merely_starts_with_digits(registry, tmp_path):
+    """The failure a permissive strip would produce: '12 apples' -> 12, reported as
+    a successful repair. Stripping only known decoration leaves '12apples', which
+    cannot convert, so the op refuses instead."""
+    _ds, _plan_, out = _sum_amount(
+        registry, tmp_path, "apples.csv", "amount\n12 apples\n5\n", thousands=","
+    )
+    assert out["error_code"] == "INVALID_PLAN"
+    assert "would not convert" in out["error"]
+
+
+def test_parse_number_refuses_percentages(registry, tmp_path):
+    """45% is either 45 or 0.45 and the column does not say which."""
+    _ds, _plan_, out = _sum_amount(registry, tmp_path, "pct.csv", "amount\n45%\n55%\n")
+    assert out["error_code"] == "INVALID_PLAN"
+
+
+def test_parse_number_refuses_an_already_numeric_column(registry, nulls_id):
+    v = validate_analysis_plan(
+        nulls_id,
+        _plan(nulls_id, preprocessing=[{"op": "parse_number", "columns": ["fare"]}]),
+        registry,
+    )
+    assert not v["valid"]
+    assert any("already typed" in e for e in v["errors"])
+
+
+def test_parse_number_rejects_identical_separators(registry, nulls_id):
+    v = validate_analysis_plan(
+        nulls_id,
+        _plan(
+            nulls_id,
+            preprocessing=[
+                {"op": "parse_number", "columns": ["cls"], "decimal": ",", "thousands": ","}
+            ],
+        ),
+        registry,
+    )
+    assert not v["valid"]
+    assert any("cannot both be" in e for e in v["errors"])
+
+
+def test_parse_number_discloses_what_it_did(registry, tmp_path):
+    _ds, _plan_, out = _sum_amount(
+        registry, tmp_path, "disclosed.csv", 'amount\n"$10.00"\n"$20.00"\n', thousands=","
+    )
+    notes = [n for n in out["provenance"]["notices"] if n["kind"] == "parse_number"]
+    assert len(notes) == 1
+    assert notes[0]["severity"] == "applied"  # SAFE: told, not asked
+    assert "amount" in notes[0]["note"]

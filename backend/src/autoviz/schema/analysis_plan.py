@@ -24,7 +24,13 @@ FilterOp = Literal[
 ]
 AggFn = Literal["sum", "mean", "min", "max", "count", "median", "count_distinct"]
 DeriveFn = Literal[
-    "month", "year", "day", "weekday", "lower", "upper", "trim", "round", "abs"
+    # Extraction: datetime -> number (a bare 1-12, 1-31, ...). For seasonality.
+    "month", "year", "day", "weekday",
+    # Truncation: datetime -> datetime, flattened to the start of the period. For
+    # trends — see DATETIME_DERIVE_FNS in schema/allowlists.py for why the two are
+    # not interchangeable.
+    "month_start", "quarter_start", "week_start", "year_start",
+    "lower", "upper", "trim", "round", "abs",
 ]
 ChartType = Literal[
     "bar",
@@ -241,6 +247,40 @@ class DropEmptyRows(_PreprocessOpBase):
         return set()  # spans every column
 
 
+class ParseNumber(_PreprocessOpBase):
+    """Read a money/formatted column as the number it already is.
+
+    ``cast_column`` cannot: ``TRY_CAST('$1,234.50' AS DOUBLE)`` is null, so the
+    op refuses, and the column stays text that no aggregation will accept. That
+    left the commonest financial CSV in existence unanalysable.
+
+    SAFE because the decoration removed is exactly that — a currency symbol, a
+    thousands separator, surrounding whitespace — none of which carries meaning
+    the number does not. What keeps it safe in practice is that stripping is
+    *not* a filter over arbitrary characters: only the listed decoration is
+    removed, and whatever remains must convert in full. ``'12 apples'`` becomes
+    ``'12apples'``, fails to convert, and the op is refused rather than silently
+    yielding 12.
+
+    A ``%`` is deliberately not decoration: ``45%`` is either 45 or 0.45 and the
+    column cannot say which, so it fails the conversion and the user is told.
+    """
+
+    op: Literal["parse_number"]
+    columns: list[str] = Field(min_length=1, max_length=MAX_PREPROCESSING_COLUMNS)
+    # Which character is the decimal point in this column's notation, and which
+    # groups the thousands. Defaults are the anglophone convention; the ingest
+    # probe reports the file's own when it differs (services/ingest.py).
+    decimal: Literal[".", ","] = "."
+    thousands: Literal[",", ".", " ", "'"] | None = None
+
+    removes_rows: ClassVar[bool] = False
+    risk: ClassVar[Risk] = Risk.SAFE
+
+    def columns_touched(self) -> set[str]:
+        return set(self.columns)
+
+
 class CastColumn(_PreprocessOpBase):
     """Read a text column as the type it already contains.
 
@@ -340,6 +380,7 @@ PreprocessOp = Annotated[
         NormalizeCase,
         DropEmptyRows,
         CastColumn,
+        ParseNumber,
         CleanCategories,
         GroupRareCategories,
     ],
@@ -421,8 +462,17 @@ class AnalysisPlan(_StrictModel):
         chart encoder both have to start from this, or a plan that casts a text
         column to a number and then averages it would be rejected as a type error
         against a schema that no longer applies at that point in the query.
+
+        Ops run in order, so a later one wins — the same rule the CTE chain
+        follows, since each op sees the output of the one before it.
         """
-        return {op.column: op.to for op in self.preprocessing if op.op == "cast_column"}
+        overrides: dict[str, str] = {}
+        for op in self.preprocessing:
+            if op.op == "cast_column":
+                overrides[op.column] = op.to
+            elif op.op == "parse_number":
+                overrides.update({c: "number" for c in op.columns})
+        return overrides
 
     def _canonical_preprocessing(self) -> list[dict[str, Any]]:
         """The preprocessing block in a form where equal semantics give equal bytes.

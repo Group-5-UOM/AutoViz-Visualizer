@@ -172,6 +172,12 @@ def from_preprocessing(report: list[dict[str, Any]], input_rows: int) -> list[No
         elif name == "cast_column":
             note = f"'{_pretty(str(col))}' was read as {entry.get('to')}."
             technique = f"cast_column on '{col}'"
+        elif name == "parse_number":
+            note = (
+                f"Currency symbols and separators were removed from "
+                f"{_columns_phrase(list(cols))} so the values could be counted as numbers."
+            )
+            technique = f"parse_number on {list(cols)}"
         elif name == "clean_categories":
             note = (
                 f"{affected} value(s) in '{_pretty(str(col))}' ({_pct(fraction)}) "

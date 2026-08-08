@@ -228,3 +228,53 @@ def test_report_is_scoped_and_serialisable(registry, tmp_path):
 def test_empty_scope_produces_an_empty_report(registry, tmp_path):
     rec = _register(registry, tmp_path, "none.csv", "a\n x \n")
     assert quality.scan(rec, set()) == []
+
+
+# --- case variants and cardinality are independent findings ----------------------
+
+
+def _many_variants(n_categories: int, cased: bool) -> str:
+    """A column of `n_categories` values, optionally with a case variant of each."""
+    rows = [f"cat{i:03d}" for i in range(n_categories)]
+    if cased:
+        rows += [r.upper() for r in rows]
+    return "k\n" + "".join(f"{r}\n" for r in rows)
+
+
+def test_a_column_can_report_both_case_variants_and_high_cardinality(registry, tmp_path):
+    """These were mutually exclusive, and the case finding won.
+
+    The consequence was silent: normalize_case is a SAFE auto-repair, so it fixed
+    the spellings without asking, the grouping proposal was never raised, and the
+    user got an unreadable chart of 40 categories with nothing appearing to have
+    gone wrong.
+    """
+    rec = _register(registry, tmp_path, "both.csv", _many_variants(40, cased=True))
+    kinds = _kinds(quality.scan(rec, {"k"}))
+    assert "case_variants" in kinds
+    assert "high_cardinality" in kinds
+
+
+def test_cardinality_is_counted_after_folding(registry, tmp_path):
+    """30 spellings of 15 categories is 15 bars once normalize_case has run, and
+    15 is legible — so counting the raw distinct values would raise a grouping
+    question about a chart that does not have the problem."""
+    rec = _register(registry, tmp_path, "folds.csv", _many_variants(15, cased=True))
+    kinds = _kinds(quality.scan(rec, {"k"}))
+    assert "case_variants" in kinds
+    assert "high_cardinality" not in kinds
+
+
+def test_cardinality_still_fires_without_case_variants(registry, tmp_path):
+    rec = _register(registry, tmp_path, "clean_wide.csv", _many_variants(40, cased=False))
+    kinds = _kinds(quality.scan(rec, {"k"}))
+    assert kinds == {"high_cardinality"}
+
+
+def test_both_findings_yield_a_repair_and_a_question(registry, tmp_path):
+    """The pairing that was unreachable: the casing is repaired silently *and* the
+    grouping decision still reaches the user."""
+    rec = _register(registry, tmp_path, "pair.csv", _many_variants(40, cased=True))
+    auto, proposals = quality.recommend(quality.scan(rec, {"k"}), len(rec.df))
+    assert {op["op"] for op in auto} == {"normalize_case"}
+    assert [p.slot for p in proposals] == ["cardinality:k"]

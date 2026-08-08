@@ -17,6 +17,7 @@ from autoviz.schema.allowlists import (
     AGG_FNS,
     CATEGORICAL_FILL_STRATEGIES,
     DATE_DERIVE_FNS,
+    DATETIME_DERIVE_FNS,
     FILTER_OPS,
     LIST_VALUE_OPS,
     MAX_FILL_STRING_LEN,
@@ -197,6 +198,29 @@ def _validate_preprocessing(
                         f"preprocessing {op.op} on '{col}': requires a string column "
                         f"({col_type} given)"
                     )
+        elif op.op == "parse_number":
+            for col in op.columns:
+                col_type = schema.get(col)
+                if col_type is None:
+                    errors.append(f"preprocessing parse_number: column '{col}' does not exist")
+                elif col_type != "string":
+                    errors.append(
+                        f"preprocessing parse_number on '{col}': only a string column "
+                        f"needs parsing ({col_type} is already typed)"
+                    )
+                elif col in fully_null:
+                    errors.append(
+                        f"preprocessing parse_number on '{col}': column is entirely "
+                        "null (unusable)"
+                    )
+            if op.thousands is not None and op.thousands == op.decimal:
+                errors.append(
+                    "preprocessing parse_number: the decimal point and the thousands "
+                    f"separator cannot both be '{op.decimal}'"
+                )
+            # Whether the values actually convert is checked at execution time,
+            # against the working view — for the same reason cast_column is: the
+            # sentinels that would block it may be nulled by an earlier op.
         elif op.op == "cast_column":
             col_type = schema.get(op.column)
             if col_type is None:
@@ -344,7 +368,16 @@ def validate_analysis_plan(
                 f"derive '{d.name}': fn '{d.fn}' requires a numeric column, "
                 f"'{d.from_}' is {src_type}"
             )
-        effective[d.name] = "number" if d.fn in (DATE_DERIVE_FNS | NUMERIC_DERIVE_FNS) else "string"
+        # Order matters: DATETIME_DERIVE_FNS is a subset of DATE_DERIVE_FNS, and a
+        # truncation produces a timestamp, not the number an extraction produces.
+        # Getting this wrong types month_start as a number, which then passes a
+        # numeric aggregation check it should fail and lands on a quantitative axis.
+        if d.fn in DATETIME_DERIVE_FNS:
+            effective[d.name] = "datetime"
+        elif d.fn in (DATE_DERIVE_FNS | NUMERIC_DERIVE_FNS):
+            effective[d.name] = "number"
+        else:
+            effective[d.name] = "string"
 
     for name in (d.name for d in plan.derive):
         if _looks_like_code(name):

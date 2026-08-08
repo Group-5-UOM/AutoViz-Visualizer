@@ -65,6 +65,12 @@ _DERIVE_SQL = {
     "year": "date_part('year', {col})",
     "day": "date_part('day', {col})",
     "weekday": "date_part('dow', {col})",
+    # Truncation keeps the column a timestamp, so consecutive periods stay ordered
+    # and distinct across years — what a trend needs and date_part cannot give.
+    "month_start": "date_trunc('month', {col})",
+    "quarter_start": "date_trunc('quarter', {col})",
+    "week_start": "date_trunc('week', {col})",
+    "year_start": "date_trunc('year', {col})",
     "lower": "lower({col})",
     "upper": "upper({col})",
     "trim": "trim({col})",
@@ -97,6 +103,14 @@ _CAST_SQL = {
     "number": "TRY_CAST({col} AS DOUBLE)",
     "datetime": "TRY_CAST({col} AS TIMESTAMP)",
 }
+
+# What `parse_number` is allowed to remove: currency marks and whitespace, and
+# nothing else. A closed list, not a "strip everything non-numeric" filter —
+# the latter turns '12 apples' into 12 and reports a successful repair. Anything
+# outside this set survives into the TRY_CAST and fails it, which is what makes
+# the op refuse rather than invent. A literal, never user input, so it is inlined
+# where the thousands separator beside it is bound.
+_DECORATION_PATTERN = r"'[$£€¥₹\s]'"
 
 _AGG_SQL = {
     "sum": "sum({col})",
@@ -356,6 +370,56 @@ def _apply_preprocessing(
                 "operation": "cast_column", "column": op.column, "to": op.to,
                 "rows_affected": int(present),  # nulls stay null and are not counted
                 "confirmation_required": False,
+            })
+            current = name
+        elif op.op == "parse_number":
+            # Strip only the listed decoration, then require what is left to
+            # convert in full. A permissive "remove everything non-numeric" would
+            # turn '12 apples' into 12 and call it a repair; here it becomes
+            # '12apples', fails to cast, and the whole op is refused below.
+            targets = list(dict.fromkeys(op.columns))
+            exprs: dict[str, str] = {}
+            for col in targets:
+                inner = _q(col)
+                if op.thousands is not None:
+                    inner = f"replace({inner}, ?, '')"
+                    params.append(op.thousands)
+                inner = f"regexp_replace({inner}, {_DECORATION_PATTERN}, '', 'g')"
+                if op.decimal == ",":
+                    inner = f"replace({inner}, ',', '.')"
+                exprs[col] = f"TRY_CAST({inner} AS DOUBLE)"
+
+            # Admissibility, per column, against the working view — same contract
+            # as cast_column: a conversion that would discard values is data loss,
+            # not a repair, so it is refused with the count rather than applied.
+            checks = ", ".join(
+                f"count({_q(c)}), count({exprs[c]})" for c in targets
+            )
+            counts = con.execute(
+                _with(cte_defs) + f"SELECT {checks} FROM {current}", list(params)
+            ).fetchone()
+            converted = 0
+            for i, col in enumerate(targets):
+                present, ok = counts[2 * i], counts[2 * i + 1]
+                if ok < present:
+                    raise PreprocessError(
+                        f"cannot read column '{col}' as a number: "
+                        f"{present - ok} of {present} value(s) would not convert and "
+                        "would be discarded. A '%' sign is one cause — 45% is either "
+                        "45 or 0.45, and the column does not say which."
+                    )
+                # Values, per column — the most-affected column stands for the op
+                # rather than a sum across columns, which could exceed the row
+                # count and make the disclosure read as nonsense.
+                converted = max(converted, int(present))
+            replacements = ", ".join(f"{exprs[c]} AS {_q(c)}" for c in targets)
+            cte_defs.append(
+                f"{name} AS (SELECT * REPLACE ({replacements}) FROM {current})"
+            )
+            report.append({
+                "operation": "parse_number", "columns": targets,
+                "decimal": op.decimal, "thousands": op.thousands,
+                "rows_affected": converted, "confirmation_required": False,
             })
             current = name
         elif op.op == "clean_categories":

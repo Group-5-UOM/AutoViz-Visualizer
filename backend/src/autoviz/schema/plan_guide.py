@@ -17,6 +17,8 @@ analysis_plan JSON structure (lists may be empty/omitted; dataset_id and intent 
     {"op": "normalize_case", "column": "col"},
     {"op": "drop_empty_rows"},
     {"op": "cast_column", "column": "col", "to": "number"|"datetime"},
+    {"op": "parse_number", "columns": ["col", ...], "decimal": "."|",",
+     "thousands": ","|"."|" "|"'"|null},
     // Value-changing — alter values or which rows survive.
     {"op": "drop_nulls", "columns": ["col", ...], "how": "any"|"all"},
     {"op": "fill_nulls", "column": "col", "strategy": "constant"|"median"|"mode", "value": <scalar for constant>},
@@ -30,7 +32,9 @@ analysis_plan JSON structure (lists may be empty/omitted; dataset_id and intent 
                "op": "eq"|"neq"|"gt"|"gte"|"lt"|"lte"|"in"|"between"|"contains"|"is_null"|"is_not_null",
                "value": <scalar; omit for is_null/is_not_null>}],
   "derive": [{"name": "new_col", "from": "source_col",
-              "fn": "month"|"year"|"day"|"weekday"|"lower"|"upper"|"trim"|"round"|"abs"}],
+              "fn": "month"|"year"|"day"|"weekday"
+                    |"month_start"|"quarter_start"|"week_start"|"year_start"
+                    |"lower"|"upper"|"trim"|"round"|"abs"}],
   "group_by": ["col1", "col2"],
   "aggregations": [{"column": "col", "fn": "sum"|"mean"|"min"|"max"|"count"|"median"|"count_distinct",
                     "as": "alias"}],
@@ -65,6 +69,14 @@ Preprocessing (explicit, never silent — the source CSV is never modified):
   numeric column your reader took as text (sum/mean require a numeric column). It refuses if
   any value would fail to convert, so pair it with empty_string_to_null when blanks or
   sentinels are present. After casting, the column IS the new type for filters and aggregations.
+- parse_number is cast_column for money and formatted figures: "$1,234.50", "1 234,50", "€99".
+  cast_column CANNOT read these — the symbol and the separators make the conversion fail — so
+  this is the op for any numeric-looking text column cast_column rejected. Set thousands to the
+  grouping character and decimal to the decimal point ("," for European notation); the dataset
+  profile's `ingest` block reports what the file used. It removes only currency marks,
+  whitespace and the thousands separator and then requires the rest to convert, so it refuses a
+  column like "12 apples" rather than returning 12. It also refuses percentages: "45%" is
+  either 45 or 0.45 and the column does not say which. After parsing, the column IS a number.
 - drop_nulls: how "any" drops a row if ANY listed column is null; "all" only if all are.
 - fill_nulls strategy: "median" (numeric columns only), "mode" (categorical/string or boolean
   columns only), "constant" (any type — requires a "value"). Mean imputation is not available.
@@ -103,8 +115,14 @@ Some number columns are really coded categories (e.g. pclass 1/2/3, survived 0/1
 profile lists them as categorical_numeric_columns. Treat these as categories — group_by
 or chart.color them to compare classes — not as continuous measures to aggregate.
 Every column must exist in the dataset schema (call get_dataset_schema first).
-sum/mean/min/max/median need a numeric column; month/year/day/weekday derives need a
-datetime column. chart is optional (omit it to auto-recommend); chart.x/y/color may only
+sum/mean/min/max/median need a numeric column; every date derive needs a datetime column.
+Two kinds of date derive, and picking the wrong one silently produces a wrong chart:
+- month/year/day/weekday EXTRACT a number (month gives a bare 1-12). Use these only for
+  seasonality — "which month is busiest?" — where combining every year is the question.
+- month_start/quarter_start/week_start/year_start TRUNCATE to the start of the period and
+  stay datetimes. Use these for any trend over time. A "monthly revenue" line over two
+  years needs month_start; with month it collapses to 12 points that add January 2025 to
+  January 2026, which looks plausible and is wrong. chart is optional (omit it to auto-recommend); chart.x/y/color may only
 reference columns the query produces: group_by columns and aggregation "as" aliases (or
 select/derive names when there is no grouping). Prefer omitting chart unless the user asked
 for a specific type by name — the recommender picks from the result shape.
@@ -130,11 +148,20 @@ Example — average fare by class, dropping rows missing class or fare (explicit
  "group_by": ["class"],
  "aggregations": [{"column": "fare", "fn": "mean", "as": "average_fare"}]}
 
-Example — summer 2015 rainfall by month (date-range filter):
+Example — summer 2015 rainfall by month (date-range filter). The range sits inside one
+year, so month and month_start would agree here; month_start is still the safer default
+because it keeps working when the range widens:
 {"dataset_id": "ds_def456", "intent": "trend",
  "filters": [{"column": "date", "op": "between", "value": ["2015-06-01", "2015-08-31"]}],
- "derive": [{"name": "month", "from": "date", "fn": "month"}],
+ "derive": [{"name": "month", "from": "date", "fn": "month_start"}],
  "group_by": ["month"],
  "aggregations": [{"column": "precipitation", "fn": "sum", "as": "total_precip"}],
  "chart": {"type": "line", "x": "month", "y": "total_precip"}}
+
+Example — which month of the year is wettest, across all years (seasonality, so extract):
+{"dataset_id": "ds_def456", "intent": "comparison",
+ "derive": [{"name": "month_of_year", "from": "date", "fn": "month"}],
+ "group_by": ["month_of_year"],
+ "aggregations": [{"column": "precipitation", "fn": "mean", "as": "avg_precip"}],
+ "chart": {"type": "bar", "x": "month_of_year", "y": "avg_precip"}}
 """
