@@ -12,6 +12,7 @@ import {
   SendHorizontal,
 } from 'lucide-react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
+import { MessageContent } from '../chat/MessageContent';
 import type { ChartType, ChatMessage } from '../../types/dashboard';
 import './ToolSidePanel.css';
 
@@ -135,7 +136,7 @@ export function SetupPanel({
                     key={msg.id}
                     className={`tool-setup-bubble tool-setup-bubble--${msg.role}`}
                   >
-                    {msg.content}
+                    <MessageContent content={msg.content} role={msg.role} />
                   </div>
                 ))}
                 {isThinking && (

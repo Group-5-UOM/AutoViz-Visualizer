@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { AtSign, BarChart3, SendHorizontal, X } from 'lucide-react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
+import { MessageContent } from './MessageContent';
 import type { ChartWidget, ChatMessage } from '../../types/dashboard';
 import './ChatPanel.css';
 
@@ -88,7 +89,7 @@ export function ChatPanel({
                 {msg.referencedTitle}
               </p>
             )}
-            <p>{msg.content}</p>
+            <MessageContent content={msg.content} role={msg.role} />
             {msg.options && msg.options.length > 0 && (
               <div className="chat-options">
                 {msg.options.map((option) => (

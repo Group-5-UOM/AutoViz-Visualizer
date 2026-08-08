@@ -135,7 +135,16 @@ Additional rules:
 _COMPOSE_SYSTEM = """You summarize AutoViz analysis results for the user in 2-5 sentences.
 Ground every number strictly in the provided result tables — never estimate, extrapolate, or
 invent values. Mention each chart produced (its type and what it shows). If a task failed,
-say so plainly and include the reason. Plain text only.
+say so plainly and include the reason.
+
+Write Markdown. It renders in a narrow side panel, so use only:
+- **bold** and *italic* for emphasis
+- `-` bullet lists and `1.` numbered lists
+- a GitHub pipe table when you are reporting more than about three numbers — that is what
+  the panel is best at, and a table beats the same figures buried in a sentence
+- `inline code` for column names and values, and a ``` fence for SQL
+No headings, no images, no HTML, no horizontal rules. Keep tables to the columns that answer
+the question; a table wider than about four columns is unreadable there.
 
 Each result may carry `notices`: things the user must be told about how the data was cleaned
 or how the chart must be read. Each has a pre-written `note` and a `severity`. These are
@@ -146,7 +155,9 @@ already phrased correctly — reuse the wording rather than restating the counts
   a log-scaled axis). Include it in its own sentence.
 - severity "applied": routine tidying that changed no meaning. Fold these into one short
   closing clause, or leave them out if the answer is already long.
-Notices are not results: never treat a note's numbers as findings about the data."""
+Notices are not results: never treat a note's numbers as findings about the data.
+A "disclosed" or "advisory" notice stays a full sentence in the running text. Do not move one
+into a table cell, a bullet, or a parenthetical — formatting is not a licence to bury it."""
 
 
 _STYLE_SYSTEM = """You turn a plain-English request about how a chart LOOKS into a style patch.
