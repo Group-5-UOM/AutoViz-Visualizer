@@ -105,7 +105,44 @@ def test_normalize_case_folds_variants(registry, tmp_path):
         registry,
     )
     assert "error" not in out, out
-    assert {r["sex"]: r["total"] for r in out["result_table"]} == {"male": 6, "female": 4}
+    # The three spellings merge, and the surviving label is a spelling the column
+    # actually used — not lower(). All three appear once, so the tie breaks toward
+    # the one that reads as a label rather than the one that sorts first ("MALE").
+    assert {r["sex"]: r["total"] for r in out["result_table"]} == {"Male": 6, "Female": 4}
+
+
+def test_normalize_case_keeps_the_commonest_spelling(registry, tmp_path):
+    """Frequency decides, before the tie-break ever applies: a column that says
+    "USA" four times and "usa" once should still read "USA" on the axis."""
+    ds = _register(
+        registry, tmp_path, "usa.csv",
+        "country,v\nUSA,1\nUSA,1\nUSA,1\nUSA,1\nusa,1\nCanada,1\n",
+    )
+    out = execute_analysis(
+        ds,
+        _plan(
+            ds,
+            preprocessing=[{"op": "normalize_case", "column": "country"}],
+            group_by=["country"],
+            aggregations=[{"column": "v", "fn": "sum", "as": "total"}],
+        ),
+        registry,
+    )
+    assert "error" not in out, out
+    assert {r["country"]: r["total"] for r in out["result_table"]} == {"USA": 5, "Canada": 1}
+
+
+def test_normalize_case_leaves_a_column_with_nothing_to_merge_alone(registry, tmp_path):
+    ds = _register(registry, tmp_path, "nofold.csv", "k,v\nAlpha,1\nBeta,2\n")
+    out = execute_analysis(
+        ds,
+        _plan(ds, preprocessing=[{"op": "normalize_case", "column": "k"}], select=["k"]),
+        registry,
+    )
+    assert "error" not in out, out
+    assert {r["k"] for r in out["result_table"]} == {"Alpha", "Beta"}
+    step = next(s for s in out["preprocessing"] if s["operation"] == "normalize_case")
+    assert step["rows_affected"] == 0
 
 
 def test_text_repairs_are_rejected_on_non_text_columns(registry, nulls_id):

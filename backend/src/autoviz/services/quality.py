@@ -509,7 +509,7 @@ def _op_columns(op: dict[str, Any]) -> set[str]:
 
 def merge_auto_ops(
     existing: list[dict[str, Any]], auto: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Fold safe repairs into a plan's preprocessing block.
 
     Two rules, both about not overriding a person:
@@ -527,6 +527,11 @@ def merge_auto_ops(
     column, and letting those push the block over the limit would fail validation
     on a plan the user wrote correctly — the system's own helpfulness breaking
     their request. The planner's ops are always kept in full.
+
+    Returns ``(merged, dropped)``. ``dropped`` is the repairs the budget had no
+    room for, and it is returned rather than discarded because a half-cleaned
+    column looks cleaned: the values are still wrong and nothing about the output
+    says so. The caller turns it into an advisory notice.
     """
     taken: dict[str, set[str]] = {}
     for op in existing:
@@ -552,8 +557,8 @@ def merge_auto_ops(
 
     budget = MAX_PREPROCESSING_STEPS - len(existing)
     if budget <= 0:
-        return list(existing)
-    return merged[:budget] + list(existing)
+        return list(existing), merged
+    return merged[:budget] + list(existing), merged[budget:]
 
 
 def suppressed_slots(existing: list[dict[str, Any]]) -> set[str]:

@@ -48,7 +48,7 @@ def test_cleaned_dataset_is_an_ordinary_dataset(registry, tmp_path):
     new = registry.get(out["dataset_id"])
     assert new is not None
     assert new.schema == {"dept": "string", "salary": "number"}
-    assert set(new.df["dept"]) == {"eng", "sales"}  # the cleaning is baked in
+    assert set(new.df["dept"]) == {"Eng", "Sales"}  # the cleaning is baked in
 
 
 def test_the_parent_is_untouched(registry, tmp_path):
@@ -104,7 +104,7 @@ def test_analyses_run_against_the_cleaned_dataset(registry, tmp_path):
     )
     assert "error" not in out, out
     # No preprocessing needed in the plan — it is already applied.
-    assert {r["dept"]: r["total"] for r in out["result_table"]} == {"eng": 600, "sales": 900}
+    assert {r["dept"]: r["total"] for r in out["result_table"]} == {"Eng": 600, "Sales": 900}
 
     # Both halves of the lineage: which dataset these rows came from, and which
     # cleaning produced them. Either alone stops the trail one link short.

@@ -91,18 +91,27 @@ _FILTER_SQL = {
 
 # Safe-tier value rewrites. Each is a pure function of the cell — no aggregate, no
 # reference to other rows — which is what makes them replayable and cheap.
+#
+# normalize_case is deliberately NOT here: folding to a canonical spelling needs to
+# know which spelling is commonest, which is an aggregate over the column. See the
+# op's own branch in _apply_preprocessing.
 _REWRITE_SQL = {
     "trim_whitespace": "trim({col})",
     # trim inside nullif so "   " counts as empty without also rewriting values
     # that are merely padded (trim_whitespace is a separate, explicit op).
     "empty_string_to_null": "nullif(trim({col}), '')",
-    "normalize_case": "lower({col})",
 }
 
 _CAST_SQL = {
     "number": "TRY_CAST({col} AS DOUBLE)",
     "datetime": "TRY_CAST({col} AS TIMESTAMP)",
 }
+
+# Does this spelling read as an ordinary label — "Male" rather than "MALE" or
+# "male"? Used only to break a frequency tie in normalize_case, so it needs to be
+# cheap and deterministic, not linguistically right. Spelled out from substr/upper
+# because DuckDB has no initcap.
+_LOOKS_LIKE_A_LABEL = "(v = upper(substr(v, 1, 1)) || lower(substr(v, 2)))"
 
 # What `parse_number` is allowed to remove: currency marks and whitespace, and
 # nothing else. A closed list, not a "strip everything non-numeric" filter —
@@ -305,13 +314,60 @@ def _apply_preprocessing(
                 "confirmation_required": False,
             })
             current = name
-        elif op.op in ("trim_whitespace", "empty_string_to_null", "normalize_case"):
+        elif op.op == "normalize_case":
+            # Fold case variants onto the spelling the column uses most, not onto
+            # lower(). Both merge the same rows, but lower() also rewrites the
+            # label every chart then displays: a country axis reading "usa" and
+            # "canada" is a defect the user did not have before we "repaired" it.
+            # Tableau's grouping keeps a canonical member for exactly this reason.
+            col = _q(op.column)
+            # Only groups that actually have more than one spelling need an arm;
+            # everything else is unchanged by folding and falls through to ELSE.
+            # That keeps the CASE proportional to the mess, not to the cardinality.
+            # Ranked by frequency, then — on a tie — by which spelling reads as an
+            # ordinary label. Three spellings appearing once each is a real tie,
+            # and breaking it on raw value order alone would pick "MALE" over
+            # "Male" purely because capitals sort first, leaving the chart
+            # shouting. initcap-matching prefers "Male"; value order still settles
+            # anything that remains, so the result never depends on scan order.
+            canon = con.execute(
+                _with(cte_defs)
+                + "SELECT lower(v), "
+                + f"(array_agg(v ORDER BY n DESC, {_LOOKS_LIKE_A_LABEL} DESC, v ASC))[1] "
+                + f"FROM (SELECT {col} AS v, count(*) AS n FROM {current} "
+                + f"WHERE {col} IS NOT NULL GROUP BY {col}) "
+                + "GROUP BY lower(v) HAVING count(*) > 1",
+                list(params),
+            ).fetchall()
+            if not canon:
+                # Nothing to merge. Emitting a no-op CTE would still cost a scan.
+                report.append({
+                    "operation": "normalize_case", "columns": [op.column],
+                    "rows_affected": 0, "confirmation_required": False,
+                })
+                continue
+            arms = " ".join("WHEN ? THEN ?" for _ in canon)
+            arm_params: list[Any] = []
+            for folded, canonical in canon:
+                arm_params.extend([folded, canonical])
+            expr = f"CASE lower({col}) {arms} ELSE {col} END"
+            changed = con.execute(
+                _with(cte_defs)
+                + f"SELECT count(*) FROM {current} WHERE {col} IS DISTINCT FROM {expr}",
+                list(params) + arm_params,
+            ).fetchone()[0]
+            cte_defs.append(f"{name} AS (SELECT * REPLACE ({expr} AS {col}) FROM {current})")
+            params.extend(arm_params)
+            report.append({
+                "operation": "normalize_case", "columns": [op.column],
+                "rows_affected": int(changed), "confirmation_required": False,
+            })
+            current = name
+        elif op.op in ("trim_whitespace", "empty_string_to_null"):
             # Value rewrites: same shape, one expression each. REPLACE swaps the
             # column in place inside the working view, so downstream references
             # keep their names and the source frame is untouched.
-            targets = (
-                [op.column] if op.op == "normalize_case" else list(dict.fromkeys(op.columns))
-            )
+            targets = list(dict.fromkeys(op.columns))
             exprs = ", ".join(
                 f"{_REWRITE_SQL[op.op].format(col=_q(c))} AS {_q(c)}" for c in targets
             )
@@ -939,6 +995,15 @@ def execute_analysis(
                     # semicolon read as a decimal point is wrong on the tenth
                     # chart as much as the first. Empty for a well-formed file.
                     + notices_svc.from_ingest((record.profile or {}).get("ingest"))
+                    # A result cut off at the ceiling describes the rows shown, not
+                    # the dataset. Reported only when the ceiling itself is the cap
+                    # — an explicit `limit` is the user's own instruction and needs
+                    # no disclosure back to them.
+                    + (
+                        notices_svc.from_row_ceiling(len(result), HARD_ROW_CEILING)
+                        if plan.limit is None or plan.limit >= HARD_ROW_CEILING
+                        else []
+                    )
                 )
             except PreprocessError:
                 raise

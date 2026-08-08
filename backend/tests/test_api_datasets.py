@@ -162,7 +162,7 @@ def test_materialize_cleaned_dataset_survives_a_cold_registry(api_db):
     assert {parent, cleaned} <= names
 
     rows = client.get(f"/datasets/{cleaned}/preview", headers=_auth(token)).json()["rows"]
-    assert {r["dept"] for r in rows} == {"eng", "sales"}
+    assert {r["dept"] for r in rows} == {"Eng", "Sales"}
 
     original = client.get(f"/datasets/{parent}/preview", headers=_auth(token)).json()["rows"]
     assert " Eng " in {r["dept"] for r in original}

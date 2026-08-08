@@ -139,6 +139,11 @@ class WorkerState(TypedDict, total=False):
     cleaning_done: bool
     # Safe repairs applied without asking — surfaced so the answer can say so.
     applied_cleaning: list[dict[str, Any]]
+    # Disclosures about cleaning the node decided *not* to do: repairs the step
+    # budget cut, questions the prompt cap cut. They have no preprocessing report
+    # entry to ride on — nothing ran — so they travel here and are merged into the
+    # ChartResult in finalize_worker.
+    cleaning_notices: list[dict[str, Any]]
     pipeline_output: dict[str, Any] | None
     fallback_chart: dict[str, Any] | None
     chart_results: Annotated[list[ChartResult], add_or_reset]

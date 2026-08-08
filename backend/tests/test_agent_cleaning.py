@@ -59,7 +59,9 @@ def test_safe_repairs_are_applied_silently(registry, tmp_path):
     assert resumed["status"] == "completed", resumed
     table = resumed["charts"][0]["result"]["result_table"]
     # Five spellings collapsed to two real departments, and the null group is gone.
-    assert {r["dept"] for r in table} == {"eng", "sales"}
+    # The surviving labels are spellings the data used, not lower() — the repair
+    # must not leave the axis shouting or whispering.
+    assert {r["dept"] for r in table} == {"Eng", "Sales"}
 
 
 def test_applied_repairs_are_recorded_in_provenance(registry, tmp_path):
@@ -197,3 +199,53 @@ def test_a_plan_that_already_handles_the_column_is_not_questioned(registry, tmp_
 
     assert out["status"] == "completed", out
     assert None not in {r["dept"] for r in out["charts"][0]["result"]["result_table"]}
+
+
+# --- cleaning the tool decided not to do ----------------------------------------
+# These disclosures have no preprocessing report to ride on, because nothing ran.
+# They travel out of assess_quality on their own and are attached in
+# finalize_worker, so the tests are end-to-end: the sentence has to reach the
+# answer, not merely exist.
+
+
+def _wide_messy(n_columns: int) -> str:
+    """A file dirty in more columns than one plan has cleaning steps for."""
+    cols = [f"c{i}" for i in range(n_columns)]
+    header = ",".join(cols)
+    rows = "\n".join(",".join(f"{v}{i}" for i in range(n_columns)) for v in ("A", "a", "B"))
+    return f"{header}\n{rows}\n"
+
+
+def _notices_of(result) -> list[dict]:
+    return result["charts"][0].get("notices") or []
+
+
+def test_repairs_the_step_budget_cut_are_disclosed(registry, tmp_path):
+    """A wide messy file yields more safe repairs than a plan has room for. The
+    cut is correct; making it silently leaves columns that look cleaned and are
+    not."""
+    # The scan is scoped to the columns the plan reads, so the budget is only
+    # reachable by a plan that actually touches more dirty columns than one
+    # cleaning block has room for.
+    ds = _register(registry, tmp_path, "wide.csv", _wide_messy(14))
+    plan = {"intent": "distribution", "select": [f"c{i}" for i in range(14)]}
+    agent = AgentService(planner=FakePlanner(plans=[plan]), registry=registry)
+    out = agent.run("show me everything", dataset_id=ds)
+
+    assert out["status"] == "completed", out
+    kinds = {n["kind"] for n in _notices_of(out)}
+    assert "repairs_not_applied" in kinds
+    # And it reaches the prose the user actually reads, not just the payload.
+    assert "skipped" in out["answer"]
+
+
+def test_a_clean_run_discloses_nothing_extra(registry, tmp_path):
+    """The control: these advisories must not fire on an ordinary dataset."""
+    ds = _register(registry, tmp_path, "tidy.csv", "dept,salary\nEng,100\nSales,200\n")
+    agent = AgentService(planner=FakePlanner(plans=[_group_plan()]), registry=registry)
+    out = agent.run("average salary by department", dataset_id=ds)
+
+    assert out["status"] == "completed", out
+    kinds = {n["kind"] for n in _notices_of(out)}
+    assert "repairs_not_applied" not in kinds
+    assert "cleaning_not_asked" not in kinds

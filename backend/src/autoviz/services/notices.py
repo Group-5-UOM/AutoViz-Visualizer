@@ -166,7 +166,7 @@ def from_preprocessing(report: list[dict[str, Any]], input_rows: int) -> list[No
         elif name == "normalize_case":
             note = (
                 f"Values in {_columns_phrase(list(cols))} that differed only in "
-                "capitalisation were merged."
+                "capitalisation were merged, keeping the commonest spelling of each."
             )
             technique = f"normalize_case on {list(cols)}"
         elif name == "cast_column":
@@ -249,6 +249,94 @@ def from_null_exclusions(exclusions: dict[str, int], input_rows: int) -> list[No
             )
         )
     return out
+
+
+# --- work the system decided not to do ------------------------------------------
+# Three paths used to drop work silently: repairs cut by the step budget, cleaning
+# questions cut by the prompt cap, and rows cut by the output ceiling. Each is a
+# defensible limit and each was invisible, which in a tool built on disclosure is
+# the one inconsistency that undermines the rest — the user cannot tell a decision
+# that was made from one that was skipped.
+#
+# ADVISORY, not APPLIED: nothing happened, and that is exactly what has to be said.
+
+
+def from_dropped_repairs(dropped: list[dict[str, Any]]) -> list[Notice]:
+    """Safe repairs the step budget had no room for.
+
+    The budget is real — a plan is capped at MAX_PREPROCESSING_STEPS — and a wide
+    messy file can easily produce more repairs than that. Cutting them is right;
+    cutting them without a word leaves a column half-cleaned and looking cleaned.
+    """
+    if not dropped:
+        return []
+    columns: list[str] = []
+    kinds: set[str] = set()
+    for op in dropped:
+        kinds.add(str(op.get("op") or ""))
+        if "columns" in op:
+            columns.extend(str(c) for c in op["columns"])
+        elif "column" in op:
+            columns.append(str(op["column"]))
+    unique = sorted(set(columns))
+    where = f" in {_columns_phrase(unique)}" if unique else ""
+    return [
+        Notice(
+            kind="repairs_not_applied",
+            severity=ADVISORY,
+            note=(
+                f"{len(dropped)} routine cleanup step(s){where} were skipped: one "
+                "analysis can only carry so many. Those values were left exactly as "
+                "they are in the file."
+            ),
+            technique=f"step budget: {', '.join(sorted(kinds))} dropped",
+            detail={"dropped": len(dropped), "columns": [neutralize_text(c) for c in unique]},
+        )
+    ]
+
+
+def from_unasked_proposals(questions: list[str]) -> list[Notice]:
+    """Cleaning decisions that were never put to the user.
+
+    One question is asked per pass and the pass count is capped, so on a dirty
+    dataset some findings never reach anyone. The unasked ones resolve to "leave
+    it alone", which is the safe default and still a decision made on the user's
+    behalf.
+    """
+    if not questions:
+        return []
+    return [
+        Notice(
+            kind="cleaning_not_asked",
+            severity=ADVISORY,
+            note=(
+                f"{len(questions)} further data-quality decision(s) were not put to "
+                f"you ({'; '.join(questions)}). Nothing was changed for them — the "
+                "data was used as it is."
+            ),
+            technique="cleaning prompt budget reached",
+            detail={"unasked": len(questions)},
+        )
+    ]
+
+
+def from_row_ceiling(row_count: int, ceiling: int) -> list[Notice]:
+    """The output ceiling was reached, so the table is a prefix of the answer."""
+    if row_count < ceiling:
+        return []
+    return [
+        Notice(
+            kind="row_ceiling",
+            severity=ADVISORY,
+            note=(
+                f"This result reached the {ceiling:,}-row ceiling. Any rows past that "
+                "point are not included, so totals and extremes here describe the rows "
+                "shown rather than the whole dataset."
+            ),
+            technique=f"HARD_ROW_CEILING={ceiling}",
+            detail={"row_count": row_count, "ceiling": ceiling},
+        )
+    ]
 
 
 # --- how the file had to be read ----------------------------------------------

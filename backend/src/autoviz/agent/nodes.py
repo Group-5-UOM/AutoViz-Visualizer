@@ -280,17 +280,28 @@ def assess_quality(
 
     # Safe repairs first — they need no permission and must be in place before the
     # value-changing ops (a user's chosen op included) decide which rows survive.
-    merged = quality.merge_auto_ops(existing, auto_ops)
+    merged, dropped = quality.merge_auto_ops(existing, auto_ops)
     chosen = [op for op in resolved.values() if op]
     if chosen:
         merged = merged + chosen
     if merged != existing:
         plan["preprocessing"] = merged
 
+    # Repairs the step budget had no room for. Owed on every exit from this node,
+    # including the one that asks a question, because the budget was already
+    # spent by the time we got here.
+    owed = notices_svc.from_dropped_repairs(dropped)
+
     if not pending or state.get("cleaning_prompts", 0) >= MAX_CLEANING_PROMPTS:
+        # Anything still pending here is a decision nobody will ever be asked
+        # about: either the queue outran the prompt budget, or we are on the exit
+        # path. It resolves to "leave it alone", which is the safe default and
+        # still a choice made on the user's behalf.
+        owed += notices_svc.from_unasked_proposals([p.question for p in pending])
         return {
             "analysis_plan": plan,
             "applied_cleaning": [op for op in auto_ops],
+            "cleaning_notices": notices_svc.to_wire(owed),
             "cleaning_done": True,
         }
 
@@ -323,6 +334,7 @@ def assess_quality(
         "cleaning_resolutions": {**resolved, proposal.slot: option.op},
         "cleaning_prompts": state.get("cleaning_prompts", 0) + 1,
         "applied_cleaning": [op for op in auto_ops],
+        "cleaning_notices": notices_svc.to_wire(owed),
     }
 
 
@@ -461,6 +473,11 @@ def _notices_of(executed: dict[str, Any] | None) -> list[dict[str, Any]]:
 
 def finalize_worker(state: WorkerState) -> dict[str, Any]:
     out = state.get("pipeline_output")
+    # Disclosures about cleaning that did *not* happen. They belong to the run
+    # whatever became of it — a plan that failed at the chart step still skipped
+    # those repairs — so they are attached on every branch below rather than only
+    # the successful one.
+    skipped = list(state.get("cleaning_notices") or [])
     result: ChartResult = {
         "task": state["task"],
         # A refinement is the same chart, changed — so it keeps its id and the
@@ -471,10 +488,15 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
     }
     if out is None:  # planner never produced a parseable plan
         result.update(
-            {"status": "error", "result": None, "errors": state.get("validation_errors") or []}
+            {
+                "status": "error",
+                "result": None,
+                "notices": skipped,
+                "errors": state.get("validation_errors") or [],
+            }
         )
     elif out["status"] == "ok":
-        chart_notices = list(out.get("notices") or _notices_of(out.get("result")))
+        chart_notices = [*skipped, *(out.get("notices") or _notices_of(out.get("result")))]
         # Anything the request named and the run did not deliver. A refusal the
         # chart grammar forced, a substituted chart type, an ordering that never
         # happened — all of them otherwise come back as a finished chart with
@@ -512,7 +534,7 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
                 "result": executed,
                 # A run that failed at the chart step still cleaned data and still
                 # returned numbers, so the disclosure is owed either way.
-                "notices": _notices_of(executed),
+                "notices": [*skipped, *_notices_of(executed)],
                 "errors": [f"{out.get('failed_step')}: {e}" for e in out.get("errors", [])],
             }
         )

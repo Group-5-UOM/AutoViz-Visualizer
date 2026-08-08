@@ -213,10 +213,17 @@ class EmptyStringToNull(_PreprocessOpBase):
 class NormalizeCase(_PreprocessOpBase):
     """Fold `Male`/`male`/`MALE` into one category.
 
-    Lower-casing can only ever merge values that differ by nothing but case, which
+    Case folding can only ever merge values that differ by nothing but case, which
     is why it is SAFE rather than a category merge. Deciding it is *worth* doing
     is a separate question and belongs to the recommender, which only proposes it
     when it actually collapses variants (services/quality.py).
+
+    The surviving spelling is the column's **commonest**, not ``lower()``. Both
+    merge identically, but the choice is also what every chart then displays, and
+    an axis reading "usa" and "canada" is a presentation defect introduced by a
+    repair the user never asked for. Ties break towards the spelling that reads
+    as a label ("Male" over "MALE"), then on value order, so the result never
+    depends on scan order.
     """
 
     op: Literal["normalize_case"]

@@ -214,3 +214,65 @@ def test_routine_tidying_is_not_forced_into_the_answer():
     }
     answer = compose_response(state, planner=_MutePlanner())["final_response"]["answer"]
     assert "Stray spaces" not in answer
+
+
+# --- work that did not happen ---------------------------------------------------
+# Three paths used to drop work in silence. Each is a defensible limit; each was
+# invisible, which in a tool built on disclosure is the inconsistency that
+# undermines everything else it says.
+
+
+def test_repairs_cut_by_the_step_budget_are_disclosed():
+    dropped = [
+        {"op": "normalize_case", "column": "region"},
+        {"op": "trim_whitespace", "columns": ["notes", "owner"]},
+    ]
+    produced = notices.from_dropped_repairs(dropped)
+    assert len(produced) == 1
+    notice = produced[0]
+    assert notice.severity == notices.ADVISORY
+    assert notice.detail["dropped"] == 2
+    # It has to name where, or the user cannot tell which numbers to distrust.
+    for column in ("region", "notes", "owner"):
+        assert column in notice.note
+
+
+def test_nothing_dropped_says_nothing():
+    assert notices.from_dropped_repairs([]) == []
+
+
+def test_unasked_cleaning_questions_are_disclosed():
+    produced = notices.from_unasked_proposals(
+        ["12 of 40 rows have no age. What should AutoViz do?"]
+    )
+    assert len(produced) == 1
+    assert produced[0].severity == notices.ADVISORY
+    # And it must say what happened *instead* — silence here reads as "handled".
+    assert "Nothing was changed" in produced[0].note
+
+
+def test_no_unasked_questions_says_nothing():
+    assert notices.from_unasked_proposals([]) == []
+
+
+def test_the_row_ceiling_is_disclosed_when_reached():
+    produced = notices.from_row_ceiling(100_000, 100_000)
+    assert len(produced) == 1
+    assert produced[0].severity == notices.ADVISORY
+    assert "100,000" in produced[0].note
+
+
+def test_a_result_under_the_ceiling_says_nothing():
+    assert notices.from_row_ceiling(99_999, 100_000) == []
+
+
+def test_ceiling_and_dropped_notices_lead_over_routine_cleanup():
+    """Ordering is the other half of disclosure: an advisory buried under six
+    'stray spaces were removed' clauses has not really been delivered."""
+    ordered = notices.order(
+        notices.from_preprocessing(
+            [{"operation": "trim_whitespace", "columns": ["a"], "rows_affected": 5}], 100
+        )
+        + notices.from_row_ceiling(100_000, 100_000)
+    )
+    assert [n.severity for n in ordered] == [notices.ADVISORY, notices.APPLIED]

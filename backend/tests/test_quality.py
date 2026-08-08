@@ -122,17 +122,23 @@ def test_suggestions_never_push_a_plan_over_the_step_budget(registry, tmp_path):
     assert len(auto) > quality.MAX_PREPROCESSING_STEPS  # more repairs than room
 
     existing = [{"op": "drop_nulls", "columns": ["c0"], "how": "any"}]
-    merged = quality.merge_auto_ops(existing, auto)
+    merged, dropped = quality.merge_auto_ops(existing, auto)
     assert len(merged) <= quality.MAX_PREPROCESSING_STEPS
     # The trimming falls on suggestions; the user's own op survives intact.
     assert existing[0] in merged
+    # And what the budget cut is handed back, not swallowed: a column left
+    # half-cleaned looks cleaned, so the caller has to be able to say otherwise.
+    assert dropped
+    assert len(merged) - len(existing) + len(dropped) == len(auto)
 
 
 def test_a_full_plan_gets_no_suggestions_rather_than_an_invalid_one(registry, tmp_path):
     rec = _register(registry, tmp_path, "full.csv", "a\n x \n")
     existing = [{"op": "drop_exact_duplicates"} for _ in range(quality.MAX_PREPROCESSING_STEPS)]
-    merged = quality.merge_auto_ops(existing, [{"op": "trim_whitespace", "columns": ["a"]}])
+    suggestion = {"op": "trim_whitespace", "columns": ["a"]}
+    merged, dropped = quality.merge_auto_ops(existing, [suggestion])
     assert merged == existing
+    assert dropped == [suggestion]
 
 
 def test_missing_values_are_always_asked_about_even_when_tiny(registry, tmp_path):
