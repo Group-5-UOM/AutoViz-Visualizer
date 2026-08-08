@@ -22,7 +22,7 @@ colour-vision separation: the theme's own palette carries those guarantees, and 
 colour the user chose deliberately is the user's call to make.
 """
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -39,6 +39,17 @@ MAX_SCHEME_COLORS = 20
 # Bounded so an over-eager planner cannot turn one instruction into an unbounded
 # map, and so a stored block stays a reasonable size in the chart_spec column.
 MAX_SERIES_COLORS = 50
+
+# Named stacks rather than a free-text family, for the same reason colours are
+# closed hex — see services/chart_theme.FONT_STACKS, which holds the actual CSS
+# these resolve to. Keep the two in step.
+FontFamily = Literal["sans", "system", "serif", "mono"]
+
+# The base tick-label size. The floor is where axis labels stop being readable;
+# the ceiling is where a widget-sized chart is all text and no plot. Sizes above
+# the base keep their offset from it, so the whole scale moves together.
+MIN_FONT_SIZE = 8
+MAX_FONT_SIZE = 28
 
 
 class ChartStyle(BaseModel):
@@ -63,6 +74,13 @@ class ChartStyle(BaseModel):
     color_scheme: list[HexColor] | None = Field(
         default=None, max_length=MAX_SCHEME_COLORS
     )
+    # Typography applies to every piece of text on the chart at once. There is no
+    # per-element size here on purpose: the theme's hierarchy (axis titles a step
+    # above tick labels) is a designed relationship, and letting it be set piece
+    # by piece is how a chart ends up with a 9px title over 16px labels.
+    font: FontFamily | None = None
+    # The tick-label size; the rest of the scale shifts with it.
+    font_size: int | None = Field(default=None, ge=MIN_FONT_SIZE, le=MAX_FONT_SIZE)
 
     def merged_with(self, patch: "ChartStyle") -> "ChartStyle":
         """This block with `patch` laid over it.

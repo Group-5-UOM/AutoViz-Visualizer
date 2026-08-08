@@ -104,7 +104,10 @@ profile lists them as categorical_numeric_columns. Treat these as categories —
 or chart.color them to compare classes — not as continuous measures to aggregate.
 Every column must exist in the dataset schema (call get_dataset_schema first).
 sum/mean/min/max/median need a numeric column; month/year/day/weekday derives need a
-datetime column. chart is optional (omit it to auto-recommend); chart.x/y/color may only
+datetime column. These extract the part, they do not truncate the date: month is 1-12, so
+the same month in different years lands in ONE bucket. For a trend spanning years, either
+filter to a single year or group_by ["year", "month"] — grouping by month alone silently
+sums them together. chart is optional (omit it to auto-recommend); chart.x/y/color may only
 reference columns the query produces: group_by columns and aggregation "as" aliases (or
 select/derive names when there is no grouping). Prefer omitting chart unless the user asked
 for a specific type by name — the recommender picks from the result shape.

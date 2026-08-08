@@ -61,6 +61,8 @@ export interface ChatMessage {
  * and stored verbatim in the saved chart's `chart_spec`, so it must stay
  * field-for-field identical to backend `schema/chart_style.ChartStyle`.
  */
+export type ChartFont = 'sans' | 'system' | 'serif' | 'mono';
+
 export interface ChartStyle {
   title?: string | null;
   x_title?: string | null;
@@ -69,6 +71,9 @@ export interface ChartStyle {
   mark_color?: string | null;
   series_colors?: Record<string, string> | null;
   color_scheme?: string[] | null;
+  font?: ChartFont | null;
+  /** Tick-label size in px; every other text size keeps its offset from it. */
+  font_size?: number | null;
 }
 
 export interface ChartWidget {

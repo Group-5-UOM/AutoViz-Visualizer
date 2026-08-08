@@ -14,7 +14,6 @@ import {
   Columns3,
   CopyMinus,
   Eraser,
-  FileSpreadsheet,
   Filter,
   Pencil,
   Plus,
@@ -925,20 +924,6 @@ export function DatasetSheet({
   return (
     <section className="dataset-sheet" aria-label="Dataset spreadsheet" ref={sheetRef}>
       <header className="dataset-ribbon">
-        <div className="dataset-ribbon-meta-bar">
-          <div className="dataset-ribbon-meta" title={fileName}>
-            <FileSpreadsheet size={14} />
-            <strong>{fileName}</strong>
-            <span>
-              {rows.length.toLocaleString()} × {columns.length || columnCount}
-              {dirty ? ' · Unsaved' : ''}
-              {truncated
-                ? ` · first ${rows.length.toLocaleString()} of ${rowCount.toLocaleString()}`
-                : ''}
-            </span>
-          </div>
-        </div>
-
         <div className="dataset-ribbon-body">
           <RibbonGroups groups={editGroups} />
         </div>
@@ -1221,6 +1206,15 @@ export function DatasetSheet({
         <span>
           Click a cell to edit. Select a row or column, then use the toolbar.
         </span>
+        {/* Moved off the ribbon's filename strip when that strip was removed.
+            Not cosmetic: without it nothing tells you the grid is a window onto
+            a larger table, and an edit reads as applying to the whole thing. */}
+        {truncated && (
+          <span>
+            Showing first {rows.length.toLocaleString()} of{' '}
+            {rowCount.toLocaleString()} rows
+          </span>
+        )}
         {dirty && <span className="dataset-sheet-dirty">Changes not saved</span>}
       </footer>
     </section>

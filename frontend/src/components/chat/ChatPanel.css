@@ -9,44 +9,6 @@
   z-index: 15;
 }
 
-.chat-header {
-  flex: none;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.chat-header-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--text-primary);
-}
-
-.chat-header-title svg {
-  color: var(--accent);
-}
-
-.chat-close-btn {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-}
-
-.chat-close-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
 .chat-messages {
   flex: 1;
   overflow-y: auto;

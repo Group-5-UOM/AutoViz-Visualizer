@@ -180,6 +180,19 @@ def test_default_profile_is_a_subset_of_advanced():
     assert {"register_dataset", "run_analysis_pipeline", "export_chart"} <= default
 
 
+def test_every_profile_pairs_analyze_with_its_resume_tool():
+    """analyze can return {status: "waiting_for_user"}, and the only way to finish
+    such a run is answer_clarification. A profile carrying one without the other
+    strands the host on a pause its own tool description told it to answer."""
+    import autoviz.mcp.server as server
+
+    for name, tools in server.PROFILES.items():
+        exposed = {fn.__name__ for fn, _ in tools}
+        assert ("analyze" in exposed) == ("answer_clarification" in exposed), (
+            f"profile {name!r} exposes only one of analyze/answer_clarification"
+        )
+
+
 def test_observed_preserves_async_so_fastmcp_awaits_it():
     """A sync wrapper around an async tool makes FastMCP read is_async=False, so
     it never awaits and the coroutine leaks unexecuted. Progress reporting and

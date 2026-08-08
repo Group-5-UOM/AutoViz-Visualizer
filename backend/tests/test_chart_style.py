@@ -5,7 +5,13 @@ from pydantic import ValidationError
 
 from autoviz.schema.chart_style import ChartStyle
 from autoviz.services.chart_style import apply, context_for
-from autoviz.services.chart_theme import CATEGORICAL
+from autoviz.services.chart_theme import (
+    BASE_FONT_SIZE,
+    CATEGORICAL,
+    FONT,
+    FONT_STACKS,
+    THEME,
+)
 from autoviz.services.charts import generate_chart, primary_layer
 
 _ROWS = [
@@ -148,6 +154,71 @@ def test_apply_to_a_layered_spec_targets_the_data_layer():
     styled = apply(spec, ChartStyle(series_colors={"setosa": "#ff0000"}))
     assert styled["layer"][0]["encoding"]["color"]["scale"]["range"][0] == "#ff0000"
     assert "scale" not in styled["layer"][1]["encoding"].get("color", {})
+
+
+def test_font_family_is_a_closed_set_resolved_to_a_stack():
+    """A free-text family is a place for a planner to name a font nobody has."""
+    styled = apply(_bar(), ChartStyle(font="mono"))
+    assert styled["config"]["font"] == FONT_STACKS["mono"]
+
+    with pytest.raises(ValidationError):
+        ChartStyle(font="Helvetica")
+
+
+def test_font_size_moves_every_text_size_by_the_same_step():
+    """One number, because the theme's hierarchy — axis titles a step above tick
+    labels — is a designed relationship and not something to set piecemeal."""
+    styled = apply(_coloured_bar(), ChartStyle(font_size=16))
+    config = styled["config"]
+    delta = 16 - BASE_FONT_SIZE
+
+    assert config["axis"]["labelFontSize"] == THEME["axis"]["labelFontSize"] + delta
+    assert config["axis"]["titleFontSize"] == THEME["axis"]["titleFontSize"] + delta
+    assert config["legend"]["labelFontSize"] == THEME["legend"]["labelFontSize"] + delta
+    # The gap the theme set between tick labels and axis titles is preserved.
+    assert (
+        config["axis"]["titleFontSize"] - config["axis"]["labelFontSize"]
+        == THEME["axis"]["titleFontSize"] - THEME["axis"]["labelFontSize"]
+    )
+
+
+def test_font_size_is_bounded():
+    ChartStyle(font_size=8)
+    ChartStyle(font_size=28)
+    with pytest.raises(ValidationError):
+        ChartStyle(font_size=7)
+    with pytest.raises(ValidationError):
+        ChartStyle(font_size=29)
+
+
+def test_typography_reverts_to_the_theme_rather_than_being_deleted():
+    """config already carries the theme by the time a block is applied, so an
+    unset field has to write the theme's value back — dropping the key would
+    leave the last override in place."""
+    styled = apply(_bar(), ChartStyle(font="serif", font_size=20))
+    reverted = apply(styled, ChartStyle())
+
+    assert reverted["config"]["font"] == FONT
+    assert reverted["config"]["axis"]["labelFontSize"] == THEME["axis"]["labelFontSize"]
+    assert reverted["config"]["legend"]["titleFontSize"] == THEME["legend"]["titleFontSize"]
+    # The theme sets no title size, so reverting removes the key entirely rather
+    # than freezing whatever Vega-Lite's default happens to be.
+    assert "fontSize" not in reverted["config"].get("title", {})
+
+
+def test_typography_is_idempotent():
+    spec = _coloured_bar()
+    style = ChartStyle(font="mono", font_size=18)
+    once = apply(spec, style)
+    assert once == apply(once, style)
+
+
+def test_applying_a_font_size_does_not_mutate_the_shared_theme():
+    """attach() used to hand specs a live reference to THEME's nested dicts, so
+    writing config.axis here would have resized every chart in the process."""
+    before = dict(THEME["axis"])
+    apply(_bar(), ChartStyle(font_size=24))
+    assert THEME["axis"] == before
 
 
 def test_merged_with_keeps_unmentioned_fields():

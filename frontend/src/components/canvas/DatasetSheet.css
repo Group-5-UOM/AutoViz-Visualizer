@@ -17,39 +17,6 @@
   border-bottom: 1px solid var(--border);
 }
 
-.dataset-ribbon-meta-bar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 16px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--border);
-  min-height: 36px;
-}
-
-.dataset-ribbon-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.dataset-ribbon-meta svg {
-  color: var(--accent);
-  flex: none;
-}
-
-.dataset-ribbon-meta strong {
-  color: var(--text-primary);
-  font-weight: 600;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .dataset-ribbon-body {
   display: flex;
   align-items: stretch;
@@ -390,12 +357,4 @@
 .dataset-tool-actions button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-@media (max-width: 900px) {
-  .dataset-ribbon-meta-bar {
-    justify-content: flex-start;
-    padding-top: 8px;
-    padding-bottom: 8px;
-  }
 }
