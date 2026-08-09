@@ -11,9 +11,9 @@ import { DashboardCanvas } from '../components/canvas/DashboardCanvas';
 import { DatasetSheet } from '../components/canvas/DatasetSheet';
 import { StylePanel } from '../components/canvas/StylePanel';
 import {
-  DashboardsPanel,
+  DashboardsModal,
   type SavedDatasetEntry,
-} from '../components/layout/DashboardsPanel';
+} from '../components/layout/DashboardsModal';
 import { DatasetModal } from '../components/layout/DatasetModal';
 import { NameUploadModal, namedCsvFile } from '../components/layout/NameUploadModal';
 import { SaveDashboardModal } from '../components/layout/SaveDashboardModal';
@@ -100,6 +100,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const [styleBusy, setStyleBusy] = useState(false);
   const [chartTypeFilter, setChartTypeFilter] = useState<ChartType[]>([]);
   const [browseOpen, setBrowseOpen] = useState(false);
+  const [dashboardsOpen, setDashboardsOpen] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<File | null>(null);
 
   useEffect(() => {
@@ -136,6 +137,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     threadId,
     isThinking,
     referencedWidgetId,
+    saveStatus,
     referenceWidget,
     selectWidget,
     updateWidget,
@@ -145,7 +147,6 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     saveNow,
     renameDashboard,
     loadDashboardState,
-    replaceMessages,
     resetForDataset,
   } = useDashboard(dataset?.datasetId ?? null, dataset?.fileName ?? null);
 
@@ -159,15 +160,17 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     const datasetId = dataset?.datasetId;
     if (!datasetId || hydratedDatasetId !== datasetId) return;
 
-    saveBoardSession(datasetId, {
-      dashboardId: dashboard.dashboardId ?? null,
+    if (!dashboard.dashboardId) return;
+
+    saveBoardSession(dashboard.dashboardId, {
+      dashboardId: dashboard.dashboardId,
       messages,
     });
 
     // Debounced because a single exchange moves `messages` several times — the
     // user's turn, then the reply — and each save rewrites every row.
     const timer = window.setTimeout(() => {
-      void saveConversation(datasetId, messages, threadId).catch((err) => {
+      void saveConversation(dashboard.dashboardId as string, messages, threadId).catch((err) => {
         // Deliberately quiet: the transcript is on screen and in localStorage
         // either way, and a toast here would interrupt a conversation to report
         // something the next message will retry anyway.
@@ -222,30 +225,30 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
    * conversations table. An empty result is a real answer — a board nobody has
    * chatted on — so it is returned as such rather than treated as a miss.
    */
-  const restoreConversation = async (datasetId: string): Promise<Conversation> => {
+  const restoreConversation = async (dashboardId: string): Promise<Conversation> => {
     try {
-      const stored = await fetchConversation(datasetId);
+      const stored = await fetchConversation(dashboardId);
       if (stored.messages.length > 0) return stored;
     } catch (err) {
       console.warn('Failed to load chat history from server:', err);
     }
-    const session = loadBoardSession(datasetId);
+    const session = loadBoardSession(dashboardId);
     return { messages: session?.messages ?? [], threadId: null };
   };
 
   const handleLoadSavedDataset = async (entry: SavedDatasetEntry) => {
     const nextDatasetId = entry.dataset.dataset_id;
     try {
-      if (dataset?.datasetId && dataset.datasetId !== nextDatasetId) {
+      if (dashboard.dashboardId && dataset?.datasetId && dataset.datasetId !== nextDatasetId) {
         await saveNow();
-        saveBoardSession(dataset.datasetId, {
-          dashboardId: dashboard.dashboardId ?? null,
+        saveBoardSession(dashboard.dashboardId, {
+          dashboardId: dashboard.dashboardId,
           messages,
         });
         // Flush the outgoing board's chat before its messages are replaced —
         // the debounced save in the effect above would otherwise be cancelled
         // by this very switch and lose the last exchange.
-        await saveConversation(dataset.datasetId, messages, threadId).catch((err) => {
+        await saveConversation(dashboard.dashboardId, messages, threadId).catch((err) => {
           console.warn('Failed to save chat history:', err);
         });
         resetForDataset();
@@ -262,21 +265,21 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         columnCount: entry.dataset.column_count,
       });
 
-      const conversation = await restoreConversation(nextDatasetId);
       const title = defaultDashboardName(entry.dataset.logical_name);
-
-      if (entry.dashboard) {
-        await applyLoadedCanvas(
-          entry.dashboard,
-          conversation.messages.length > 0 ? conversation.messages : undefined,
-          conversation.threadId,
-        );
-      } else {
-        renameDashboard(title);
-        if (conversation.messages.length > 0) {
-          replaceMessages(conversation.messages, conversation.threadId);
-        }
+      let activeDashboard = entry.dashboard;
+      
+      if (!activeDashboard) {
+        const { createDashboard } = await import('../lib/dashboards');
+        activeDashboard = await createDashboard(title);
       }
+
+      const conversation = await restoreConversation(activeDashboard.id);
+
+      await applyLoadedCanvas(
+        activeDashboard,
+        conversation.messages.length > 0 ? conversation.messages : undefined,
+        conversation.threadId,
+      );
 
       setHydratedDatasetId(nextDatasetId);
       openAiChat(setActiveItem, setChatOpen);
@@ -292,12 +295,20 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       return;
     }
     if (id === 'data') {
+      setBrowseOpen(true);
+      return;
+    }
+    if (id === 'edit-data') {
       if (!dataset) {
         setBrowseOpen(true);
         return;
       }
-      setActiveItem('data');
+      setActiveItem('edit-data');
       setChatOpen(false);
+      return;
+    }
+    if (id === 'dashboards') {
+      setDashboardsOpen(true);
       return;
     }
     if (activeItem === id) {
@@ -319,12 +330,12 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     setUploadError(null);
     setUploading(true);
     try {
-      if (dataset?.datasetId) {
-        saveBoardSession(dataset.datasetId, {
-          dashboardId: dashboard.dashboardId ?? null,
+      if (dashboard.dashboardId) {
+        saveBoardSession(dashboard.dashboardId, {
+          dashboardId: dashboard.dashboardId,
           messages,
         });
-        await saveConversation(dataset.datasetId, messages, threadId).catch((err) => {
+        await saveConversation(dashboard.dashboardId, messages, threadId).catch((err) => {
           console.warn('Failed to save chat history:', err);
         });
       }
@@ -346,14 +357,9 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         renameDashboard(boardName.trim());
       }
       if (isSwitch) {
-        // Re-uploading a CSV returns the dataset id it already had, so this is
-        // not always a blank board: a file uploaded again in a new browser must
-        // come back with the conversation it already has, not overwrite it with
-        // a fresh welcome message.
-        const conversation = await restoreConversation(result.dataset_id);
-        if (conversation.messages.length > 0) {
-          replaceMessages(conversation.messages, conversation.threadId);
-        }
+        const { createDashboard } = await import('../lib/dashboards');
+        const newDash = await createDashboard(boardName?.trim() || savedName);
+        loadDashboardState(newDash.id, newDash.name, [], [], null);
       }
       setHydratedDatasetId(result.dataset_id);
       openAiChat(setActiveItem, setChatOpen);
@@ -397,7 +403,12 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     } catch {
       /* optional enrichment */
     }
-    await handleLoadSavedDataset({ dataset: selected, dashboard, chartCount });
+    await handleLoadSavedDataset({ 
+      id: dashboard ? dashboard.id : selected.dataset_id, 
+      dataset: selected, 
+      dashboard, 
+      chartCount 
+    });
   };
 
   const handleExportDashboard = async () => {
@@ -425,12 +436,31 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     handleSendMessage(buildChartPrompt(chartType, question), chartType);
   };
 
+  const handleNewDashboard = async () => {
+    if (saveStatus === 'dirty') {
+      const confirmSave = window.confirm('You have unsaved changes. Do you want to save them before creating a new dashboard?');
+      if (confirmSave) {
+        await saveNow();
+      }
+    }
+    
+    if (!dataset) return;
+    
+    try {
+      const { createDashboard } = await import('../lib/dashboards');
+      const newDash = await createDashboard(dataset.fileName);
+      loadDashboardState(newDash.id, newDash.name, [], [], null);
+      openAiChat(setActiveItem, setChatOpen);
+    } catch (err) {
+      console.error('Failed to create new dashboard:', err);
+    }
+  };
+
   const showChat = chatOpen && activeItem === 'ai-chat';
-  const showDashboards = activeItem === 'dashboards';
   const showAdd = activeItem === 'add';
   const showSetup = activeItem === 'setup';
   const showFilter = activeItem === 'filter';
-  const showDatasetSheet = activeItem === 'data' && Boolean(dataset);
+  const showDatasetSheet = activeItem === 'edit-data' && Boolean(dataset);
 
   return (
     <div className="board-app">
@@ -439,12 +469,15 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         sidebarCollapsed={sidebarCollapsed}
         userEmail={userEmail}
         username={username}
-        canExport={dashboard.widgets.length > 0}
-        onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
+        onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
         onRename={() => setRenameOpen(true)}
         onExport={handleExportDashboard}
-        onSetPassword={() => setPasswordOpen(true)}
+        onSave={() => saveNow()}
+        saveStatus={saveStatus}
+        onNewDashboard={handleNewDashboard}
+        onSetPassword={!hasPassword ? () => setPasswordOpen(true) : undefined}
         onLogout={onLogout}
+        canExport={dashboard.widgets.length > 0}
       />
 
       <AccountPasswordModal
@@ -505,12 +538,15 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
           onReference={referenceWidget}
         />
 
-        <DashboardsPanel
-          open={showDashboards}
-          currentDatasetId={dataset?.datasetId}
-          onClose={closeSideTool}
-          onSelect={(entry) => void handleLoadSavedDataset(entry)}
-        />
+        {dashboardsOpen && (
+          <DashboardsModal
+            open={dashboardsOpen}
+            currentDatasetId={dataset?.datasetId}
+            currentDashboardId={dashboard.dashboardId}
+            onClose={() => setDashboardsOpen(false)}
+            onSelect={(entry) => void handleLoadSavedDataset(entry)}
+          />
+        )}
 
         {showDatasetSheet && dataset ? (
           <DatasetSheet
@@ -548,7 +584,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             onCsvSelected={handleCsvPicked}
             onOpenData={() => {
               if (dataset) {
-                setActiveItem('data');
+                setActiveItem('edit-data');
                 setChatOpen(false);
               } else {
                 setBrowseOpen(true);

@@ -1,15 +1,15 @@
-"""Conversation routes — the chat transcript behind a dataset's board.
+"""Conversation routes — the chat transcript behind a dashboard.
 
-    GET    /conversations/{dataset_id}   the caller's transcript for that dataset
-    PUT    /conversations/{dataset_id}   replace it (messages + agent thread_id)
-    DELETE /conversations/{dataset_id}   drop it
+    GET    /conversations/{dashboard_id}   the caller's transcript for that dashboard
+    PUT    /conversations/{dashboard_id}   replace it (messages + agent thread_id)
+    DELETE /conversations/{dashboard_id}   drop it
 
 Charts and layout have been persisted since 002; the chat that produced them was
 browser-local until now, so reopening a board on another machine restored the
 canvas with no history behind it. This is the missing half.
 
 Every lookup is scoped to the caller's user_id, so one user can never read or
-overwrite another's transcript even by naming their dataset id.
+overwrite another's transcript even by naming their dashboard id.
 """
 
 from typing import Any
@@ -54,14 +54,14 @@ class UpdateConversationRequest(BaseModel):
     thread_id: str | None = None
 
 
-def _conversation_dict(conversation: Conversation | None, dataset_id: str) -> dict[str, Any]:
+def _conversation_dict(conversation: Conversation | None, dashboard_id: str) -> dict[str, Any]:
     if conversation is None:
         # A board nobody has chatted on yet is an empty transcript, not a 404 —
         # the client would have to special-case the error to render the same
         # empty panel it renders for a conversation with no messages.
-        return {"dataset_id": dataset_id, "thread_id": None, "messages": [], "updated_at": None}
+        return {"dashboard_id": dashboard_id, "thread_id": None, "messages": [], "updated_at": None}
     return {
-        "dataset_id": conversation.dataset_id,
+        "dashboard_id": conversation.dashboard_id,
         "thread_id": conversation.thread_id,
         "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
         "messages": [
@@ -79,36 +79,33 @@ def _conversation_dict(conversation: Conversation | None, dataset_id: str) -> di
     }
 
 
-def _assert_dataset_visible(db: Session, dataset_id: str, user: User) -> None:
-    """Reject writing a transcript against someone else's dataset.
-
-    A dataset with no metadata row is allowed through: conversations are keyed by
-    user_id regardless, so the worst case is an orphan transcript for a dataset
-    that was deleted — never another user's data.
-    """
-    meta = repository.get_dataset_meta(db, dataset_id)
-    if meta is not None and meta.user_id != user.id:
-        raise HTTPException(status_code=403, detail="You do not own this dataset")
+def _assert_dashboard_visible(db: Session, dashboard_id: str, user: User) -> None:
+    """Reject writing a transcript against someone else's dashboard."""
+    dashboard = repository.get_dashboard(db, dashboard_id)
+    if dashboard is None:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    if dashboard.user_id != user.id:
+        raise HTTPException(status_code=403, detail="You do not own this dashboard")
 
 
-@router.get("/{dataset_id}")
+@router.get("/{dashboard_id}")
 def get_one(
-    dataset_id: str,
+    dashboard_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _assert_dataset_visible(db, dataset_id, user)
-    return _conversation_dict(repository.get_conversation(db, user.id, dataset_id), dataset_id)
+    _assert_dashboard_visible(db, dashboard_id, user)
+    return _conversation_dict(repository.get_conversation(db, user.id, dashboard_id), dashboard_id)
 
 
-@router.put("/{dataset_id}")
+@router.put("/{dashboard_id}")
 def update(
-    dataset_id: str,
+    dashboard_id: str,
     body: UpdateConversationRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _assert_dataset_visible(db, dataset_id, user)
+    _assert_dashboard_visible(db, dashboard_id, user)
 
     if len(body.messages) > MAX_MESSAGES:
         raise HTTPException(
@@ -126,7 +123,7 @@ def update(
     conversation = repository.set_conversation(
         db,
         user.id,
-        dataset_id,
+        dashboard_id,
         messages=[
             {
                 "client_id": m.client_id,
@@ -143,16 +140,16 @@ def update(
         ],
         thread_id=body.thread_id,
     )
-    return _conversation_dict(conversation, dataset_id)
+    return _conversation_dict(conversation, dashboard_id)
 
 
-@router.delete("/{dataset_id}")
+@router.delete("/{dashboard_id}")
 def delete(
-    dataset_id: str,
+    dashboard_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    conversation = repository.get_conversation(db, user.id, dataset_id)
+    conversation = repository.get_conversation(db, user.id, dashboard_id)
     if conversation is not None:
         repository.delete_conversation(db, conversation)
-    return {"removed": True, "dataset_id": dataset_id}
+    return {"removed": True, "dashboard_id": dashboard_id}

@@ -1,7 +1,14 @@
 services:
   db:
     image: postgres:16
-    env_file: .env
+    environment:
+      POSTGRES_USER: autoviz
+      POSTGRES_PASSWORD: autoviz
+      POSTGRES_DB: autoviz
+    ports:
+      - "5434:5432"
+    env_file:
+      - .env
     volumes:
       - local_pgdata:/var/lib/postgresql/data
     restart: unless-stopped
@@ -13,6 +20,8 @@ services:
 
   api:
     build: ./backend
+    environment:
+      DATABASE_URL: postgresql://autoviz:autoviz@db:5432/autoviz
     env_file: .env
     depends_on:
       db:

@@ -1,12 +1,12 @@
 """Conversation + chat message models — the transcript behind a dataset's board.
 
-One conversation per (user, dataset), mirroring the dataset-centric board the UI
+One conversation per (user, dashboard), mirroring the dashboard-centric board the UI
 presents. It exists so ``thread_id`` has somewhere to live: the agent keys
 refinements and paused runs off that id, and without it a reopened board can show
 its history but not continue it.
 
-``dataset_id`` is the registry id (the string the frontend calls ``datasetId``),
-not ``datasets.id`` — same convention as ``SavedChart.dataset_id``, so no FK.
+``dashboard_id`` is the registry id (the string the frontend calls ``dashboardId``),
+not ``dashboards.id`` — same convention as ``SavedChart.dataset_id``, so no FK.
 """
 
 import uuid
@@ -30,13 +30,13 @@ from autoviz.core.database import Base
 
 class Conversation(Base):
     __tablename__ = "conversations"
-    __table_args__ = (UniqueConstraint("user_id", "dataset_id", name="uq_conversation_user_dataset"),)
+    __table_args__ = (UniqueConstraint("user_id", "dashboard_id", name="uq_conversation_user_dashboard"),)
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(
         String, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    dataset_id = Column(String, index=True, nullable=False)
+    dashboard_id = Column(String, ForeignKey("dashboards.id", ondelete="CASCADE"), index=True, nullable=False)
     # The agent thread this board was last talking on. Null until the first run
     # returns one, and deliberately nullable forever: a thread the backend has
     # forgotten is not an error, it just means the next message starts fresh.
