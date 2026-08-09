@@ -145,11 +145,24 @@ def from_preprocessing(report: list[dict[str, Any]], input_rows: int) -> list[No
 
         if name == "fill_nulls":
             strategy = entry.get("strategy")
+            within = entry.get("by") or []
+            scope = f" within each {_columns_phrase(list(within))}" if within else ""
             note = (
                 f"{affected} of {input_rows} values in '{_pretty(str(col))}' "
-                f"({_pct(fraction)}) were filled in, not measured."
+                f"({_pct(fraction)}) were filled in{scope}, not measured."
             )
-            technique = f"{strategy} imputation on '{col}'"
+            still = int(entry.get("rows_still_null") or 0)
+            if still:
+                # A group with no values at all has nothing to impute from, so
+                # those rows stay missing. Silence here would let the reader
+                # assume the column is now complete.
+                note += (
+                    f" {still} could not be filled — their group has no recorded "
+                    f"{_pretty(str(col))} at all — and remain missing."
+                )
+            technique = f"{strategy} imputation on '{col}'" + (
+                f" by {list(within)}" if within else ""
+            )
         elif name == "drop_nulls":
             note = (
                 f"{affected} row(s) with no {_columns_phrase(list(cols))} "
@@ -183,6 +196,14 @@ def from_preprocessing(report: list[dict[str, Any]], input_rows: int) -> list[No
                 f"{_columns_phrase(list(cols))} so the values could be counted as numbers."
             )
             technique = f"parse_number on {list(cols)}"
+        elif name == "nullify_values":
+            shown = ", ".join(str(v) for v in (entry.get("values") or []))
+            note = (
+                f"{affected} value(s) in '{_pretty(str(col))}' ({_pct(fraction)}) were "
+                f"the placeholder(s) {shown} and are now treated as missing rather "
+                "than counted as numbers."
+            )
+            technique = f"nullify_values on '{col}'"
         elif name == "pivot_longer":
             # No percentage: this op multiplies rows, so "affected / input_rows"
             # is above 100% and reads as a bug rather than a reshape.
@@ -341,6 +362,41 @@ def from_unasked_proposals(questions: list[str]) -> list[Notice]:
             detail={"unasked": len(questions)},
         )
     ]
+
+
+def from_quality_issues(issues: list[dict[str, Any]]) -> list[Notice]:
+    """Findings that are worth reporting but that nothing can offer to fix.
+
+    A column of email addresses with forty malformed entries is a real defect and
+    there is no repair to propose: the grammar cannot invent the right address,
+    and dropping the rows is a decision about the analysis, not about the data.
+    So it is stated and left alone — which is also what Tableau's data roles do,
+    minus the pretence that flagging is fixing.
+    """
+    out: list[Notice] = []
+    for issue in issues:
+        if issue.get("kind") != "invalid_domain_values":
+            continue
+        column = str(issue.get("column") or "")
+        domain = str((issue.get("detail") or {}).get("domain") or "expected format")
+        affected = int(issue.get("affected") or 0)
+        if not affected:
+            continue
+        out.append(
+            Notice(
+                kind="invalid_domain_values",
+                severity=ADVISORY,
+                note=(
+                    f"{affected} value(s) in '{_pretty(column)}' are not a valid "
+                    f"{domain}, though the rest of the column is. They were left as "
+                    "they are and still count toward any total of rows."
+                ),
+                column=neutralize_text(column),
+                technique=f"domain check: {domain}",
+                detail={"affected": affected, "domain": domain},
+            )
+        )
+    return out
 
 
 def from_row_ceiling(row_count: int, ceiling: int) -> list[Notice]:

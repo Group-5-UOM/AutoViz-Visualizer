@@ -24,7 +24,9 @@ analysis_plan JSON structure (lists may be empty/omitted; dataset_id and intent 
     {"op": "split_column", "column": "col", "separator": "-", "into": ["new_col", ...]},
     // Value-changing — alter values or which rows survive.
     {"op": "drop_nulls", "columns": ["col", ...], "how": "any"|"all"},
-    {"op": "fill_nulls", "column": "col", "strategy": "constant"|"median"|"mode", "value": <scalar for constant>},
+    {"op": "fill_nulls", "column": "col", "strategy": "constant"|"median"|"mode",
+     "value": <scalar for constant>, "by": ["col", ...]},
+    {"op": "nullify_values", "column": "col", "values": [<scalar>, ...]},
     {"op": "drop_exact_duplicates"},
     {"op": "clean_categories", "column": "col", "mapping": {"old": "new", ...}},
     {"op": "group_rare_categories", "column": "col", "top_n": <int>, "other_label": "Other",
@@ -93,6 +95,15 @@ Preprocessing (explicit, never silent — the source CSV is never modified):
 - drop_nulls: how "any" drops a row if ANY listed column is null; "all" only if all are.
 - fill_nulls strategy: "median" (numeric columns only), "mode" (categorical/string or boolean
   columns only), "constant" (any type — requires a "value"). Mean imputation is not available.
+  Set "by" to compute the median within each group instead of over the whole column — use it
+  whenever you are charting that same grouping, because a global median pulls every group toward
+  the middle and understates exactly the spread the chart is meant to show. "by" works with
+  median only. Rows in a group with no recorded values stay missing, and that is disclosed.
+- nullify_values reclassifies placeholder codes as missing: 999, -1, "unknown". Use it when a
+  numeric column carries a code for "not recorded" — counting 999 as a measurement corrupts every
+  average over that column, and no other op can turn a value into a null (drop_nulls and
+  fill_nulls both need it to be null already). Only ever use it when the user confirmed, or the
+  quality scan proposed it.
 - drop_exact_duplicates removes fully identical rows. Only ever use it when the user explicitly
   asks — apparently-identical rows can be legitimate repeated events.
 - Clean ONLY the columns the current analysis needs. Ignore nulls in unrelated columns.

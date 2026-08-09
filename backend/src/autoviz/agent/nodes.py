@@ -291,6 +291,10 @@ def assess_quality(
     # including the one that asks a question, because the budget was already
     # spent by the time we got here.
     owed = notices_svc.from_dropped_repairs(dropped)
+    # Findings with no repair to offer — malformed emails and the like. They
+    # produce no proposal, so without this they would be detected and then
+    # silently discarded, which is worse than not looking.
+    owed += notices_svc.from_quality_issues([i.to_wire() for i in issues])
 
     if not pending or state.get("cleaning_prompts", 0) >= MAX_CLEANING_PROMPTS:
         # Anything still pending here is a decision nobody will ever be asked

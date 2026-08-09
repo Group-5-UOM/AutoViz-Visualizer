@@ -13,6 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from autoviz.schema.allowlists import (
     MAX_CATEGORY_MAPPING,
+    MAX_GROUP_BY,
+    MAX_NULLIFY_VALUES,
     MAX_PREPROCESSING_COLUMNS,
     MAX_PREPROCESSING_STEPS,
     MAX_TOP_CATEGORIES,
@@ -168,6 +170,18 @@ class FillNulls(_PreprocessOpBase):
     # median/mode, which compute the fill value from the data. Arity and
     # type-compatibility are enforced in services/validation.py.
     value: Any = None
+    # Compute the fill within each group rather than over the whole column.
+    #
+    # A global median flattens exactly the variance a grouped chart exists to
+    # show: filling missing salaries with the company-wide median pulls every
+    # department toward the middle, and the bar chart of "salary by department"
+    # then understates the spread it was drawn to display. Filling within the
+    # department preserves it.
+    #
+    # median only — see services/validation.py. A deterministic per-group mode
+    # needs a second window pass, and an arbitrary one is what this codebase
+    # already refuses elsewhere.
+    by: list[str] = Field(default_factory=list, max_length=MAX_GROUP_BY)
 
     # Imputation keeps every row but substitutes values, so it never trips the
     # row-removal gate — which is exactly why it needs the VALUE_CHANGING tier to
@@ -176,7 +190,9 @@ class FillNulls(_PreprocessOpBase):
     risk: ClassVar[Risk] = Risk.VALUE_CHANGING
 
     def columns_touched(self) -> set[str]:
-        return {self.column}
+        # The grouping columns decide which value each row is filled with, so
+        # they are read by the op and must be checked like any other reference.
+        return {self.column, *self.by}
 
 
 class DropExactDuplicates(_PreprocessOpBase):
@@ -357,6 +373,34 @@ class CleanCategories(_PreprocessOpBase):
         return {self.column}
 
 
+class NullifyValues(_PreprocessOpBase):
+    """Treat specific values as missing: `999`, `-1`, `"unknown"`.
+
+    The gap this closes is that a sentinel is *worse* than a null. A null is
+    skipped by every aggregate and disclosed when it matters; a 999 standing for
+    "not recorded" is averaged in, and the answer is wrong with no sign of it.
+    Nothing else in the grammar could turn one into the other — ``drop_nulls``
+    and ``fill_nulls`` both need the value to already be null.
+
+    VALUE_CHANGING, and asked about rather than applied, because only the person
+    who knows the dataset can say whether 999 is a code or a measurement. The
+    scanner is confident enough to raise the question and never confident enough
+    to answer it.
+    """
+
+    op: Literal["nullify_values"]
+    column: str
+    # Bound as parameters, so these are inert data whatever they contain.
+    values: list[Any] = Field(min_length=1, max_length=MAX_NULLIFY_VALUES)
+
+    # Every row survives; some of its cells become absent.
+    removes_rows: ClassVar[bool] = False
+    risk: ClassVar[Risk] = Risk.VALUE_CHANGING
+
+    def columns_touched(self) -> set[str]:
+        return {self.column}
+
+
 class RankBy(_StrictModel):
     """The measure that decides which categories `top_n` keeps.
 
@@ -491,6 +535,7 @@ PreprocessOp = Annotated[
         ParseNumber,
         CleanCategories,
         GroupRareCategories,
+        NullifyValues,
         PivotLonger,
         SplitColumn,
     ],

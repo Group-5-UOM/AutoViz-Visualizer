@@ -291,6 +291,33 @@ def _apply_preprocessing(
                 "rows_affected": int(prev_rows - after), "confirmation_required": False,
             })
             prev_rows, current = after, name
+        elif op.op == "fill_nulls" and op.by:
+            # Group-wise imputation. Computed as a window rather than as one
+            # value, so each row is filled from its own group: a missing salary
+            # takes its department's median, not the company's.
+            col = _q(op.column)
+            partition = ", ".join(_q(c) for c in op.by)
+            nulls = con.execute(
+                _with(cte_defs)
+                + f"SELECT count(*) FROM {current} WHERE {col} IS NULL",
+                list(params),
+            ).fetchone()[0]
+            expr = f"coalesce({col}, median({col}) OVER (PARTITION BY {partition}))"
+            cte_defs.append(f"{name} AS (SELECT * REPLACE ({expr} AS {col}) FROM {current})")
+            # A group that is entirely null has no median, so those rows stay
+            # null. That is the honest outcome — there is nothing to impute from
+            # — but it means "filled" and "was null" are different counts, and
+            # the report has to state the one that actually happened.
+            remaining = con.execute(
+                _with(cte_defs) + f"SELECT count(*) FROM {name} WHERE {col} IS NULL",
+                list(params),
+            ).fetchone()[0]
+            report.append({
+                "operation": "fill_nulls", "column": op.column, "strategy": op.strategy,
+                "by": list(op.by), "rows_affected": int(nulls - remaining),
+                "rows_still_null": int(remaining), "confirmation_required": False,
+            })
+            current = name
         elif op.op == "fill_nulls":  # imputes, never changes the row count
             col = _q(op.column)
             nulls = con.execute(
@@ -476,6 +503,27 @@ def _apply_preprocessing(
                 "operation": "parse_number", "columns": targets,
                 "decimal": op.decimal, "thousands": op.thousands,
                 "rows_affected": converted, "confirmation_required": False,
+            })
+            current = name
+        elif op.op == "nullify_values":
+            col = _q(op.column)
+            placeholders = ", ".join("?" for _ in op.values)
+            # Counted before the CTE is added, while params still line up.
+            hits = con.execute(
+                _with(cte_defs)
+                + f"SELECT count(*) FROM {current} WHERE {col} IN ({placeholders})",
+                list(params) + list(op.values),
+            ).fetchone()[0]
+            cte_defs.append(
+                f"{name} AS (SELECT * REPLACE "
+                f"(CASE WHEN {col} IN ({placeholders}) THEN NULL ELSE {col} END AS {col}) "
+                f"FROM {current})"
+            )
+            params.extend(op.values)
+            report.append({
+                "operation": "nullify_values", "column": op.column,
+                "values": [_sanitize_scalar(v) for v in op.values],
+                "rows_affected": int(hits), "confirmation_required": False,
             })
             current = name
         elif op.op == "pivot_longer":

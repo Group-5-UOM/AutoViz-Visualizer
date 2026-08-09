@@ -127,6 +127,11 @@ MAX_FILL_STRING_LEN = 256
 # bounds both the generated SQL and how much relabelling can happen in one
 # unreviewable step.
 MAX_CATEGORY_MAPPING = 50
+# How many distinct values one nullify_values op may reclassify as missing. Small
+# on purpose: this op says "these codes mean nothing was recorded", and a list
+# long enough to need scrolling is a category merge wearing a disguise.
+MAX_NULLIFY_VALUES = 20
+
 # Ceiling on `group_rare_categories.top_n`. Past this the chart is unreadable
 # anyway, which is the problem the op exists to solve.
 MAX_TOP_CATEGORIES = 50

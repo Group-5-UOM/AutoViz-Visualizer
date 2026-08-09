@@ -122,6 +122,21 @@ def _fill_value_errors(value: Any, col_type: str, column: str) -> list[str]:
     return errs
 
 
+def _value_fits_column(value: Any, col_type: str) -> bool:
+    """Could this literal ever appear in a column of this type?
+
+    A guard against a silent no-op rather than a safety check: asking to nullify
+    the string "999" in a numeric column matches nothing, runs cleanly, and
+    leaves the user believing the sentinel was dealt with.
+    """
+    is_bool = isinstance(value, bool)
+    if col_type == "number":
+        return isinstance(value, (int, float)) and not is_bool
+    if col_type == "boolean":
+        return is_bool
+    return isinstance(value, str)
+
+
 def _validate_preprocessing(
     plan: AnalysisPlan, schema: dict[str, str], fully_null: set[str], errors: list[str]
 ) -> None:
@@ -169,6 +184,26 @@ def _validate_preprocessing(
                     f"preprocessing: conflicting fill_nulls and drop_nulls on column '{col}'"
                 )
             fill_cols.add(col)
+            for group_col in op.by:
+                if group_col not in schema:
+                    errors.append(
+                        f"preprocessing fill_nulls on '{col}': grouping column "
+                        f"'{group_col}' does not exist"
+                    )
+                elif group_col == col:
+                    errors.append(
+                        f"preprocessing fill_nulls on '{col}': cannot group by the same "
+                        "column being filled"
+                    )
+            if op.by and op.strategy != "median":
+                # A per-group mode needs a second window pass to stay
+                # deterministic on ties, and an arbitrary tie-break is what this
+                # codebase refuses everywhere else. Say so rather than silently
+                # falling back to a global fill, which would look like it worked.
+                errors.append(
+                    f"preprocessing fill_nulls on '{col}': 'by' is supported for the "
+                    f"median strategy only (got '{op.strategy}')"
+                )
             if col_type is not None:
                 if op.strategy in NUMERIC_FILL_STRATEGIES and col_type != "number":
                     errors.append(
@@ -294,6 +329,29 @@ def _validate_preprocessing(
                             f"{op.rank_by.fn} requires a numeric column "
                             f"('{op.rank_by.column}' is {rank_type})"
                         )
+        elif op.op == "nullify_values":
+            col_type = schema.get(op.column)
+            if col_type is None:
+                errors.append(
+                    f"preprocessing nullify_values: column '{op.column}' does not exist"
+                )
+            for value in op.values:
+                if isinstance(value, (list, dict)):
+                    errors.append(
+                        f"preprocessing nullify_values on '{op.column}': values must be "
+                        "scalars"
+                    )
+                    break
+            # Not pattern-matched for code: these are bound as parameters, so a
+            # value that looks like SQL is simply a value that will never match.
+            if col_type is not None:
+                for value in op.values:
+                    if not _value_fits_column(value, col_type):
+                        errors.append(
+                            f"preprocessing nullify_values on '{op.column}': "
+                            f"'{value}' cannot occur in a {col_type} column"
+                        )
+                        break
         elif op.op == "pivot_longer":
             folded_types: set[str] = set()
             for col in op.columns:
