@@ -192,8 +192,12 @@
   cursor: default;
 }
 
-/* Reserve space for the pinned edit bar so the chart never hides under it. */
-.chart-widget-body:not(.is-table) {
+/* Reserve space for the pinned edit bar so the chart never hides under it —
+   only while that bar is actually mounted. Reserving it unconditionally left a
+   56px dead strip under every chart, which on an arc chart also pushed the
+   centre off, since the mark centres in whatever plot box is left. The chart
+   reflows when the bar opens; the ResizeObserver above already handles that. */
+.chart-widget-body.is-editing {
   padding-bottom: 56px;
 }
 

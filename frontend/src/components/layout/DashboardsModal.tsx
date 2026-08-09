@@ -3,6 +3,7 @@ import { Calendar, Database, FileSpreadsheet, Layers, LayoutDashboard, X, BarCha
 import { listDatasets, type DatasetMetadata } from '../../lib/datasets';
 import { getChart, listDashboards, deleteDashboard, type DashboardResult, type SavedChartResult } from '../../lib/dashboards';
 import { inferChartType } from '../../lib/chartType';
+import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import './DashboardsModal.css';
 
 export interface SavedDatasetEntry {
@@ -104,14 +105,7 @@ export function DashboardsModal({
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose]);
+  useEscapeToClose(onClose, open);
 
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === overlayRef.current) onClose();

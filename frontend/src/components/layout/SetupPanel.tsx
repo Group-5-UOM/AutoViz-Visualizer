@@ -9,10 +9,10 @@ import {
   Grid3x3,
   Box,
   Donut,
-  Pencil,
   SendHorizontal,
-  X,
 } from 'lucide-react';
+import { useEscapeToClose } from '../../hooks/useEscapeToClose';
+import { MessageContent } from '../chat/MessageContent';
 import type { ChartType, ChatMessage } from '../../types/dashboard';
 import './ToolSidePanel.css';
 
@@ -63,6 +63,8 @@ export function SetupPanel({
     el.scrollTop = el.scrollHeight;
   }, [messages, isThinking, open]);
 
+  useEscapeToClose(onClose, open);
+
   if (!open) return null;
 
   const selectedMeta = CHART_OPTIONS.find((c) => c.id === selected) ?? CHART_OPTIONS[0];
@@ -78,16 +80,6 @@ export function SetupPanel({
 
   return (
     <section className="tool-panel tool-panel--setup" aria-label="Chart setup">
-      <header className="tool-panel-header">
-        <div className="tool-panel-header-title">
-          <Pencil size={16} />
-          <span>Setup</span>
-        </div>
-        <button type="button" className="tool-panel-close" onClick={onClose} aria-label="Close setup panel">
-          <X size={16} />
-        </button>
-      </header>
-
       <div className="tool-panel-body tool-panel-body--setup">
         <p className="tool-panel-copy">
           Choose a chart type, then ask what to plot. The bot will generate that chart on the canvas.
@@ -144,7 +136,7 @@ export function SetupPanel({
                     key={msg.id}
                     className={`tool-setup-bubble tool-setup-bubble--${msg.role}`}
                   >
-                    {msg.content}
+                    <MessageContent content={msg.content} role={msg.role} />
                   </div>
                 ))}
                 {isThinking && (

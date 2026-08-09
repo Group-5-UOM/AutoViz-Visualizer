@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { AtSign, BarChart3, SendHorizontal, Sparkles, X } from 'lucide-react';
+import { AtSign, BarChart3, SendHorizontal, X } from 'lucide-react';
+import { useEscapeToClose } from '../../hooks/useEscapeToClose';
+import { MessageContent } from './MessageContent';
 import type { ChartWidget, ChatMessage } from '../../types/dashboard';
 import './ChatPanel.css';
 
@@ -55,6 +57,8 @@ export function ChatPanel({
     el.scrollTop = el.scrollHeight;
   }, [messages, isThinking, open]);
 
+  useEscapeToClose(onClose, open);
+
   if (!open) return null;
 
   const canSend = (text: string) => Boolean(text.trim()) && !isThinking && !disabled;
@@ -73,21 +77,6 @@ export function ChatPanel({
 
   return (
     <section className="chat-panel" aria-label="AI chat">
-      <header className="chat-header">
-        <div className="chat-header-title">
-          <Sparkles size={16} />
-          <span>AI Chat</span>
-        </div>
-        <button
-          type="button"
-          className="chat-close-btn"
-          onClick={onClose}
-          aria-label="Close chat"
-        >
-          <X size={16} />
-        </button>
-      </header>
-
       <div className="chat-messages" ref={listRef}>
         {messages.map((msg) => (
           <article
@@ -100,7 +89,7 @@ export function ChatPanel({
                 {msg.referencedTitle}
               </p>
             )}
-            <p>{msg.content}</p>
+            <MessageContent content={msg.content} role={msg.role} />
             {msg.options && msg.options.length > 0 && (
               <div className="chat-options">
                 {msg.options.map((option) => (

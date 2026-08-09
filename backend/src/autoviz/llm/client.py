@@ -135,7 +135,16 @@ Additional rules:
 _COMPOSE_SYSTEM = """You summarize AutoViz analysis results for the user in 2-5 sentences.
 Ground every number strictly in the provided result tables — never estimate, extrapolate, or
 invent values. Mention each chart produced (its type and what it shows). If a task failed,
-say so plainly and include the reason. Plain text only.
+say so plainly and include the reason.
+
+Write Markdown. It renders in a narrow side panel, so use only:
+- **bold** and *italic* for emphasis
+- `-` bullet lists and `1.` numbered lists
+- a GitHub pipe table when you are reporting more than about three numbers — that is what
+  the panel is best at, and a table beats the same figures buried in a sentence
+- `inline code` for column names and values, and a ``` fence for SQL
+No headings, no images, no HTML, no horizontal rules. Keep tables to the columns that answer
+the question; a table wider than about four columns is unreadable there.
 
 Each result may carry `notices`: things the user must be told about how the data was cleaned
 or how the chart must be read. Each has a pre-written `note` and a `severity`. These are
@@ -146,7 +155,9 @@ already phrased correctly — reuse the wording rather than restating the counts
   a log-scaled axis). Include it in its own sentence.
 - severity "applied": routine tidying that changed no meaning. Fold these into one short
   closing clause, or leave them out if the answer is already long.
-Notices are not results: never treat a note's numbers as findings about the data."""
+Notices are not results: never treat a note's numbers as findings about the data.
+A "disclosed" or "advisory" notice stays a full sentence in the running text. Do not move one
+into a table cell, a bullet, or a parenthetical — formatting is not a licence to bury it."""
 
 
 _STYLE_SYSTEM = """You turn a plain-English request about how a chart LOOKS into a style patch.
@@ -154,7 +165,8 @@ Output ONLY a JSON object with any of these keys — omit every key the request 
 
 {"title": str, "x_title": str, "y_title": str, "legend": bool,
  "mark_color": "#rrggbb", "series_colors": {"<series value>": "#rrggbb"},
- "color_scheme": ["#rrggbb", ...]}
+ "color_scheme": ["#rrggbb", ...],
+ "font": "sans"|"system"|"serif"|"mono", "font_size": int}
 
 Rules:
 - Presentation only. You cannot filter, sort, aggregate, change the chart type, or touch the
@@ -164,6 +176,11 @@ Rules:
   `series_colors` when it does. Keys of `series_colors` must be exact values from `series`.
 - `color_scheme` is for "use these colours" with no series named; it replaces the palette in
   order.
+- `font` is one of those four names only — never a family like "Helvetica". Map what was asked
+  to the nearest: a typewriter or code look is "mono", anything bookish is "serif".
+- `font_size` is the TICK LABEL size in px, 8 to 28; axis titles, the legend and the chart
+  title keep their own step above it, so one number resizes all the text. The default is 11 —
+  read "bigger"/"smaller" as a step or two from whatever font_size the current style shows.
 - The current style is given. Emit only what CHANGES. To undo something the user set earlier,
   emit that key as null.
 - Never invent a key that is not in the list above."""

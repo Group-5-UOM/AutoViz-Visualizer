@@ -319,7 +319,10 @@ export function ChartWidgetCard({
         </div>
       </header>
 
-      <div className="chart-widget-body" ref={chartRef} />
+      <div
+        className={`chart-widget-body ${editing ? 'is-editing' : ''}`}
+        ref={chartRef}
+      />
 
       {hasBrush(brush) && rows && (
         <p className="chart-brush-status">
