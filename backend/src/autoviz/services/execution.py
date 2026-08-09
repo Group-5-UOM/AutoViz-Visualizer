@@ -1012,6 +1012,95 @@ def materialize_cleaned_dataset(
     }
 
 
+def cleaning_recipe(dataset_id: str, registry: DatasetRegistry = REGISTRY) -> dict[str, Any]:
+    """The cleaning block that produced a materialised dataset, if it is one.
+
+    Reads it back out of the lineage stored on the profile, so a recipe survives
+    eviction and a restart along with the dataset it describes.
+    """
+    record = registry.get(dataset_id)
+    if record is None:
+        return make_error(UNKNOWN_DATASET, f"Unknown dataset_id: {dataset_id}")
+    lineage = (record.profile or {}).get("lineage") or {}
+    ops = lineage.get("preprocessing") or []
+    if not ops:
+        return make_error(
+            INVALID_PLAN,
+            f"Dataset {dataset_id} was not produced by cleaning, so it carries no "
+            "recipe to reuse.",
+            hint="Pass the id of a dataset created by materialize_cleaned_dataset.",
+        )
+    return {
+        "dataset_id": dataset_id,
+        "version_id": lineage.get("version_id"),
+        "parent_id": lineage.get("parent_id"),
+        "preprocessing": list(ops),
+    }
+
+
+def apply_cleaning_recipe(
+    recipe_dataset_id: str,
+    target_dataset_id: str,
+    registry: DatasetRegistry = REGISTRY,
+    approved_preprocessing_hash: str | None = None,
+    cancel_event: threading.Event | None = None,
+) -> dict[str, Any]:
+    """Clean a new upload exactly the way an earlier one was cleaned.
+
+    ``preprocessing_version`` already makes a cleaning block reproducible — the
+    plan is the recipe and the source is immutable — but there was no way to
+    point an existing block at *different rows*. Which is the actual monthly
+    task: the same report arrives again and has to be prepared the same way.
+
+    Two properties matter more than the convenience:
+
+    * **Column compatibility is checked first, and by name.** A recipe run
+      against a file whose columns were renamed must fail loudly. Silently
+      cleaning nothing would produce a dataset that looks prepared and is raw.
+    * **Consent does not transfer.** The approval token is bound to
+      ``(dataset_id, ops)``, so a row removal that was fine last month re-gates
+      against this month's file, where the same rule may cut 90%. That falls out
+      of ``preprocessing_version`` rather than being re-implemented here.
+    """
+    recipe = cleaning_recipe(recipe_dataset_id, registry)
+    if "error" in recipe:
+        return recipe
+    target = registry.get(target_dataset_id)
+    if target is None:
+        return make_error(UNKNOWN_DATASET, f"Unknown dataset_id: {target_dataset_id}")
+
+    ops = recipe["preprocessing"]
+    try:
+        # Structural parse only — this says what columns the block names, before
+        # anything is checked against the target.
+        stub = AnalysisPlan.model_validate(
+            {"dataset_id": target_dataset_id, "intent": "comparison", "preprocessing": ops}
+        )
+    except Exception as exc:
+        return make_error(INVALID_PLAN, f"The stored recipe is not a valid cleaning block: {exc}")
+
+    missing = sorted(c for c in stub.preprocessing_columns() if c not in target.schema)
+    if missing:
+        return make_error(
+            INVALID_PLAN,
+            f"This cleaning recipe expects column(s) {', '.join(missing)}, which "
+            f"dataset {target_dataset_id} does not have.",
+            hint="The two files need the same column names for a recipe to transfer.",
+        )
+
+    result = materialize_cleaned_dataset(
+        target_dataset_id,
+        ops,
+        registry,
+        approved_preprocessing_hash=approved_preprocessing_hash,
+        cancel_event=cancel_event,
+    )
+    if "error" in result:
+        return result
+    # Which recipe this came from, distinct from `parent_id` (the rows' source).
+    return {**result, "recipe_from": recipe_dataset_id}
+
+
 def execute_analysis(
     dataset_id: str,
     analysis_plan: dict[str, Any],

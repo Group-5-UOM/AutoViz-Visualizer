@@ -75,6 +75,9 @@ class MaterializeCleanedOutput(_Strict):
     input_rows: int
     output_rows: int
     preprocessing: list[dict[str, Any]] = []
+    # Set only by apply_cleaning_recipe: the dataset whose stored cleaning block
+    # was reused. Distinct from parent_id, which is where these *rows* came from.
+    recipe_from: str | None = None
 
 
 class RegisterDatasetOutput(_Strict):

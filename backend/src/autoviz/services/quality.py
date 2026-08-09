@@ -225,7 +225,26 @@ def scan(record: DatasetRecord, columns: set[str] | None = None) -> list[Quality
     checks, because whitespace and case variants are not in the profile — but
     reuses the profile's null and duplicate counts, which are already computed at
     registration and would otherwise be a second full pass.
+
+    Memoized per column scope on the record. The agent scans once per pass and
+    re-enters the node for every cleaning question it asks, so the same work was
+    being repeated several times a turn — a third of a second each on a 200k-row
+    frame. Sound because the frame is immutable; see ``DatasetRecord.scan_cache``.
     """
+    key = None if columns is None else frozenset(columns)
+    cached = record.scan_cache.get(key)
+    if cached is not None:
+        return list(cached)
+    found = _scan_uncached(record, columns)
+    record.scan_cache[key] = found
+    # Copied out so a caller that mutates the list cannot corrupt the next
+    # caller's findings.
+    return list(found)
+
+
+def _scan_uncached(
+    record: DatasetRecord, columns: set[str] | None = None
+) -> list[QualityIssue]:
     df = record.df
     total = len(df)
     if total == 0:
