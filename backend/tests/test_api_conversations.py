@@ -153,8 +153,8 @@ def test_conversations_are_scoped_to_their_owner(api_db):
     # Creating another client registers a different user
     intruder, _ = _client_with_dashboard("intruder@example.com")
     
-    assert intruder.get(f"/conversations/{dashboard_id}").status_code == 404
-    assert intruder.put(f"/conversations/{dashboard_id}", json={"messages": []}).status_code == 404
+    assert intruder.get(f"/conversations/{dashboard_id}").status_code == 403
+    assert intruder.put(f"/conversations/{dashboard_id}", json={"messages": []}).status_code == 403
     
     # And writing must not have overwritten what the owner stored.
     assert len(owner.get(f"/conversations/{dashboard_id}").json()["messages"]) == 2
