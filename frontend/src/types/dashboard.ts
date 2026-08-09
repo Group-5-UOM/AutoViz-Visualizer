@@ -5,6 +5,7 @@ export type SidebarItemId =
   | 'ai-chat'
   | 'dashboards'
   | 'data'
+  | 'edit-data'
   | 'settings';
 
 export type ChartType =

@@ -93,3 +93,7 @@ export async function listDashboards(): Promise<{ dashboards: DashboardResult[] 
 export async function getDashboard(dashboardId: string): Promise<DashboardResult> {
   return apiRequest<DashboardResult>(`/dashboards/${dashboardId}`, { method: 'GET' });
 }
+
+export async function deleteDashboard(dashboardId: string): Promise<{ removed: boolean; id: string }> {
+  return apiRequest<{ removed: boolean; id: string }>(`/dashboards/${dashboardId}`, { method: 'DELETE' });
+}

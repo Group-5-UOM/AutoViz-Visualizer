@@ -1,4 +1,4 @@
-import { Download, KeyRound, LogOut, Menu, PanelLeft, Share2 } from 'lucide-react';
+import { Download, KeyRound, LogOut, Menu, PanelLeft, Share2, Save, FilePlus2 } from 'lucide-react';
 import './TopBar.css';
 
 interface TopBarProps {
@@ -9,6 +9,9 @@ interface TopBarProps {
   onToggleSidebar: () => void;
   onRename: () => void;
   onExport: () => void;
+  onSave?: () => void;
+  saveStatus?: 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+  onNewDashboard?: () => void;
   onSetPassword?: () => void;
   onLogout?: () => void | Promise<void>;
   /** Used to disable Export when the canvas has no charts. */
@@ -23,6 +26,9 @@ export function TopBar({
   onToggleSidebar,
   onRename,
   onExport,
+  onSave,
+  saveStatus,
+  onNewDashboard,
   onSetPassword,
   onLogout,
   canExport = true,
@@ -64,6 +70,36 @@ export function TopBar({
           <Share2 size={15} />
           Share
         </button>
+        {onNewDashboard && (
+          <button
+            type="button"
+            className="topbar-primary-btn"
+            style={{ backgroundColor: '#3b82f6', marginRight: '8px' }}
+            onClick={onNewDashboard}
+            title="Create a new dashboard for this dataset"
+          >
+            <FilePlus2 size={15} />
+            New
+          </button>
+        )}
+        {onSave && (
+          <button
+            type="button"
+            className="topbar-primary-btn"
+            style={{ 
+              backgroundColor: saveStatus === 'saved' ? '#6b7280' : saveStatus === 'error' ? '#ef4444' : '#10b981', 
+              marginRight: '8px',
+              cursor: saveStatus === 'saving' ? 'wait' : 'pointer',
+              opacity: saveStatus === 'saving' ? 0.7 : 1
+            }}
+            onClick={onSave}
+            disabled={saveStatus === 'saving' || saveStatus === 'saved'}
+            title={saveStatus === 'error' ? 'Failed to save. Click to retry.' : 'Save dashboard charts and positions'}
+          >
+            <Save size={15} />
+            {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Error' : 'Save'}
+          </button>
+        )}
         <button
           type="button"
           className="topbar-primary-btn"

@@ -362,11 +362,11 @@ def delete_dashboard(session: Session, dashboard: Dashboard) -> None:
 # --- conversations -----------------------------------------------------------
 
 
-def get_conversation(session: Session, user_id: str, dataset_id: str) -> Conversation | None:
+def get_conversation(session: Session, user_id: str, dashboard_id: str) -> Conversation | None:
     return session.scalar(
         select(Conversation).where(
             Conversation.user_id == user_id,
-            Conversation.dataset_id == dataset_id,
+            Conversation.dashboard_id == dashboard_id,
         )
     )
 
@@ -374,7 +374,7 @@ def get_conversation(session: Session, user_id: str, dataset_id: str) -> Convers
 def set_conversation(
     session: Session,
     user_id: str,
-    dataset_id: str,
+    dashboard_id: str,
     *,
     messages: list[dict],
     thread_id: str | None = None,
@@ -390,9 +390,9 @@ def set_conversation(
     ``set_thread_id=False`` leaves a stored thread alone, for the caller that is
     only writing messages and does not know what the agent thread currently is.
     """
-    conversation = get_conversation(session, user_id, dataset_id)
+    conversation = get_conversation(session, user_id, dashboard_id)
     if conversation is None:
-        conversation = Conversation(user_id=user_id, dataset_id=dataset_id)
+        conversation = Conversation(user_id=user_id, dashboard_id=dashboard_id)
         session.add(conversation)
     if set_thread_id:
         conversation.thread_id = thread_id

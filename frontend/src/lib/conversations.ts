@@ -21,7 +21,7 @@ interface WireChatMessage {
 }
 
 interface WireConversation {
-  dataset_id: string;
+  dashboard_id: string;
   thread_id: string | null;
   updated_at: string | null;
   messages: WireChatMessage[];
@@ -63,9 +63,9 @@ function toWire(m: ChatMessage): WireChatMessage {
   };
 }
 
-export async function fetchConversation(datasetId: string): Promise<Conversation> {
+export async function fetchConversation(dashboardId: string): Promise<Conversation> {
   const res = await apiRequest<WireConversation>(
-    `/conversations/${encodeURIComponent(datasetId)}`,
+    `/conversations/${encodeURIComponent(dashboardId)}`,
     { method: 'GET' },
   );
   return {
@@ -84,11 +84,11 @@ export async function fetchConversation(datasetId: string): Promise<Conversation
  * text, which is why nothing here has to be resolved against the chart tables.
  */
 export async function saveConversation(
-  datasetId: string,
+  dashboardId: string,
   messages: ChatMessage[],
   threadId: string | null,
 ): Promise<void> {
-  await apiRequest<WireConversation>(`/conversations/${encodeURIComponent(datasetId)}`, {
+  await apiRequest<WireConversation>(`/conversations/${encodeURIComponent(dashboardId)}`, {
     method: 'PUT',
     body: { messages: messages.map(toWire), thread_id: threadId },
   });
