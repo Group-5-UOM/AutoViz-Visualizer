@@ -6,6 +6,7 @@ inert JSON scalars, never interpreted or executed.
 
 import math
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -103,8 +104,33 @@ def _categorical_numeric_columns(df: pd.DataFrame, schema: dict[str, str]) -> li
     return coded
 
 
+# A value has to *look* like a date before it is allowed to be parsed as one.
+# "Parses successfully" is far too weak a test on its own: pandas reads "2026" as
+# a year, "2026-Q3" as a quarter, and a column of four-digit product codes as a
+# run of January firsts. Each becomes a datetime column, and every later question
+# about it — group by it, filter a range on it, split it — then answers against a
+# date nobody put in the file.
+_DATE_SHAPES = re.compile(
+    r"""^(
+        \d{4}[-/]\d{1,2}[-/]\d{1,2}          # 2026-01-15, 2026/01/15
+      | \d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}      # 15/01/2026, 15.01.26
+      | \d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}    # 15 January 2026
+      | [A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4}  # January 15, 2026
+    )
+    ([\sT].*)?$                              # optional time-of-day tail
+    """,
+    re.VERBOSE,
+)
+
+
 def _coerce_datetimes(df: pd.DataFrame, dayfirst: bool = False) -> pd.DataFrame:
     """Promote object columns that parse cleanly as dates to datetime.
+
+    Two gates, both required. Every non-null value must **look** like a date
+    (``_DATE_SHAPES``) and must then **parse** as one. The shape gate is what
+    stops pandas' generosity from inventing date columns out of years, quarters
+    and product codes; the parse gate is what rejects the ones that are shaped
+    right and impossible, like 2026-13-45.
 
     ``dayfirst`` comes from the ingest probe, which reads it off the data when the
     data settles it. It has to be threaded through rather than left at pandas'
@@ -118,6 +144,9 @@ def _coerce_datetimes(df: pd.DataFrame, dayfirst: bool = False) -> pd.DataFrame:
             continue
         sample = df[col].dropna()
         if sample.empty:
+            continue
+        text = sample.astype(str).str.strip()
+        if not text.map(lambda v: bool(_DATE_SHAPES.match(v))).all():
             continue
         parsed = pd.to_datetime(sample, errors="coerce", format="mixed", dayfirst=dayfirst)
         # Require every non-null value to parse — avoids misreading plain strings.

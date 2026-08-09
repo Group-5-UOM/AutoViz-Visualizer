@@ -478,6 +478,50 @@ def _apply_preprocessing(
                 "rows_affected": converted, "confirmation_required": False,
             })
             current = name
+        elif op.op == "pivot_longer":
+            # DuckDB's UNPIVOT does the fold natively and carries every unnamed
+            # column down, which is exactly the semantics wanted: the id columns
+            # are "whatever was not folded", and listing them would break the
+            # moment an earlier op added one.
+            folded = ", ".join(_q(c) for c in op.columns)
+            cte_defs.append(
+                f"{name} AS (SELECT * FROM {current} "
+                f"UNPIVOT ({_q(op.values_to)} FOR {_q(op.names_to)} IN ({folded})))"
+            )
+            after = con.execute(
+                _with(cte_defs) + f"SELECT count(*) FROM {name}", list(params)
+            ).fetchone()[0]
+            report.append({
+                "operation": "pivot_longer", "columns": list(op.columns),
+                "names_to": op.names_to, "values_to": op.values_to,
+                # The row count is the effect here, and it goes up, not down.
+                "rows_affected": int(after), "rows_before": int(prev_rows),
+                "confirmation_required": False,
+            })
+            prev_rows, current = after, name
+        elif op.op == "split_column":
+            col = _q(op.column)
+            # Counted first, while `params` still matches the CTEs built so far.
+            # How many rows the separator actually appears in: a split that fires
+            # on 3 of 900 rows is a wrong separator, and this count is the only
+            # thing that says so — every other row simply gets nulls and looks
+            # like ordinary missing data.
+            split_rows = con.execute(
+                _with(cte_defs)
+                + f"SELECT count(*) FROM {current} WHERE contains({col}, ?)",
+                list(params) + [op.separator],
+            ).fetchone()[0]
+            parts = []
+            for i, into in enumerate(op.into, start=1):
+                parts.append(f"list_extract(str_split({col}, ?), {i}) AS {_q(into)}")
+                params.append(op.separator)
+            cte_defs.append(f"{name} AS (SELECT *, {', '.join(parts)} FROM {current})")
+            report.append({
+                "operation": "split_column", "column": op.column,
+                "separator": op.separator, "into": list(op.into),
+                "rows_affected": int(split_rows), "confirmation_required": False,
+            })
+            current = name
         elif op.op == "clean_categories":
             col = _q(op.column)
             # One CASE arm per mapping entry, every literal bound. Values the

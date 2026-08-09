@@ -1,3 +1,6 @@
+import pandas as pd
+import pytest
+
 from autoviz.services.dataset import (
     get_dataset_profile,
     get_dataset_schema,
@@ -151,3 +154,44 @@ def test_schema_neutralizes_malicious_column_name(registry, tmp_path):
     plan = {"dataset_id": ds, "intent": "comparison", "select": ["value"]}
     out = execute_analysis(ds, plan, registry)
     assert "error" not in out
+
+
+# --- date coercion is gated on shape, not only on parseability -------------------
+
+
+def _typed(values):
+    from autoviz.services.dataset import _coerce_datetimes, _logical_type
+
+    return _logical_type(_coerce_datetimes(pd.DataFrame({"c": values}))["c"])
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        ["2026-01-15", "2026-02-20"],
+        ["2026-01-15 08:30:00", "2026-02-20 09:00:00"],
+        ["15 January 2026", "3 March 2026"],
+    ],
+)
+def test_real_dates_are_still_promoted(values):
+    assert _typed(values) == "datetime"
+
+
+@pytest.mark.parametrize(
+    "values,what",
+    [
+        (["2024", "2025"], "bare years"),
+        (["2026-Q3", "2025-Q1"], "quarter codes"),
+        (["1234", "5678"], "product codes"),
+        (["1.2.3", "4.5.6"], "version strings"),
+    ],
+)
+def test_date_shaped_nonsense_is_not_promoted(values, what):
+    """pandas parses all of these happily, which is the problem.
+
+    A column promoted in error is not a cosmetic issue: every later question
+    about it — group by it, filter a range, split it — then answers against a
+    date nobody put in the file. "Parses successfully" is far too weak a test,
+    so a value has to look like a date before it is allowed to be one.
+    """
+    assert _typed(values) == "string", what

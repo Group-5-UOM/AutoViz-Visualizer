@@ -111,6 +111,11 @@ def _severity_for(op_name: str, fraction: float) -> str:
 
 def _columns_phrase(cols: list[str]) -> str:
     pretty = [f"'{_pretty(c)}'" for c in cols]
+    if not pretty:
+        # These entries are read back from stored provenance as well as built
+        # fresh, so a missing key must degrade to a vaguer sentence rather than
+        # take the whole disclosure down with an IndexError.
+        return "the affected column(s)"
     if len(pretty) == 1:
         return pretty[0]
     return f"{', '.join(pretty[:-1])} and {pretty[-1]}"
@@ -178,6 +183,24 @@ def from_preprocessing(report: list[dict[str, Any]], input_rows: int) -> list[No
                 f"{_columns_phrase(list(cols))} so the values could be counted as numbers."
             )
             technique = f"parse_number on {list(cols)}"
+        elif name == "pivot_longer":
+            # No percentage: this op multiplies rows, so "affected / input_rows"
+            # is above 100% and reads as a bug rather than a reshape.
+            before = int(entry.get("rows_before") or input_rows)
+            note = (
+                f"{len(cols)} columns ({_columns_phrase(list(cols))}) were folded into "
+                f"rows, so '{_pretty(str(entry.get('names_to')))}' is now a value you "
+                f"can group by. {before} row(s) became {affected}."
+            )
+            technique = f"pivot_longer on {list(cols)}"
+        elif name == "split_column":
+            note = (
+                f"'{_pretty(str(col))}' was split on '{entry.get('separator')}' into "
+                f"{_columns_phrase(list(entry.get('into') or []))}. "
+                f"{affected} of {input_rows} row(s) contained the separator; the rest "
+                "have no value for the new columns."
+            )
+            technique = f"split_column on '{col}'"
         elif name == "clean_categories":
             note = (
                 f"{affected} value(s) in '{_pretty(str(col))}' ({_pct(fraction)}) "

@@ -19,6 +19,9 @@ analysis_plan JSON structure (lists may be empty/omitted; dataset_id and intent 
     {"op": "cast_column", "column": "col", "to": "number"|"datetime"},
     {"op": "parse_number", "columns": ["col", ...], "decimal": "."|",",
      "thousands": ","|"."|" "|"'"|null},
+    // Reshape — same facts, different arrangement.
+    {"op": "pivot_longer", "columns": ["col", ...], "names_to": "new_col", "values_to": "new_col"},
+    {"op": "split_column", "column": "col", "separator": "-", "into": ["new_col", ...]},
     // Value-changing — alter values or which rows survive.
     {"op": "drop_nulls", "columns": ["col", ...], "how": "any"|"all"},
     {"op": "fill_nulls", "column": "col", "strategy": "constant"|"median"|"mode", "value": <scalar for constant>},
@@ -77,6 +80,16 @@ Preprocessing (explicit, never silent — the source CSV is never modified):
   whitespace and the thousands separator and then requires the rest to convert, so it refuses a
   column like "12 apples" rather than returning 12. It also refuses percentages: "45%" is
   either 45 or 0.45 and the column does not say which. After parsing, the column IS a number.
+- pivot_longer folds repeated columns into rows. Reach for it whenever the SCHEMA ITSELF holds a
+  value the user is asking about: a file with columns Jan, Feb, Mar cannot answer "revenue by
+  month" as it stands, because month is a header and group_by needs a value. Fold the month
+  columns with names_to "month" and values_to "revenue", then group_by ["month"]. The folded
+  columns disappear and the two new names exist for everything downstream; every other column is
+  carried down and repeated. The folded columns must all share one type.
+- split_column splits text on a separator: "2026-Q3" into year and quarter, "Smith, John" into
+  surname and forename. The source column is KEPT, and the new columns are always text — pair it
+  with parse_number or cast_column if you need to aggregate a part. Parts beyond `into` are
+  dropped and missing parts are null.
 - drop_nulls: how "any" drops a row if ANY listed column is null; "all" only if all are.
 - fill_nulls strategy: "median" (numeric columns only), "mode" (categorical/string or boolean
   columns only), "constant" (any type — requires a "value"). Mean imputation is not available.
