@@ -6,6 +6,7 @@ import {
   Pencil,
   Plus,
   Settings,
+  Table,
 } from 'lucide-react';
 import type { SidebarItemId } from '../../types/dashboard';
 import './Sidebar.css';
@@ -22,7 +23,8 @@ const topItems: { id: SidebarItemId; label: string; icon: typeof Plus }[] = [
   { id: 'setup', label: 'Setup', icon: Pencil },
   { id: 'filter', label: 'Filter', icon: Filter },
   { id: 'ai-chat', label: 'AI Chat', icon: BotMessageSquare },
-  { id: 'data', label: 'Data', icon: Database },
+  { id: 'data', label: 'Datasets', icon: Database },
+  { id: 'edit-data', label: 'Edit Dataset', icon: Table },
   { id: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
 ];
 

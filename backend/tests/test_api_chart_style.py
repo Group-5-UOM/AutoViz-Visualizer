@@ -63,6 +63,28 @@ def test_style_only_applies_without_calling_the_model(api_db):
     assert planner.calls == []
 
 
+def test_typography_survives_the_round_trip(api_db):
+    """The panel sends font/font_size in the block like any other field, and the
+    applied spec has to come back with the sizes on it — this is the whole path
+    the widget re-embeds from."""
+    client = _client()
+
+    r = client.post(
+        "/charts/style",
+        json={"vega_lite_spec": _spec(), "style": {"font": "serif", "font_size": 18}},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+
+    config = body["vega_lite_spec"]["config"]
+    assert config["font"].startswith("Georgia")
+    assert config["axis"]["labelFontSize"] == 18
+    assert config["legend"]["labelFontSize"] == 18
+    # Echoed back, so the panel's selects show what is actually applied.
+    assert body["style"]["font"] == "serif"
+    assert body["style"]["font_size"] == 18
+
+
 def test_request_merges_a_patch_over_the_existing_block(api_db):
     planner = StylePlanner(patch={"mark_color": "#ff0000"})
     client = _client(planner)

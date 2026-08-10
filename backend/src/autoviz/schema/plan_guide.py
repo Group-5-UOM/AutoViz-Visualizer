@@ -141,12 +141,14 @@ or chart.color them to compare classes — not as continuous measures to aggrega
 Every column must exist in the dataset schema (call get_dataset_schema first).
 sum/mean/min/max/median need a numeric column; every date derive needs a datetime column.
 Two kinds of date derive, and picking the wrong one silently produces a wrong chart:
-- month/year/day/weekday EXTRACT a number (month gives a bare 1-12). Use these only for
+- month/year/day/weekday EXTRACT a number (month gives a bare 1-12). They do not truncate
+  the date, so the same month in different years lands in ONE bucket. Use them only for
   seasonality — "which month is busiest?" — where combining every year is the question.
 - month_start/quarter_start/week_start/year_start TRUNCATE to the start of the period and
   stay datetimes. Use these for any trend over time. A "monthly revenue" line over two
-  years needs month_start; with month it collapses to 12 points that add January 2025 to
-  January 2026, which looks plausible and is wrong. chart is optional (omit it to auto-recommend); chart.x/y/color may only
+  years needs month_start; with month it collapses to 12 points that silently add January
+  2025 to January 2026, which looks plausible and is wrong.
+chart is optional (omit it to auto-recommend); chart.x/y/color may only
 reference columns the query produces: group_by columns and aggregation "as" aliases (or
 select/derive names when there is no grouping). Prefer omitting chart unless the user asked
 for a specific type by name — the recommender picks from the result shape.

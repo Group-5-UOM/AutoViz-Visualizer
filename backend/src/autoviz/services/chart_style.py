@@ -11,6 +11,10 @@ did not already lose to*. Two consequences worth knowing:
 
 * Colour goes on the mark definition or the colour scale, not into `config` —
   a `config.mark.color` would also repaint the direct-label layer.
+* Typography is the exception that goes *into* `config`, and has to overwrite
+  rather than setdefault, because the theme got there first. That reach is the
+  point: a direct label in a different face from the axis beneath it is the bug,
+  not the feature.
 * Reverting deletes only the keys this module wrote. `services/skew.py` writes a
   log `scale` onto the very same encodings, and dropping that to reset a colour
   would quietly un-disclose a log axis.
@@ -25,7 +29,13 @@ import copy
 from typing import Any
 
 from autoviz.schema.chart_style import ChartStyle
-from autoviz.services.chart_theme import CATEGORICAL
+from autoviz.services.chart_theme import (
+    BASE_FONT_SIZE,
+    CATEGORICAL,
+    FONT,
+    FONT_STACKS,
+    scaled_text,
+)
 from autoviz.services.charts import primary_layer
 
 
@@ -162,6 +172,34 @@ def _apply_legend(layer: dict[str, Any], style: ChartStyle) -> None:
         color.pop("legend", None)
 
 
+def _apply_typography(spec: dict[str, Any], style: ChartStyle) -> None:
+    """Font family and text scale for the whole chart.
+
+    Both are written unconditionally: `config` already carries the theme by the
+    time a style block is applied, so a `setdefault` here would lose every time.
+    An unset field writes the theme's own value back rather than deleting the
+    key, which is what keeps re-applying a block idempotent.
+    """
+    config = spec.setdefault("config", {})
+    config["font"] = FONT_STACKS[style.font] if style.font else FONT
+
+    # With no size chosen this resolves to a zero shift, i.e. the theme's sizes.
+    sizes = scaled_text(style.font_size or BASE_FONT_SIZE)
+    for group in ("axis", "legend"):
+        config.setdefault(group, {}).update(sizes[group])
+
+    title = config.setdefault("title", {})
+    if style.font_size:
+        title["fontSize"] = sizes["title"]["fontSize"]
+    else:
+        # The theme sets no title size, so reverting means removing the key and
+        # letting Vega-Lite's default back in — writing today's default as a
+        # literal would freeze it.
+        title.pop("fontSize", None)
+    if not title:
+        config.pop("title", None)
+
+
 def apply(spec: dict[str, Any], style: ChartStyle) -> dict[str, Any]:
     """A copy of `spec` with the user's overrides on it.
 
@@ -176,6 +214,7 @@ def apply(spec: dict[str, Any], style: ChartStyle) -> dict[str, Any]:
     _apply_mark_color(layer, style)
     _apply_colors(styled, layer, style)
     _apply_legend(layer, style)
+    _apply_typography(styled, style)
     return styled
 
 

@@ -1,5 +1,6 @@
 import { useRef, type ChangeEvent } from 'react';
-import { Plus, Upload, X } from 'lucide-react';
+import { Upload } from 'lucide-react';
+import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import './ToolSidePanel.css';
 
 interface AddPanelProps {
@@ -18,6 +19,7 @@ export function AddPanel({
   onCsvSelected,
 }: AddPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  useEscapeToClose(onClose, open);
 
   if (!open) return null;
 
@@ -30,16 +32,6 @@ export function AddPanel({
 
   return (
     <section className="tool-panel" aria-label="Add dataset">
-      <header className="tool-panel-header">
-        <div className="tool-panel-header-title">
-          <Plus size={16} />
-          <span>Add</span>
-        </div>
-        <button type="button" className="tool-panel-close" onClick={onClose} aria-label="Close add panel">
-          <X size={16} />
-        </button>
-      </header>
-
       <div className="tool-panel-body">
         <p className="tool-panel-copy">
           Upload a new CSV dataset to start building charts on the canvas.

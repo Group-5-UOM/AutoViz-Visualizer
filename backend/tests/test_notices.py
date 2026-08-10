@@ -276,3 +276,37 @@ def test_ceiling_and_dropped_notices_lead_over_routine_cleanup():
         + notices.from_row_ceiling(100_000, 100_000)
     )
     assert [n.severity for n in ordered] == [notices.ADVISORY, notices.APPLIED]
+
+
+# --- the formatting contract must not weaken the disclosure rules --------------
+
+
+def test_compose_prompt_allows_markdown_without_licensing_buried_disclosures():
+    """The composer used to be told "Plain text only"; it now writes Markdown for
+    the chat panel. Formatting is the one change that could quietly undo this
+    whole file — a `disclosed` notice folded into a table cell or a trailing
+    bullet is still technically present and no longer read."""
+    from autoviz.llm.client import _COMPOSE_SYSTEM
+
+    assert "Plain text only" not in _COMPOSE_SYSTEM
+    assert "Markdown" in _COMPOSE_SYSTEM
+
+    # The severity rules the rest of this file pins are still stated.
+    for rule in ('severity "disclosed"', 'severity "advisory"', 'severity "applied"'):
+        assert rule in _COMPOSE_SYSTEM
+
+    # And formatting is explicitly denied as a way to demote one.
+    lowered = _COMPOSE_SYSTEM.lower()
+    assert "stays a full sentence" in lowered
+    assert "table cell" in lowered
+
+
+def test_compose_prompt_bounds_the_elements_to_what_the_panel_renders():
+    """The renderer collapses headings and drops images. A prompt that invites
+    them produces output the panel silently reshapes, which is how the two
+    drift."""
+    from autoviz.llm.client import _COMPOSE_SYSTEM
+
+    assert "No headings" in _COMPOSE_SYSTEM
+    assert "no images" in _COMPOSE_SYSTEM
+    assert "no HTML" in _COMPOSE_SYSTEM

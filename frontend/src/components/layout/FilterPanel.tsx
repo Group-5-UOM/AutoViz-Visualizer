@@ -1,4 +1,4 @@
-import { Filter, X } from 'lucide-react';
+import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import type { ChartType } from '../../types/dashboard';
 import { FILTERABLE_CHART_TYPES } from '../../lib/chartType';
 import './ToolSidePanel.css';
@@ -18,6 +18,8 @@ export function FilterPanel({
   onChange,
   chartCounts,
 }: FilterPanelProps) {
+  useEscapeToClose(onClose, open);
+
   if (!open) return null;
 
   const toggle = (type: ChartType) => {
@@ -30,16 +32,6 @@ export function FilterPanel({
 
   return (
     <section className="tool-panel" aria-label="Filter charts">
-      <header className="tool-panel-header">
-        <div className="tool-panel-header-title">
-          <Filter size={16} />
-          <span>Filter</span>
-        </div>
-        <button type="button" className="tool-panel-close" onClick={onClose} aria-label="Close filter panel">
-          <X size={16} />
-        </button>
-      </header>
-
       <div className="tool-panel-body">
         <p className="tool-panel-copy">
           Show only matching chart types on the canvas. Leave all unchecked to show every chart.
