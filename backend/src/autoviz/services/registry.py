@@ -54,6 +54,17 @@ class DatasetRecord:
     # numbers, e.g. pclass 1/2/3, survived 0/1). Dimensions to group and colour
     # by — not measures — even though their stored dtype stays "number".
     categorical_numeric: list[str] = field(default_factory=list)
+    # Memoized quality scans, keyed by the column scope asked for. Sound because
+    # the frame is immutable: cleaning builds views over it and never writes back,
+    # so a finding stays true for as long as the record exists. An evicted record
+    # takes its cache with it, which is the correct lifetime — a reloaded frame
+    # re-derives rather than trusting a stale answer.
+    #
+    # compare/repr are off so a DataFrame-bearing record stays comparable and
+    # printable, and so this never counts toward the cache's size accounting.
+    scan_cache: dict[Any, Any] = field(
+        default_factory=dict, compare=False, repr=False
+    )
 
     def nbytes(self) -> int:
         """Resident size of the frame, object columns included (deep=True)."""

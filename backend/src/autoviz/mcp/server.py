@@ -295,6 +295,30 @@ def materialize_cleaned_dataset(
     )
 
 
+_APPLY_RECIPE_DESC = (
+    "Clean a new file the way an earlier one was cleaned. recipe_dataset_id is a dataset "
+    "materialize_cleaned_dataset produced; its stored block is reapplied to target_dataset_id. "
+    "Refuses if the new file lacks a column the recipe names. Approval never carries over — a "
+    "removal that was small before re-gates here."
+)
+
+
+@observed
+def apply_cleaning_recipe(
+    recipe_dataset_id: str,
+    target_dataset_id: str,
+    approved_preprocessing_hash: str | None = None,
+) -> MaterializeCleanedOutput:
+    return unwrap(
+        execution.apply_cleaning_recipe(
+            recipe_dataset_id,
+            target_dataset_id,
+            approved_preprocessing_hash=approved_preprocessing_hash,
+        ),
+        MaterializeCleanedOutput,
+    )
+
+
 @observed
 async def run_analysis_pipeline(
     dataset_id: str,
@@ -500,6 +524,7 @@ _ADVANCED_ONLY_TOOLS = [
     (preview_dataset, None),
     (preview_preprocessing, _PREVIEW_PREPROCESSING_DESC),
     (materialize_cleaned_dataset, _MATERIALIZE_DESC),
+    (apply_cleaning_recipe, _APPLY_RECIPE_DESC),
     (validate_analysis_plan, _VALIDATE_DESC),
     (execute_analysis, _EXECUTE_DESC),
     (recommend_chart_type, None),

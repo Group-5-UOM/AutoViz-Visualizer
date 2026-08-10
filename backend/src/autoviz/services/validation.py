@@ -17,6 +17,7 @@ from autoviz.schema.allowlists import (
     AGG_FNS,
     CATEGORICAL_FILL_STRATEGIES,
     DATE_DERIVE_FNS,
+    DATETIME_DERIVE_FNS,
     FILTER_OPS,
     LIST_VALUE_OPS,
     MAX_FILL_STRING_LEN,
@@ -121,6 +122,21 @@ def _fill_value_errors(value: Any, col_type: str, column: str) -> list[str]:
     return errs
 
 
+def _value_fits_column(value: Any, col_type: str) -> bool:
+    """Could this literal ever appear in a column of this type?
+
+    A guard against a silent no-op rather than a safety check: asking to nullify
+    the string "999" in a numeric column matches nothing, runs cleanly, and
+    leaves the user believing the sentinel was dealt with.
+    """
+    is_bool = isinstance(value, bool)
+    if col_type == "number":
+        return isinstance(value, (int, float)) and not is_bool
+    if col_type == "boolean":
+        return is_bool
+    return isinstance(value, str)
+
+
 def _validate_preprocessing(
     plan: AnalysisPlan, schema: dict[str, str], fully_null: set[str], errors: list[str]
 ) -> None:
@@ -168,6 +184,26 @@ def _validate_preprocessing(
                     f"preprocessing: conflicting fill_nulls and drop_nulls on column '{col}'"
                 )
             fill_cols.add(col)
+            for group_col in op.by:
+                if group_col not in schema:
+                    errors.append(
+                        f"preprocessing fill_nulls on '{col}': grouping column "
+                        f"'{group_col}' does not exist"
+                    )
+                elif group_col == col:
+                    errors.append(
+                        f"preprocessing fill_nulls on '{col}': cannot group by the same "
+                        "column being filled"
+                    )
+            if op.by and op.strategy != "median":
+                # A per-group mode needs a second window pass to stay
+                # deterministic on ties, and an arbitrary tie-break is what this
+                # codebase refuses everywhere else. Say so rather than silently
+                # falling back to a global fill, which would look like it worked.
+                errors.append(
+                    f"preprocessing fill_nulls on '{col}': 'by' is supported for the "
+                    f"median strategy only (got '{op.strategy}')"
+                )
             if col_type is not None:
                 if op.strategy in NUMERIC_FILL_STRATEGIES and col_type != "number":
                     errors.append(
@@ -197,6 +233,29 @@ def _validate_preprocessing(
                         f"preprocessing {op.op} on '{col}': requires a string column "
                         f"({col_type} given)"
                     )
+        elif op.op == "parse_number":
+            for col in op.columns:
+                col_type = schema.get(col)
+                if col_type is None:
+                    errors.append(f"preprocessing parse_number: column '{col}' does not exist")
+                elif col_type != "string":
+                    errors.append(
+                        f"preprocessing parse_number on '{col}': only a string column "
+                        f"needs parsing ({col_type} is already typed)"
+                    )
+                elif col in fully_null:
+                    errors.append(
+                        f"preprocessing parse_number on '{col}': column is entirely "
+                        "null (unusable)"
+                    )
+            if op.thousands is not None and op.thousands == op.decimal:
+                errors.append(
+                    "preprocessing parse_number: the decimal point and the thousands "
+                    f"separator cannot both be '{op.decimal}'"
+                )
+            # Whether the values actually convert is checked at execution time,
+            # against the working view — for the same reason cast_column is: the
+            # sentinels that would block it may be nulled by an earlier op.
         elif op.op == "cast_column":
             col_type = schema.get(op.column)
             if col_type is None:
@@ -270,6 +329,86 @@ def _validate_preprocessing(
                             f"{op.rank_by.fn} requires a numeric column "
                             f"('{op.rank_by.column}' is {rank_type})"
                         )
+        elif op.op == "nullify_values":
+            col_type = schema.get(op.column)
+            if col_type is None:
+                errors.append(
+                    f"preprocessing nullify_values: column '{op.column}' does not exist"
+                )
+            for value in op.values:
+                if isinstance(value, (list, dict)):
+                    errors.append(
+                        f"preprocessing nullify_values on '{op.column}': values must be "
+                        "scalars"
+                    )
+                    break
+            # Not pattern-matched for code: these are bound as parameters, so a
+            # value that looks like SQL is simply a value that will never match.
+            if col_type is not None:
+                for value in op.values:
+                    if not _value_fits_column(value, col_type):
+                        errors.append(
+                            f"preprocessing nullify_values on '{op.column}': "
+                            f"'{value}' cannot occur in a {col_type} column"
+                        )
+                        break
+        elif op.op == "pivot_longer":
+            folded_types: set[str] = set()
+            for col in op.columns:
+                col_type = schema.get(col)
+                if col_type is None:
+                    errors.append(f"preprocessing pivot_longer: column '{col}' does not exist")
+                else:
+                    folded_types.add(col_type)
+            # SQL stacks the folded columns into one, so they need a common type.
+            # DuckDB would either fail or silently widen everything to text; both
+            # are worse than saying which columns disagree.
+            if len(folded_types) > 1:
+                errors.append(
+                    f"preprocessing pivot_longer: the folded columns must share one "
+                    f"type, but these are {', '.join(sorted(folded_types))}"
+                )
+            survivors = set(schema) - set(op.columns)
+            for name, slot in ((op.names_to, "names_to"), (op.values_to, "values_to")):
+                if name in survivors:
+                    errors.append(
+                        f"preprocessing pivot_longer: {slot} '{name}' collides with a "
+                        "column that is not being folded"
+                    )
+                if _looks_like_code(name):
+                    errors.append(
+                        f"preprocessing pivot_longer: {slot} '{name}' resembles code "
+                        "and is rejected"
+                    )
+            if op.names_to == op.values_to:
+                errors.append(
+                    "preprocessing pivot_longer: names_to and values_to must differ"
+                )
+        elif op.op == "split_column":
+            col_type = schema.get(op.column)
+            if col_type is None:
+                errors.append(f"preprocessing split_column: column '{op.column}' does not exist")
+            elif col_type != "string":
+                errors.append(
+                    f"preprocessing split_column on '{op.column}': requires a string "
+                    f"column ({col_type} given)"
+                )
+            if len(set(op.into)) != len(op.into):
+                errors.append(
+                    f"preprocessing split_column on '{op.column}': the new column names "
+                    "must be distinct"
+                )
+            for name in op.into:
+                if name in schema:
+                    errors.append(
+                        f"preprocessing split_column on '{op.column}': '{name}' already "
+                        "exists in the dataset"
+                    )
+                if _looks_like_code(name):
+                    errors.append(
+                        f"preprocessing split_column on '{op.column}': new column name "
+                        f"'{name}' resembles code and is rejected"
+                    )
         elif op.op in ("drop_exact_duplicates", "drop_empty_rows"):
             pass  # span whole rows; no parameters to check
         else:
@@ -280,6 +419,13 @@ def _validate_preprocessing(
             errors.append(
                 f"preprocessing: op '{op.op}' has no validation rule and cannot be applied"
             )
+
+        # Each op is checked against the table as the *previous* ops left it, not
+        # against the raw upload. Without this, a plan that pivots and then filters
+        # on the new value column is rejected for naming a column that does not
+        # exist yet, and one that casts a column to a number and then trims it is
+        # accepted and fails at execution instead.
+        schema = op.apply_schema(schema)
 
     if len(touched) > MAX_PREPROCESSING_COLUMNS:
         errors.append(
@@ -321,9 +467,10 @@ def validate_analysis_plan(
     # Preprocessing runs first, on real columns — validate it against the raw schema.
     _validate_preprocessing(plan, schema, fully_null, errors)
 
-    # Everything after the cleaning stage sees the *cleaned* types, so a cast
-    # column is its new type from here on. Derived columns then layer on top.
-    effective: dict[str, str] = {**schema, **plan.preprocessing_type_overrides()}
+    # Everything after the cleaning stage sees the *cleaned* table, so a cast
+    # column is its new type from here on and a folded one is gone entirely.
+    # Derived columns then layer on top.
+    effective: dict[str, str] = plan.preprocessing_schema(schema)
     for d in plan.derive:
         src_type = effective.get(d.from_)
         if src_type is None:
@@ -344,7 +491,16 @@ def validate_analysis_plan(
                 f"derive '{d.name}': fn '{d.fn}' requires a numeric column, "
                 f"'{d.from_}' is {src_type}"
             )
-        effective[d.name] = "number" if d.fn in (DATE_DERIVE_FNS | NUMERIC_DERIVE_FNS) else "string"
+        # Order matters: DATETIME_DERIVE_FNS is a subset of DATE_DERIVE_FNS, and a
+        # truncation produces a timestamp, not the number an extraction produces.
+        # Getting this wrong types month_start as a number, which then passes a
+        # numeric aggregation check it should fail and lands on a quantitative axis.
+        if d.fn in DATETIME_DERIVE_FNS:
+            effective[d.name] = "datetime"
+        elif d.fn in (DATE_DERIVE_FNS | NUMERIC_DERIVE_FNS):
+            effective[d.name] = "number"
+        else:
+            effective[d.name] = "string"
 
     for name in (d.name for d in plan.derive):
         if _looks_like_code(name):

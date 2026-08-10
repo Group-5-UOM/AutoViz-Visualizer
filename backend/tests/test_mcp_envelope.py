@@ -216,10 +216,14 @@ def test_pipeline_output_is_not_wrapped(iris_id):
 
 def test_tool_descriptions_stay_small():
     """PLAN_GUIDE lives in a resource, not in three tool descriptions. Inlining it
-    again would put ~15.5k characters back on every session's tools/list."""
+    again would put ~15.5k characters back on every session's tools/list.
+
+    The ceiling tracks the tool count loosely — it moves when a tool is genuinely
+    added, which is a deliberate edit, and stays put against the failure it is
+    really guarding, which is an order of magnitude larger."""
     tools = asyncio.run(mcp.list_tools())
     total = sum(len(t.description or "") for t in tools)
-    assert total < 6000, f"tool descriptions grew to {total} chars"
+    assert total < 6500, f"tool descriptions grew to {total} chars"
 
 
 def test_a_cleaning_pause_survives_the_analyze_output_model():
@@ -339,4 +343,4 @@ def test_plan_guide_is_published_as_a_resource():
 def test_advanced_profile_exposes_every_tool():
     names = {t.name for t in asyncio.run(mcp.list_tools())}
     assert names == {fn.__name__ for fn, _ in PROFILES["advanced"]}
-    assert len(names) == 17
+    assert len(names) == 18

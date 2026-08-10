@@ -13,6 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from autoviz.schema.allowlists import (
     MAX_CATEGORY_MAPPING,
+    MAX_GROUP_BY,
+    MAX_NULLIFY_VALUES,
     MAX_PREPROCESSING_COLUMNS,
     MAX_PREPROCESSING_STEPS,
     MAX_TOP_CATEGORIES,
@@ -24,7 +26,13 @@ FilterOp = Literal[
 ]
 AggFn = Literal["sum", "mean", "min", "max", "count", "median", "count_distinct"]
 DeriveFn = Literal[
-    "month", "year", "day", "weekday", "lower", "upper", "trim", "round", "abs"
+    # Extraction: datetime -> number (a bare 1-12, 1-31, ...). For seasonality.
+    "month", "year", "day", "weekday",
+    # Truncation: datetime -> datetime, flattened to the start of the period. For
+    # trends — see DATETIME_DERIVE_FNS in schema/allowlists.py for why the two are
+    # not interchangeable.
+    "month_start", "quarter_start", "week_start", "year_start",
+    "lower", "upper", "trim", "round", "abs",
 ]
 ChartType = Literal[
     "bar",
@@ -125,6 +133,21 @@ class _PreprocessOpBase(_StrictModel):
         """
         raise NotImplementedError
 
+    def apply_schema(self, schema: dict[str, str]) -> dict[str, str]:
+        """This op's effect on the column set, as ``{name: logical type}``.
+
+        Most ops change values and not the shape, so the default is "no change".
+        Ops that retype a column (``cast_column``), add one (``split_column``) or
+        replace several with others (``pivot_longer``) override this.
+
+        It exists because everything downstream — validation, the chart encoder —
+        needs to know what the table looks like *after* cleaning, and asking each
+        of them to special-case each op is how the two drift apart. Declaring the
+        effect next to the op is the same rule ``risk`` and ``removes_rows``
+        already follow.
+        """
+        return schema
+
 
 class DropNulls(_PreprocessOpBase):
     op: Literal["drop_nulls"]
@@ -147,6 +170,18 @@ class FillNulls(_PreprocessOpBase):
     # median/mode, which compute the fill value from the data. Arity and
     # type-compatibility are enforced in services/validation.py.
     value: Any = None
+    # Compute the fill within each group rather than over the whole column.
+    #
+    # A global median flattens exactly the variance a grouped chart exists to
+    # show: filling missing salaries with the company-wide median pulls every
+    # department toward the middle, and the bar chart of "salary by department"
+    # then understates the spread it was drawn to display. Filling within the
+    # department preserves it.
+    #
+    # median only — see services/validation.py. A deterministic per-group mode
+    # needs a second window pass, and an arbitrary one is what this codebase
+    # already refuses elsewhere.
+    by: list[str] = Field(default_factory=list, max_length=MAX_GROUP_BY)
 
     # Imputation keeps every row but substitutes values, so it never trips the
     # row-removal gate — which is exactly why it needs the VALUE_CHANGING tier to
@@ -155,7 +190,9 @@ class FillNulls(_PreprocessOpBase):
     risk: ClassVar[Risk] = Risk.VALUE_CHANGING
 
     def columns_touched(self) -> set[str]:
-        return {self.column}
+        # The grouping columns decide which value each row is filled with, so
+        # they are read by the op and must be checked like any other reference.
+        return {self.column, *self.by}
 
 
 class DropExactDuplicates(_PreprocessOpBase):
@@ -207,10 +244,17 @@ class EmptyStringToNull(_PreprocessOpBase):
 class NormalizeCase(_PreprocessOpBase):
     """Fold `Male`/`male`/`MALE` into one category.
 
-    Lower-casing can only ever merge values that differ by nothing but case, which
+    Case folding can only ever merge values that differ by nothing but case, which
     is why it is SAFE rather than a category merge. Deciding it is *worth* doing
     is a separate question and belongs to the recommender, which only proposes it
     when it actually collapses variants (services/quality.py).
+
+    The surviving spelling is the column's **commonest**, not ``lower()``. Both
+    merge identically, but the choice is also what every chart then displays, and
+    an axis reading "usa" and "canada" is a presentation defect introduced by a
+    repair the user never asked for. Ties break towards the spelling that reads
+    as a label ("Male" over "MALE"), then on value order, so the result never
+    depends on scan order.
     """
 
     op: Literal["normalize_case"]
@@ -241,6 +285,43 @@ class DropEmptyRows(_PreprocessOpBase):
         return set()  # spans every column
 
 
+class ParseNumber(_PreprocessOpBase):
+    """Read a money/formatted column as the number it already is.
+
+    ``cast_column`` cannot: ``TRY_CAST('$1,234.50' AS DOUBLE)`` is null, so the
+    op refuses, and the column stays text that no aggregation will accept. That
+    left the commonest financial CSV in existence unanalysable.
+
+    SAFE because the decoration removed is exactly that — a currency symbol, a
+    thousands separator, surrounding whitespace — none of which carries meaning
+    the number does not. What keeps it safe in practice is that stripping is
+    *not* a filter over arbitrary characters: only the listed decoration is
+    removed, and whatever remains must convert in full. ``'12 apples'`` becomes
+    ``'12apples'``, fails to convert, and the op is refused rather than silently
+    yielding 12.
+
+    A ``%`` is deliberately not decoration: ``45%`` is either 45 or 0.45 and the
+    column cannot say which, so it fails the conversion and the user is told.
+    """
+
+    op: Literal["parse_number"]
+    columns: list[str] = Field(min_length=1, max_length=MAX_PREPROCESSING_COLUMNS)
+    # Which character is the decimal point in this column's notation, and which
+    # groups the thousands. Defaults are the anglophone convention; the ingest
+    # probe reports the file's own when it differs (services/ingest.py).
+    decimal: Literal[".", ","] = "."
+    thousands: Literal[",", ".", " ", "'"] | None = None
+
+    removes_rows: ClassVar[bool] = False
+    risk: ClassVar[Risk] = Risk.SAFE
+
+    def columns_touched(self) -> set[str]:
+        return set(self.columns)
+
+    def apply_schema(self, schema: dict[str, str]) -> dict[str, str]:
+        return {**schema, **{c: "number" for c in self.columns}}
+
+
 class CastColumn(_PreprocessOpBase):
     """Read a text column as the type it already contains.
 
@@ -259,6 +340,9 @@ class CastColumn(_PreprocessOpBase):
 
     def columns_touched(self) -> set[str]:
         return {self.column}
+
+    def apply_schema(self, schema: dict[str, str]) -> dict[str, str]:
+        return {**schema, self.column: self.to}
 
 
 # --- Category cleaning -------------------------------------------------------
@@ -282,6 +366,34 @@ class CleanCategories(_PreprocessOpBase):
     # {existing value -> replacement}. Values not named are left alone.
     mapping: dict[str, str] = Field(min_length=1, max_length=MAX_CATEGORY_MAPPING)
 
+    removes_rows: ClassVar[bool] = False
+    risk: ClassVar[Risk] = Risk.VALUE_CHANGING
+
+    def columns_touched(self) -> set[str]:
+        return {self.column}
+
+
+class NullifyValues(_PreprocessOpBase):
+    """Treat specific values as missing: `999`, `-1`, `"unknown"`.
+
+    The gap this closes is that a sentinel is *worse* than a null. A null is
+    skipped by every aggregate and disclosed when it matters; a 999 standing for
+    "not recorded" is averaged in, and the answer is wrong with no sign of it.
+    Nothing else in the grammar could turn one into the other — ``drop_nulls``
+    and ``fill_nulls`` both need the value to already be null.
+
+    VALUE_CHANGING, and asked about rather than applied, because only the person
+    who knows the dataset can say whether 999 is a code or a measurement. The
+    scanner is confident enough to raise the question and never confident enough
+    to answer it.
+    """
+
+    op: Literal["nullify_values"]
+    column: str
+    # Bound as parameters, so these are inert data whatever they contain.
+    values: list[Any] = Field(min_length=1, max_length=MAX_NULLIFY_VALUES)
+
+    # Every row survives; some of its cells become absent.
     removes_rows: ClassVar[bool] = False
     risk: ClassVar[Risk] = Risk.VALUE_CHANGING
 
@@ -330,6 +442,86 @@ class GroupRareCategories(_PreprocessOpBase):
         return {self.column}
 
 
+# --- Reshape -------------------------------------------------------------------
+# SAFE, and worth saying why, because both of these change the table's shape and
+# that instinctively reads as drastic. The tier is about *meaning*: neither op
+# alters, invents or discards a value — the same facts come out in a different
+# arrangement. What they cannot be is *automatic*: nothing proposes them, because
+# whether a set of columns is really one repeated measurement is a question about
+# what the data means, which the data cannot answer. They appear only when a user
+# or planner asked for them.
+
+
+class PivotLonger(_PreprocessOpBase):
+    """Fold repeated columns into rows: `Jan, Feb, Mar` -> `month, value`.
+
+    The single commonest shape of real spreadsheet data, and the one shape the
+    plan grammar could not express at all. A file with one column per month is
+    not analysable by a grammar whose group_by takes column *names*: "revenue by
+    month" needs month to be a value, and in a wide file it is a header.
+
+    ``columns`` are the folded ones; every other column is carried down and
+    repeated, which is what makes this row-multiplying rather than row-dropping.
+    """
+
+    op: Literal["pivot_longer"]
+    # Two is the minimum that means anything: folding one column is a rename.
+    columns: list[str] = Field(min_length=2, max_length=MAX_PREPROCESSING_COLUMNS)
+    # New column holding the old column names, and the one holding their values.
+    names_to: str
+    values_to: str
+
+    # It multiplies rows rather than removing them, so the row-removal gate does
+    # not apply — there is no data loss to consent to.
+    removes_rows: ClassVar[bool] = False
+    risk: ClassVar[Risk] = Risk.SAFE
+
+    def columns_touched(self) -> set[str]:
+        return set(self.columns)
+
+    def apply_schema(self, schema: dict[str, str]) -> dict[str, str]:
+        """The folded columns are gone; two new ones take their place.
+
+        ``values_to`` is numeric only when every folded column was — one text
+        column among twelve numeric ones makes the whole stacked column text,
+        which is exactly what SQL will do and what the validator must expect.
+        """
+        folded = {schema.get(c) for c in self.columns}
+        out = {k: v for k, v in schema.items() if k not in set(self.columns)}
+        out[self.names_to] = "string"
+        out[self.values_to] = "number" if folded == {"number"} else "string"
+        return out
+
+
+class SplitColumn(_PreprocessOpBase):
+    """Split one text column on a separator into several: `"2026-Q3"` -> year, quarter.
+
+    Additive — the source column is kept. A split is a reading of a column, not a
+    correction to it, and the original is often still the one the user wants to
+    filter on.
+
+    Parts beyond ``into`` are discarded and missing parts become null, both of
+    which are properties of the separator rather than defects, so neither is a
+    refusal. The counts are reported instead.
+    """
+
+    op: Literal["split_column"]
+    column: str
+    separator: str = Field(min_length=1, max_length=8)
+    into: list[str] = Field(min_length=2, max_length=8)
+
+    removes_rows: ClassVar[bool] = False
+    risk: ClassVar[Risk] = Risk.SAFE
+
+    def columns_touched(self) -> set[str]:
+        return {self.column}
+
+    def apply_schema(self, schema: dict[str, str]) -> dict[str, str]:
+        # Always text: a part that looks numeric still needs an explicit
+        # parse_number/cast_column, so the split cannot quietly retype anything.
+        return {**schema, **{name: "string" for name in self.into}}
+
+
 PreprocessOp = Annotated[
     Union[
         DropNulls,
@@ -340,8 +532,12 @@ PreprocessOp = Annotated[
         NormalizeCase,
         DropEmptyRows,
         CastColumn,
+        ParseNumber,
         CleanCategories,
         GroupRareCategories,
+        NullifyValues,
+        PivotLonger,
+        SplitColumn,
     ],
     Field(discriminator="op"),
 ]
@@ -413,16 +609,23 @@ class AnalysisPlan(_StrictModel):
             | {d.from_ for d in self.derive}
         )
 
-    def preprocessing_type_overrides(self) -> dict[str, str]:
-        """Logical types the cleaning stage changes, column -> new type.
+    def preprocessing_schema(self, base: dict[str, str]) -> dict[str, str]:
+        """The table's shape after cleaning: ``{column: logical type}``.
 
         Preprocessing runs before everything else, so by the time a filter or an
-        aggregation sees a cast column it *is* the new type. Validation and the
-        chart encoder both have to start from this, or a plan that casts a text
-        column to a number and then averages it would be rejected as a type error
-        against a schema that no longer applies at that point in the query.
+        aggregation sees a cast column it *is* the new type — and after a pivot
+        the folded columns are simply gone. Validation and the chart encoder both
+        have to start from here, or a plan that casts a text column to a number
+        and then averages it is rejected as a type error against a schema that no
+        longer applies at that point in the query.
+
+        Applied in list order, so a later op sees the earlier one's output — the
+        same rule the CTE chain follows.
         """
-        return {op.column: op.to for op in self.preprocessing if op.op == "cast_column"}
+        schema = dict(base)
+        for op in self.preprocessing:
+            schema = op.apply_schema(schema)
+        return schema
 
     def _canonical_preprocessing(self) -> list[dict[str, Any]]:
         """The preprocessing block in a form where equal semantics give equal bytes.

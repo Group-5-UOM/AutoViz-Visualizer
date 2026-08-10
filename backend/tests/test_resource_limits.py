@@ -1,6 +1,12 @@
-"""CSV ingestion resource controls: file / column / row ceilings."""
+"""CSV ingestion resource controls: file / column / row ceilings.
+
+The ceilings live on ``services.ingest`` — next to the reads they guard — so that
+is what these patch, while the behaviour is still asserted through
+``register_dataset``, which is where a caller meets them.
+"""
 
 import autoviz.services.dataset as ds
+import autoviz.services.ingest as ingest
 from autoviz.errors import RESOURCE_LIMIT
 
 
@@ -11,7 +17,7 @@ def _write(tmp_path, name, text):
 
 
 def test_rejects_oversized_file(registry, tmp_path, monkeypatch):
-    monkeypatch.setattr(ds, "MAX_FILE_BYTES", 8)  # smaller than any real CSV
+    monkeypatch.setattr(ingest, "MAX_FILE_BYTES", 8)  # smaller than any real CSV
     ref = _write(tmp_path, "big.csv", "a,b\n1,2\n3,4\n")
     out = ds.register_dataset(ref, registry)
     assert out["error_code"] == RESOURCE_LIMIT
@@ -19,7 +25,7 @@ def test_rejects_oversized_file(registry, tmp_path, monkeypatch):
 
 
 def test_rejects_too_many_columns(registry, tmp_path, monkeypatch):
-    monkeypatch.setattr(ds, "MAX_COLUMNS", 2)
+    monkeypatch.setattr(ingest, "MAX_COLUMNS", 2)
     ref = _write(tmp_path, "wide.csv", "a,b,c\n1,2,3\n")
     out = ds.register_dataset(ref, registry)
     assert out["error_code"] == RESOURCE_LIMIT
@@ -27,7 +33,7 @@ def test_rejects_too_many_columns(registry, tmp_path, monkeypatch):
 
 
 def test_rejects_too_many_rows(registry, tmp_path, monkeypatch):
-    monkeypatch.setattr(ds, "MAX_ROWS", 2)
+    monkeypatch.setattr(ingest, "MAX_ROWS", 2)
     ref = _write(tmp_path, "tall.csv", "a\n1\n2\n3\n4\n")
     out = ds.register_dataset(ref, registry)
     assert out["error_code"] == RESOURCE_LIMIT

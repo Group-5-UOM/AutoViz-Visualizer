@@ -17,7 +17,13 @@ NULL_OPS = frozenset({"is_null", "is_not_null"})
 
 AGG_FNS = frozenset({"sum", "mean", "min", "max", "count", "median", "count_distinct"})
 
-DERIVE_FNS = frozenset({"month", "year", "day", "weekday", "lower", "upper", "trim", "round", "abs"})
+DERIVE_FNS = frozenset(
+    {
+        "month", "year", "day", "weekday",
+        "month_start", "quarter_start", "week_start", "year_start",
+        "lower", "upper", "trim", "round", "abs",
+    }
+)
 
 # Any validated Vega-Lite mark. Several are not one-to-one with a Vega mark:
 # histogram is a binned bar over one numeric column, grouped_bar is a bar with an
@@ -54,7 +60,20 @@ HARD_ROW_CEILING = 100_000
 
 # Type-compatibility contracts used by validation.
 NUMERIC_ONLY_AGGS = frozenset({"sum", "mean", "min", "max", "median"})
-DATE_DERIVE_FNS = frozenset({"month", "year", "day", "weekday"})
+
+# Truncation, not extraction: these keep the instant and flatten it to the start of
+# its month/quarter/week/year, so the result is still a *datetime* and still sorts
+# and spaces correctly on a time axis.
+#
+# The distinction from the extraction fns below is the difference between a correct
+# and a wrong chart. `month` yields a bare 1-12, so a monthly trend spanning two
+# years collapses both into twelve points with January 2025 and January 2026 added
+# together. That is right for a seasonality question ("which month is busiest?")
+# and wrong for every trend, which is the commoner request.
+DATETIME_DERIVE_FNS = frozenset({"month_start", "quarter_start", "week_start", "year_start"})
+
+# Every fn that reads a datetime column, whatever it returns.
+DATE_DERIVE_FNS = frozenset({"month", "year", "day", "weekday"}) | DATETIME_DERIVE_FNS
 STRING_DERIVE_FNS = frozenset({"lower", "upper", "trim"})
 NUMERIC_DERIVE_FNS = frozenset({"round", "abs"})
 STRING_ONLY_OPS = frozenset({"contains"})
@@ -108,6 +127,11 @@ MAX_FILL_STRING_LEN = 256
 # bounds both the generated SQL and how much relabelling can happen in one
 # unreviewable step.
 MAX_CATEGORY_MAPPING = 50
+# How many distinct values one nullify_values op may reclassify as missing. Small
+# on purpose: this op says "these codes mean nothing was recorded", and a list
+# long enough to need scrolling is a category merge wearing a disguise.
+MAX_NULLIFY_VALUES = 20
+
 # Ceiling on `group_rare_categories.top_n`. Past this the chart is unreadable
 # anyway, which is the problem the op exists to solve.
 MAX_TOP_CATEGORIES = 50

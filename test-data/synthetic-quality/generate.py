@@ -27,9 +27,10 @@ HERE = Path(__file__).parent
 CHANNELS = ["Online", "Retail", "Partner", "Direct"]
 PRODUCTS = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"]
 
-# Case + whitespace variants of four real regions. Folding merges them, which is
-# what makes this `case_variants` (a SAFE auto-repair) rather than
-# `high_cardinality` — the two findings are mutually exclusive in quality.scan.
+# Case + whitespace variants of four real regions. Folding merges them, so this
+# raises `case_variants` (a SAFE auto-repair) and not `high_cardinality`: the two
+# are independent findings, and cardinality is judged on the *folded* count, which
+# is 4 here — well under the threshold.
 REGION_VARIANTS = [
     "North", "north", "  North", "NORTH",
     "South", "south", "South  ",
