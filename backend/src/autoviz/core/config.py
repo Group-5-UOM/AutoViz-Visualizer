@@ -16,10 +16,8 @@ class Settings(BaseSettings):
         "postgresql://postgres:postgres@localhost:5432/autoviz",
     )
 
-    # ── JWT ──────────────────────────────────────────────────────────────
+    # ── Security ──────────────────────────────────────────────────────────────
     SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me-in-production")
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     # ── Uploads ──────────────────────────────────────────────────────────
     # Default: backend/uploads/  (parents[3] from core/config.py → backend/)
