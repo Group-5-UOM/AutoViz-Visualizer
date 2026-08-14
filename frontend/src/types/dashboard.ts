@@ -47,6 +47,15 @@ export interface ChatMessage {
   referencedTitle?: string;
   /** Grounded answers offered with a question; picking one replies with its label. */
   options?: ChatOption[];
+  /**
+   * Set when this entry reports a failure rather than an answer.
+   *
+   * `validation` is the request being refused — a column that is not there, an
+   * aggregation the data will not support — and reads as an explanation.
+   * `error` is the request never getting a verdict, and is the only one worth
+   * offering a retry on.
+   */
+  tone?: 'validation' | 'error';
   timestamp: number;
 }
 

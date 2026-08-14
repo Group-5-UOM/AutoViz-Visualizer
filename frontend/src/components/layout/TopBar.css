@@ -156,3 +156,51 @@
     display: none;
   }
 }
+
+.topbar-export {
+  position: relative;
+}
+
+.topbar-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 220px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.topbar-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  color: var(--text-primary);
+  font-size: 13px;
+  transition: background 0.15s ease;
+}
+
+.topbar-menu button:hover {
+  background: var(--bg-hover);
+}
+
+.topbar-menu button span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.topbar-menu button small {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}

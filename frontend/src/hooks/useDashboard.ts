@@ -23,7 +23,7 @@ const FALLBACK_QUESTION: Record<string, string> = {
   confirmation: 'Please confirm before I continue.',
 };
 import { applyAgentCharts } from '../lib/chartWidgets';
-import { ApiError } from '../lib/api';
+import { classifyError, errorMessage, isRetryable } from '../lib/api';
 
 const WELCOME =
   'Hi! Ask me a question about your dataset — for example “average price by category” or “how has revenue changed over time”. I run the query on your data and put the chart on the canvas.';
@@ -39,10 +39,11 @@ function uid(prefix: string) {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
-function errorText(err: unknown): string {
-  if (err instanceof ApiError) return err.message;
-  if (err instanceof Error) return err.message;
-  return 'Something went wrong talking to the server.';
+/** One outbound agent request, kept so a failed turn can be run again. */
+interface AgentRequest {
+  text: string;
+  chartType?: ChartType | null;
+  agentChartId?: string;
 }
 
 export function useDashboard(datasetId: string | null, datasetFileName?: string | null) {
@@ -86,6 +87,12 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
   // composer because the attach gesture happens on the canvas, and because
   // sending is what consumes it.
   const [referencedWidgetId, setReferencedWidgetId] = useState<string | null>(null);
+
+  // The request behind the newest failure, and whether re-running it is worth
+  // offering. A rejected request is remembered too — so the transcript can show
+  // why — but is not retryable: the same words produce the same rejection.
+  const lastRequest = useRef<AgentRequest | null>(null);
+  const [canRetrySend, setCanRetrySend] = useState(false);
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -160,7 +167,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
         }));
         return null;
       } catch (err) {
-        return errorText(err);
+        return errorMessage(err);
       }
     },
     [],
@@ -220,7 +227,10 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
         const detail = res.errors?.length
           ? res.errors.join(' ')
           : (res.answer ?? 'The request could not be processed.');
-        pushAssistant({ content: `I couldn't complete that. ${detail}` });
+        // A run that reached a verdict of "failed" has already been through the
+        // repair loop, so it is shown as a failure but not offered a retry —
+        // the same request would take the same path again.
+        pushAssistant({ content: `I couldn't complete that. ${detail}`, tone: 'error' });
         return;
       }
 
@@ -253,6 +263,50 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     [pushAssistant, setThread],
   );
 
+  /**
+   * Run one agent request and fold the outcome into the transcript.
+   *
+   * Split out of `sendMessage` so a retry re-runs exactly the request that
+   * failed — the same attached chart, the same chart-type pick — without
+   * posting the user's message to the transcript a second time.
+   */
+  const dispatch = useCallback(
+    async (request: AgentRequest) => {
+      if (!datasetId) return;
+      setIsThinking(true);
+      try {
+        const res =
+          awaitingAnswer.current && threadId.current
+            ? // A paused run is answering its own question; neither an attachment
+              // nor a chart-type pick has anything to do with that decision.
+              await answerClarification(threadId.current, request.text, pendingInterruptId.current)
+            : await analyze(
+                request.text,
+                datasetId,
+                threadId.current,
+                request.agentChartId,
+                request.chartType,
+              );
+        lastRequest.current = null;
+        setCanRetrySend(false);
+        applyResponse(res);
+      } catch (err) {
+        // A paused run is left paused on transport failure, so a retry resumes
+        // it rather than silently starting a fresh analysis.
+        lastRequest.current = request;
+        const retryable = isRetryable(err);
+        setCanRetrySend(retryable);
+        pushAssistant({
+          content: errorMessage(err),
+          tone: classifyError(err) === 'validation' ? 'validation' : 'error',
+        });
+      } finally {
+        setIsThinking(false);
+      }
+    },
+    [datasetId, applyResponse, pushAssistant],
+  );
+
   const sendMessage = useCallback(
     // `chartType` is set only when the user picked a type from a list rather
     // than describing one, so it is an argument and not hook state: a pick
@@ -283,32 +337,30 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
           timestamp: Date.now(),
         },
       ]);
-      setIsThinking(true);
 
-      try {
-        const res =
-          awaitingAnswer.current && threadId.current
-            ? // A paused run is answering its own question; neither an attachment
-              // nor a chart-type pick has anything to do with that decision.
-              await answerClarification(threadId.current, trimmed, pendingInterruptId.current)
-            : await analyze(
-                trimmed,
-                datasetId,
-                threadId.current,
-                referenced?.agentChartId,
-                chartType,
-              );
-        applyResponse(res);
-      } catch (err) {
-        // A paused run is left paused on transport failure, so a retry resumes
-        // it rather than silently starting a fresh analysis.
-        pushAssistant({ content: errorText(err) });
-      } finally {
-        setIsThinking(false);
-      }
+      await dispatch({
+        text: trimmed,
+        chartType,
+        agentChartId: referenced?.agentChartId,
+      });
     },
-    [datasetId, applyResponse, pushAssistant, referencedWidgetId],
+    [datasetId, dispatch, pushAssistant, referencedWidgetId],
   );
+
+  /**
+   * Run the failed turn again.
+   *
+   * The failure bubble is dropped first so a second failure does not leave two
+   * identical ones stacked up; the user's own message stays where it is, which
+   * is what makes this different from retyping.
+   */
+  const retryLastMessage = useCallback(() => {
+    const request = lastRequest.current;
+    if (!request) return;
+    setMessages((prev) => (prev[prev.length - 1]?.tone ? prev.slice(0, -1) : prev));
+    setCanRetrySend(false);
+    void dispatch(request);
+  }, [dispatch]);
 
   // --- persistence ----------------------------------------------------------
 
@@ -376,7 +428,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
       // The baseline is left stale on purpose — the change really is unsaved,
       // so Retry re-sends it instead of declaring victory over it.
       retryBlocked.current = true;
-      setSaveError(errorText(err));
+      setSaveError(errorMessage(err));
       setSaveStatus('error');
     } finally {
       inFlight.current = false;
@@ -463,6 +515,8 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
       // resumed against a decision the backend can no longer identify.
       awaitingAnswer.current = false;
       pendingInterruptId.current = null;
+      lastRequest.current = null;
+      setCanRetrySend(false);
       placedCount.current = widgets.length;
       const next: DashboardState = {
         widgets,
@@ -537,12 +591,15 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     lastSavedAt,
     saveError,
     referencedWidgetId,
+    /** The newest turn failed in a way that re-running it may fix. */
+    canRetrySend,
     referenceWidget: setReferencedWidgetId,
     selectWidget,
     updateWidget,
     editWidgetStyle,
     deleteWidget,
     sendMessage,
+    retryLastMessage,
     saveNow,
     renameDashboard,
     loadDashboardState,
