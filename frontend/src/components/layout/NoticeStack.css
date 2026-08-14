@@ -1,0 +1,121 @@
+/* Anchored under the top bar rather than floating over the canvas: an export
+   or a save failure is about the board as a whole, and a toast in the corner of
+   a dashboard reads as belonging to whichever chart it happens to cover. */
+.notice-stack {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(560px, calc(100% - 32px));
+  pointer-events: none;
+}
+
+.notice {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.notice-icon {
+  flex: none;
+}
+
+.notice-message {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice--working .notice-icon {
+  color: var(--text-secondary);
+}
+
+.notice--success {
+  border-color: color-mix(in srgb, var(--success) 35%, var(--border));
+}
+
+.notice--success .notice-icon {
+  color: var(--success);
+}
+
+/* A rejected request is not a fault: it is the system explaining what it will
+   not do. Coloured as information so it does not read as a crash. */
+.notice--validation {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: var(--accent-soft);
+}
+
+.notice--validation .notice-icon {
+  color: var(--accent);
+}
+
+.notice--error {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+}
+
+.notice--error .notice-icon {
+  color: var(--danger);
+}
+
+.notice-retry,
+.notice-dismiss {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.notice-retry {
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.notice-retry:hover {
+  background: var(--bg-hover);
+}
+
+.notice-dismiss {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+}
+
+.notice-dismiss:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.is-spinning {
+  animation: notice-spin 0.9s linear infinite;
+}
+
+@keyframes notice-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-spinning {
+    animation: none;
+  }
+}

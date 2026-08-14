@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { AtSign, BarChart3, SendHorizontal, X } from 'lucide-react';
+import { AtSign, BarChart3, RotateCcw, SendHorizontal, X } from 'lucide-react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import { MessageContent } from './MessageContent';
 import type { ChartWidget, ChatMessage } from '../../types/dashboard';
@@ -22,6 +22,10 @@ interface ChatPanelProps {
   referenceable?: ChartWidget[];
   referencedWidgetId?: string | null;
   onReference?: (id: string | null) => void;
+  /** The newest turn failed in a way that re-running it may fix. */
+  canRetry?: boolean;
+  /** Re-run the failed turn without the user retyping it. */
+  onRetry?: () => void;
 }
 
 // Deliberately generic: the agent answers against whatever CSV was uploaded,
@@ -45,6 +49,8 @@ export function ChatPanel({
   referenceable = [],
   referencedWidgetId = null,
   onReference,
+  canRetry = false,
+  onRetry,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState('');
   const [picking, setPicking] = useState(false);
@@ -78,10 +84,12 @@ export function ChatPanel({
   return (
     <section className="chat-panel" aria-label="AI chat">
       <div className="chat-messages" ref={listRef}>
-        {messages.map((msg) => (
+        {messages.map((msg, index) => (
           <article
             key={msg.id}
-            className={`chat-bubble chat-bubble--${msg.role}`}
+            className={`chat-bubble chat-bubble--${msg.role}${
+              msg.tone ? ` chat-bubble--${msg.tone}` : ''
+            }`}
           >
             {msg.referencedTitle && (
               <p className="chat-bubble-reference" title={msg.referencedTitle}>
@@ -129,6 +137,19 @@ export function ChatPanel({
                 View on canvas
               </button>
             )}
+            {/* Only on the newest turn: an older failure has been superseded by
+                whatever the user did next, and retrying it would replay a
+                request from the middle of the conversation. */}
+            {msg.tone === 'error' &&
+              index === messages.length - 1 &&
+              canRetry &&
+              onRetry &&
+              !isThinking && (
+                <button type="button" className="chat-retry-btn" onClick={onRetry}>
+                  <RotateCcw size={13} />
+                  Try again
+                </button>
+              )}
           </article>
         ))}
 

@@ -1,4 +1,18 @@
-import { Download, KeyRound, LogOut, Menu, PanelLeft, Share2, Save, FilePlus2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ChevronDown,
+  Download,
+  FileImage,
+  FileText,
+  KeyRound,
+  LogOut,
+  Menu,
+  PanelLeft,
+  Share2,
+  Save,
+  FilePlus2,
+} from 'lucide-react';
+import type { ExportFormat } from '../../lib/exportDashboard';
 import './TopBar.css';
 
 interface TopBarProps {
@@ -8,9 +22,16 @@ interface TopBarProps {
   username?: string;
   onToggleSidebar: () => void;
   onRename: () => void;
-  onExport: () => void;
+  onExport: (format: ExportFormat) => void;
+  /** The format currently being written, if any — drives the button's busy state. */
+  exporting?: ExportFormat | null;
   onSave?: () => void;
   saveStatus?: 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+  /**
+   * Why the last save failed. Shown on the button, because "Error" on its own
+   * tells the user something went wrong and nothing about what.
+   */
+  saveError?: string | null;
   onNewDashboard?: () => void;
   onSetPassword?: () => void;
   onLogout?: () => void | Promise<void>;
@@ -26,14 +47,42 @@ export function TopBar({
   onToggleSidebar,
   onRename,
   onExport,
+  exporting = null,
   onSave,
   saveStatus,
+  saveError,
   onNewDashboard,
   onSetPassword,
   onLogout,
   canExport = true,
 }: TopBarProps) {
   const displayName = username || userEmail?.split('@')[0] || userEmail;
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  // Close on anything that is not a click inside the menu — Escape, or a click
+  // anywhere else. Without the pointer half, the menu survives a click on the
+  // canvas and hangs over the chart the user just went to look at.
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!exportRef.current?.contains(e.target as Node)) setExportOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExportOpen(false);
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [exportOpen]);
+
+  const runExport = (format: ExportFormat) => {
+    setExportOpen(false);
+    onExport(format);
+  };
 
   return (
     <header className="board-topbar">
@@ -94,22 +143,51 @@ export function TopBar({
             }}
             onClick={onSave}
             disabled={saveStatus === 'saving' || saveStatus === 'saved'}
-            title={saveStatus === 'error' ? 'Failed to save. Click to retry.' : 'Save dashboard charts and positions'}
+            title={
+              saveStatus === 'error'
+                ? `Failed to save${saveError ? `: ${saveError}` : ''}. Click to retry.`
+                : 'Save dashboard charts and positions'
+            }
           >
             <Save size={15} />
-            {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Error' : 'Save'}
+            {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Retry save' : 'Save'}
           </button>
         )}
-        <button
-          type="button"
-          className="topbar-primary-btn"
-          onClick={onExport}
-          disabled={!canExport}
-          title={!canExport ? 'Add a chart first' : 'Export the canvas as a PNG'}
-        >
-          <Download size={15} />
-          Export
-        </button>
+
+        <div className="topbar-export" ref={exportRef}>
+          <button
+            type="button"
+            className="topbar-primary-btn"
+            onClick={() => setExportOpen((open) => !open)}
+            disabled={!canExport || exporting !== null}
+            aria-haspopup="menu"
+            aria-expanded={exportOpen}
+            title={!canExport ? 'Add a chart first' : 'Export this dashboard'}
+          >
+            <Download size={15} />
+            {exporting === 'pdf' ? 'Making PDF…' : exporting === 'png' ? 'Making image…' : 'Export'}
+            <ChevronDown size={13} />
+          </button>
+
+          {exportOpen && (
+            <div className="topbar-menu" role="menu" aria-label="Export format">
+              <button type="button" role="menuitem" onClick={() => runExport('png')}>
+                <FileImage size={15} />
+                <span>
+                  PNG image
+                  <small>One picture of the canvas</small>
+                </span>
+              </button>
+              <button type="button" role="menuitem" onClick={() => runExport('pdf')}>
+                <FileText size={15} />
+                <span>
+                  PDF document
+                  <small>A single page, sized to fit</small>
+                </span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {displayName && (
           <div className="topbar-user">
