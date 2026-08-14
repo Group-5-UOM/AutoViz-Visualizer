@@ -20,8 +20,11 @@ scanning the whole frame every time would make the interruption rate a function
 of the dataset rather than of the request.
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
+
+import pandas as pd
 
 from autoviz.schema.allowlists import (
     MAX_PREPROCESSING_STEPS,
@@ -33,6 +36,44 @@ from autoviz.services.safety import neutralize_text
 # A categorical column with more distinct values than this makes an unreadable
 # chart, so it is worth mentioning. Not a defect — just not plottable as-is.
 HIGH_CARDINALITY = 25
+
+# Codes conventionally used to mean "not recorded". Flagged only when the value
+# also sits far outside the column's real distribution (see _numeric_sentinels),
+# because 999 is a placeholder in a column of ages and an ordinary reading in a
+# column of prices — the number alone cannot tell you which.
+SENTINEL_NUMBERS = (-1, -9, -99, -999, -9999, 999, 9999, 99999, -111111)
+
+# Text standing in for absence. The obvious ones ("NA", "null", "none") are
+# already nulled at read time by services/ingest.py; these are the ones that
+# survive it, and they survive precisely because no CSV reader treats them as
+# missing.
+SENTINEL_TEXT = frozenset(
+    {"unknown", "missing", "not available", "not applicable", "tbd", "n.a.",
+     "-", "--", "---", "?", "??", "none given", "no data", "unspecified"}
+)
+
+# A sentinel has to appear at least this often to be worth raising. One stray -1
+# is more likely a typo than a coding convention, and a question about a single
+# row costs more attention than it saves.
+MIN_SENTINEL_ROWS = 2
+
+# How far outside the interquartile range a numeric sentinel must sit. 3x is the
+# conventional "far out" fence — wide enough that a legitimate extreme reading is
+# not mistaken for a code.
+SENTINEL_IQR_MULTIPLE = 3.0
+
+# Domain shapes worth validating. Deliberately only the two that are decidable
+# from the value alone: an address either has the shape of an email or it does
+# not. Anything needing a reference list (countries, currencies) is a judgement
+# about the world, not about the string, and belongs to a user-supplied list.
+DOMAIN_PATTERNS = {
+    "email address": re.compile(r"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$"),
+    "web address": re.compile(r"^(https?://|www\.)\S+$"),
+}
+
+# What share of a column must match a domain before the rest count as errors
+# rather than the column simply not being of that kind.
+DOMAIN_MAJORITY = 0.8
 
 # How many categories to keep when offering to bucket the long tail. Chosen to sit
 # well under HIGH_CARDINALITY so accepting the offer actually solves the problem,
@@ -108,6 +149,72 @@ def _pretty(column: str) -> str:
     return column.replace("_", " ").strip()
 
 
+def _numeric_sentinels(series: "pd.Series") -> list[Any]:
+    """Placeholder codes in a numeric column, or [] if none are convincing.
+
+    Two conditions, and both are needed. The value must be a **known code**, and
+    it must sit **far outside the column's own distribution**. Either test alone
+    is wrong in a way that matters: 999 is a placeholder among ages and a real
+    reading among prices, so the code list cannot decide on its own; and plenty
+    of genuine outliers are not codes, so distance cannot either.
+    """
+    clean = series.dropna()
+    if len(clean) < 4:  # too few rows for a quartile to mean anything
+        return []
+    q1, q3 = clean.quantile(0.25), clean.quantile(0.75)
+    iqr = q3 - q1
+    if iqr <= 0:
+        # A column with no spread has no "far outside". Anything that is not the
+        # single repeated value would be, which flags ordinary data.
+        return []
+    low = q1 - SENTINEL_IQR_MULTIPLE * iqr
+    high = q3 + SENTINEL_IQR_MULTIPLE * iqr
+    counts = clean.value_counts()
+    found = []
+    for candidate in SENTINEL_NUMBERS:
+        n = int(counts.get(candidate, 0))
+        if n >= MIN_SENTINEL_ROWS and (candidate < low or candidate > high):
+            found.append(candidate)
+    return found
+
+
+def _text_sentinels(values: "pd.Series") -> list[str]:
+    """Placeholder words in a text column, matched case- and space-insensitively.
+
+    No distribution test here: unlike a number, "unknown" cannot also be a real
+    observation, so its presence is sufficient on its own.
+    """
+    folded = values.str.strip().str.casefold()
+    counts = folded.value_counts()
+    found = []
+    for token, n in counts.items():
+        if token in SENTINEL_TEXT and int(n) >= MIN_SENTINEL_ROWS:
+            # Report the spelling the file actually uses, not the folded form —
+            # it is what the user will search for and what the op must match.
+            original = values[folded == token].iloc[0]
+            found.append(str(original).strip())
+    return found
+
+
+def _domain_failures(values: "pd.Series") -> tuple[str, int] | None:
+    """(domain name, failing count) when a column is mostly one shape but not all.
+
+    This is Tableau's data role, minus the fixer. A column that is 96% email
+    addresses is an email column with 4% broken rows; a column that is 30%
+    email addresses is a notes field, and flagging the other 70% would be noise.
+    """
+    total = len(values)
+    if total < 5:
+        return None
+    for name, pattern in DOMAIN_PATTERNS.items():
+        matches = int(values.str.strip().str.match(pattern).sum())
+        if matches == total:
+            return None  # a clean column of that kind: nothing to say
+        if matches / total >= DOMAIN_MAJORITY:
+            return name, total - matches
+    return None
+
+
 # --- scan ---------------------------------------------------------------------
 
 
@@ -118,7 +225,26 @@ def scan(record: DatasetRecord, columns: set[str] | None = None) -> list[Quality
     checks, because whitespace and case variants are not in the profile — but
     reuses the profile's null and duplicate counts, which are already computed at
     registration and would otherwise be a second full pass.
+
+    Memoized per column scope on the record. The agent scans once per pass and
+    re-enters the node for every cleaning question it asks, so the same work was
+    being repeated several times a turn — a third of a second each on a 200k-row
+    frame. Sound because the frame is immutable; see ``DatasetRecord.scan_cache``.
     """
+    key = None if columns is None else frozenset(columns)
+    cached = record.scan_cache.get(key)
+    if cached is not None:
+        return list(cached)
+    found = _scan_uncached(record, columns)
+    record.scan_cache[key] = found
+    # Copied out so a caller that mutates the list cannot corrupt the next
+    # caller's findings.
+    return list(found)
+
+
+def _scan_uncached(
+    record: DatasetRecord, columns: set[str] | None = None
+) -> list[QualityIssue]:
     df = record.df
     total = len(df)
     if total == 0:
@@ -144,12 +270,51 @@ def scan(record: DatasetRecord, columns: set[str] | None = None) -> list[Quality
                 )
             )
 
+        if logical == "number":
+            # Codes standing in for "not recorded". Worth finding before anything
+            # else: a null is skipped by every aggregate and disclosed when it
+            # matters, while a 999 meaning "unknown" is averaged in and the answer
+            # is wrong with nothing to show for it.
+            sentinels = _numeric_sentinels(series)
+            if sentinels:
+                affected = int(series.isin(sentinels).sum())
+                issues.append(
+                    QualityIssue(
+                        kind="suspect_values", column=col, affected=affected,
+                        fraction=affected / total,
+                        detail={"values": sentinels, "column_type": "number"},
+                    )
+                )
+
         if logical != "string":
             continue
 
         text = series.dropna().astype(str)
         if text.empty:
             continue
+
+        placeholders = _text_sentinels(text)
+        if placeholders:
+            affected = int(text.str.strip().str.casefold().isin(
+                {p.casefold() for p in placeholders}
+            ).sum())
+            issues.append(
+                QualityIssue(
+                    kind="suspect_values", column=col, affected=affected,
+                    fraction=affected / total,
+                    detail={"values": placeholders, "column_type": "string"},
+                )
+            )
+
+        domain = _domain_failures(text)
+        if domain is not None:
+            role, failing = domain
+            issues.append(
+                QualityIssue(
+                    kind="invalid_domain_values", column=col, affected=failing,
+                    fraction=failing / total, detail={"domain": role},
+                )
+            )
 
         padded = int((text != text.str.strip()).sum())
         if padded:
@@ -172,12 +337,19 @@ def scan(record: DatasetRecord, columns: set[str] | None = None) -> list[Quality
         # Case variants: only a finding when folding actually merges groups. Two
         # spellings of one category are two bars on a chart, which is the concrete
         # harm — a column that is merely mixed-case but unambiguous is left alone.
+        #
+        # The two findings below are independent, not alternatives. A column can
+        # easily have both, and when this was an `elif` the case-variant finding
+        # masked the other: normalize_case then quietly repaired the spellings, no
+        # grouping proposal was ever offered, and the user got an unreadable chart
+        # of 300 categories with nothing having gone visibly wrong.
         non_blank = stripped[stripped != ""]
         if not non_blank.empty:
             distinct = non_blank.nunique()
-            folded = non_blank.str.lower().nunique()
+            folded_values = non_blank.str.lower()
+            folded = folded_values.nunique()
             if folded < distinct:
-                affected = int((non_blank != non_blank.str.lower()).sum())
+                affected = int((non_blank != folded_values).sum())
                 issues.append(
                     QualityIssue(
                         kind="case_variants", column=col, affected=affected,
@@ -185,11 +357,14 @@ def scan(record: DatasetRecord, columns: set[str] | None = None) -> list[Quality
                         detail={"distinct": int(distinct), "after_folding": int(folded)},
                     )
                 )
-            elif distinct > HIGH_CARDINALITY:
+            # Judged on the *folded* count, because normalize_case is a SAFE repair
+            # that runs first: the number of categories the chart actually has to
+            # draw is the count after merging, not before.
+            if folded > HIGH_CARDINALITY:
                 issues.append(
                     QualityIssue(
-                        kind="high_cardinality", column=col, affected=int(distinct),
-                        fraction=0.0, detail={"distinct": int(distinct)},
+                        kind="high_cardinality", column=col, affected=int(folded),
+                        fraction=0.0, detail={"distinct": int(folded)},
                     )
                 )
 
@@ -346,6 +521,49 @@ def _high_cardinality_proposal(
     )
 
 
+def _suspect_values_proposal(issue: QualityIssue, total: int) -> CleaningProposal:
+    """Offer to read placeholder codes as missing.
+
+    Recommended, unusually for a value-changing op, and the asymmetry is the
+    point: if 999 really is a code, counting it as a number corrupts every
+    average that touches the column, while treating a genuine 999 as missing
+    costs a handful of rows from an aggregate that already discloses its
+    exclusions. The cheap mistake is the one to default to.
+    """
+    col = issue.column
+    assert col is not None
+    values = list(issue.detail.get("values") or [])
+    shown = ", ".join(str(v) for v in values)
+    pct = round(issue.fraction * 100, 1)
+    return CleaningProposal(
+        slot=f"suspect:{col}",
+        question=(
+            f"{_pretty(col)} contains {issue.affected} row(s) ({pct}%) with the "
+            f"value {shown}, which sits well outside the rest of the column. "
+            "Codes like this usually mean 'not recorded'. What should AutoViz do?"
+        ),
+        options=[
+            CleaningOption(
+                label="Treat them as missing",
+                detail=(
+                    f"{issue.affected} row(s) stop counting toward totals and "
+                    f"averages of {_pretty(col)}."
+                ),
+                technique=f"nullify_values({shown}) on '{col}'",
+                op={"op": "nullify_values", "column": col, "values": values},
+                recommended=True,
+            ),
+            CleaningOption(
+                label="Treat them as real values",
+                detail=f"{shown} will be counted in totals and averages.",
+                technique="no preprocessing",
+                op=None,
+            ),
+        ],
+        issue=issue,
+    )
+
+
 def _duplicate_proposal(issue: QualityIssue, total: int) -> CleaningProposal:
     """Duplicates are never removed by default.
 
@@ -420,6 +638,8 @@ def recommend(
             proposals.append(_duplicate_proposal(issue, total_rows))
         elif issue.kind == "high_cardinality":
             proposals.append(_high_cardinality_proposal(issue, measure))
+        elif issue.kind == "suspect_values":
+            proposals.append(_suspect_values_proposal(issue, total_rows))
 
     proposals.sort(key=lambda p: p.issue.fraction, reverse=True)
     return auto_ops, proposals
@@ -499,7 +719,7 @@ def _op_columns(op: dict[str, Any]) -> set[str]:
 
 def merge_auto_ops(
     existing: list[dict[str, Any]], auto: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Fold safe repairs into a plan's preprocessing block.
 
     Two rules, both about not overriding a person:
@@ -517,6 +737,11 @@ def merge_auto_ops(
     column, and letting those push the block over the limit would fail validation
     on a plan the user wrote correctly — the system's own helpfulness breaking
     their request. The planner's ops are always kept in full.
+
+    Returns ``(merged, dropped)``. ``dropped`` is the repairs the budget had no
+    room for, and it is returned rather than discarded because a half-cleaned
+    column looks cleaned: the values are still wrong and nothing about the output
+    says so. The caller turns it into an advisory notice.
     """
     taken: dict[str, set[str]] = {}
     for op in existing:
@@ -542,8 +767,8 @@ def merge_auto_ops(
 
     budget = MAX_PREPROCESSING_STEPS - len(existing)
     if budget <= 0:
-        return list(existing)
-    return merged[:budget] + list(existing)
+        return list(existing), merged
+    return merged[:budget] + list(existing), merged[budget:]
 
 
 def suppressed_slots(existing: list[dict[str, Any]]) -> set[str]:
@@ -560,6 +785,9 @@ def suppressed_slots(existing: list[dict[str, Any]]) -> set[str]:
                 slots.add(f"missing:{col}")
         elif op.get("op") == "drop_exact_duplicates":
             slots.add("duplicates")
+        elif op.get("op") == "nullify_values":
+            for col in _op_columns(op):
+                slots.add(f"suspect:{col}")
         elif op.get("op") == "group_rare_categories":
             # A refinement carries the prior plan's preprocessing forward, so
             # without this the cardinality slot is unsuppressable and every

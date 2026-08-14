@@ -65,6 +65,12 @@ _DERIVE_SQL = {
     "year": "date_part('year', {col})",
     "day": "date_part('day', {col})",
     "weekday": "date_part('dow', {col})",
+    # Truncation keeps the column a timestamp, so consecutive periods stay ordered
+    # and distinct across years — what a trend needs and date_part cannot give.
+    "month_start": "date_trunc('month', {col})",
+    "quarter_start": "date_trunc('quarter', {col})",
+    "week_start": "date_trunc('week', {col})",
+    "year_start": "date_trunc('year', {col})",
     "lower": "lower({col})",
     "upper": "upper({col})",
     "trim": "trim({col})",
@@ -85,18 +91,35 @@ _FILTER_SQL = {
 
 # Safe-tier value rewrites. Each is a pure function of the cell — no aggregate, no
 # reference to other rows — which is what makes them replayable and cheap.
+#
+# normalize_case is deliberately NOT here: folding to a canonical spelling needs to
+# know which spelling is commonest, which is an aggregate over the column. See the
+# op's own branch in _apply_preprocessing.
 _REWRITE_SQL = {
     "trim_whitespace": "trim({col})",
     # trim inside nullif so "   " counts as empty without also rewriting values
     # that are merely padded (trim_whitespace is a separate, explicit op).
     "empty_string_to_null": "nullif(trim({col}), '')",
-    "normalize_case": "lower({col})",
 }
 
 _CAST_SQL = {
     "number": "TRY_CAST({col} AS DOUBLE)",
     "datetime": "TRY_CAST({col} AS TIMESTAMP)",
 }
+
+# Does this spelling read as an ordinary label — "Male" rather than "MALE" or
+# "male"? Used only to break a frequency tie in normalize_case, so it needs to be
+# cheap and deterministic, not linguistically right. Spelled out from substr/upper
+# because DuckDB has no initcap.
+_LOOKS_LIKE_A_LABEL = "(v = upper(substr(v, 1, 1)) || lower(substr(v, 2)))"
+
+# What `parse_number` is allowed to remove: currency marks and whitespace, and
+# nothing else. A closed list, not a "strip everything non-numeric" filter —
+# the latter turns '12 apples' into 12 and reports a successful repair. Anything
+# outside this set survives into the TRY_CAST and fails it, which is what makes
+# the op refuse rather than invent. A literal, never user input, so it is inlined
+# where the thousands separator beside it is bound.
+_DECORATION_PATTERN = r"'[$£€¥₹\s]'"
 
 _AGG_SQL = {
     "sum": "sum({col})",
@@ -268,6 +291,33 @@ def _apply_preprocessing(
                 "rows_affected": int(prev_rows - after), "confirmation_required": False,
             })
             prev_rows, current = after, name
+        elif op.op == "fill_nulls" and op.by:
+            # Group-wise imputation. Computed as a window rather than as one
+            # value, so each row is filled from its own group: a missing salary
+            # takes its department's median, not the company's.
+            col = _q(op.column)
+            partition = ", ".join(_q(c) for c in op.by)
+            nulls = con.execute(
+                _with(cte_defs)
+                + f"SELECT count(*) FROM {current} WHERE {col} IS NULL",
+                list(params),
+            ).fetchone()[0]
+            expr = f"coalesce({col}, median({col}) OVER (PARTITION BY {partition}))"
+            cte_defs.append(f"{name} AS (SELECT * REPLACE ({expr} AS {col}) FROM {current})")
+            # A group that is entirely null has no median, so those rows stay
+            # null. That is the honest outcome — there is nothing to impute from
+            # — but it means "filled" and "was null" are different counts, and
+            # the report has to state the one that actually happened.
+            remaining = con.execute(
+                _with(cte_defs) + f"SELECT count(*) FROM {name} WHERE {col} IS NULL",
+                list(params),
+            ).fetchone()[0]
+            report.append({
+                "operation": "fill_nulls", "column": op.column, "strategy": op.strategy,
+                "by": list(op.by), "rows_affected": int(nulls - remaining),
+                "rows_still_null": int(remaining), "confirmation_required": False,
+            })
+            current = name
         elif op.op == "fill_nulls":  # imputes, never changes the row count
             col = _q(op.column)
             nulls = con.execute(
@@ -291,13 +341,60 @@ def _apply_preprocessing(
                 "confirmation_required": False,
             })
             current = name
-        elif op.op in ("trim_whitespace", "empty_string_to_null", "normalize_case"):
+        elif op.op == "normalize_case":
+            # Fold case variants onto the spelling the column uses most, not onto
+            # lower(). Both merge the same rows, but lower() also rewrites the
+            # label every chart then displays: a country axis reading "usa" and
+            # "canada" is a defect the user did not have before we "repaired" it.
+            # Tableau's grouping keeps a canonical member for exactly this reason.
+            col = _q(op.column)
+            # Only groups that actually have more than one spelling need an arm;
+            # everything else is unchanged by folding and falls through to ELSE.
+            # That keeps the CASE proportional to the mess, not to the cardinality.
+            # Ranked by frequency, then — on a tie — by which spelling reads as an
+            # ordinary label. Three spellings appearing once each is a real tie,
+            # and breaking it on raw value order alone would pick "MALE" over
+            # "Male" purely because capitals sort first, leaving the chart
+            # shouting. initcap-matching prefers "Male"; value order still settles
+            # anything that remains, so the result never depends on scan order.
+            canon = con.execute(
+                _with(cte_defs)
+                + "SELECT lower(v), "
+                + f"(array_agg(v ORDER BY n DESC, {_LOOKS_LIKE_A_LABEL} DESC, v ASC))[1] "
+                + f"FROM (SELECT {col} AS v, count(*) AS n FROM {current} "
+                + f"WHERE {col} IS NOT NULL GROUP BY {col}) "
+                + "GROUP BY lower(v) HAVING count(*) > 1",
+                list(params),
+            ).fetchall()
+            if not canon:
+                # Nothing to merge. Emitting a no-op CTE would still cost a scan.
+                report.append({
+                    "operation": "normalize_case", "columns": [op.column],
+                    "rows_affected": 0, "confirmation_required": False,
+                })
+                continue
+            arms = " ".join("WHEN ? THEN ?" for _ in canon)
+            arm_params: list[Any] = []
+            for folded, canonical in canon:
+                arm_params.extend([folded, canonical])
+            expr = f"CASE lower({col}) {arms} ELSE {col} END"
+            changed = con.execute(
+                _with(cte_defs)
+                + f"SELECT count(*) FROM {current} WHERE {col} IS DISTINCT FROM {expr}",
+                list(params) + arm_params,
+            ).fetchone()[0]
+            cte_defs.append(f"{name} AS (SELECT * REPLACE ({expr} AS {col}) FROM {current})")
+            params.extend(arm_params)
+            report.append({
+                "operation": "normalize_case", "columns": [op.column],
+                "rows_affected": int(changed), "confirmation_required": False,
+            })
+            current = name
+        elif op.op in ("trim_whitespace", "empty_string_to_null"):
             # Value rewrites: same shape, one expression each. REPLACE swaps the
             # column in place inside the working view, so downstream references
             # keep their names and the source frame is untouched.
-            targets = (
-                [op.column] if op.op == "normalize_case" else list(dict.fromkeys(op.columns))
-            )
+            targets = list(dict.fromkeys(op.columns))
             exprs = ", ".join(
                 f"{_REWRITE_SQL[op.op].format(col=_q(c))} AS {_q(c)}" for c in targets
             )
@@ -356,6 +453,121 @@ def _apply_preprocessing(
                 "operation": "cast_column", "column": op.column, "to": op.to,
                 "rows_affected": int(present),  # nulls stay null and are not counted
                 "confirmation_required": False,
+            })
+            current = name
+        elif op.op == "parse_number":
+            # Strip only the listed decoration, then require what is left to
+            # convert in full. A permissive "remove everything non-numeric" would
+            # turn '12 apples' into 12 and call it a repair; here it becomes
+            # '12apples', fails to cast, and the whole op is refused below.
+            targets = list(dict.fromkeys(op.columns))
+            exprs: dict[str, str] = {}
+            for col in targets:
+                inner = _q(col)
+                if op.thousands is not None:
+                    inner = f"replace({inner}, ?, '')"
+                    params.append(op.thousands)
+                inner = f"regexp_replace({inner}, {_DECORATION_PATTERN}, '', 'g')"
+                if op.decimal == ",":
+                    inner = f"replace({inner}, ',', '.')"
+                exprs[col] = f"TRY_CAST({inner} AS DOUBLE)"
+
+            # Admissibility, per column, against the working view — same contract
+            # as cast_column: a conversion that would discard values is data loss,
+            # not a repair, so it is refused with the count rather than applied.
+            checks = ", ".join(
+                f"count({_q(c)}), count({exprs[c]})" for c in targets
+            )
+            counts = con.execute(
+                _with(cte_defs) + f"SELECT {checks} FROM {current}", list(params)
+            ).fetchone()
+            converted = 0
+            for i, col in enumerate(targets):
+                present, ok = counts[2 * i], counts[2 * i + 1]
+                if ok < present:
+                    raise PreprocessError(
+                        f"cannot read column '{col}' as a number: "
+                        f"{present - ok} of {present} value(s) would not convert and "
+                        "would be discarded. A '%' sign is one cause — 45% is either "
+                        "45 or 0.45, and the column does not say which."
+                    )
+                # Values, per column — the most-affected column stands for the op
+                # rather than a sum across columns, which could exceed the row
+                # count and make the disclosure read as nonsense.
+                converted = max(converted, int(present))
+            replacements = ", ".join(f"{exprs[c]} AS {_q(c)}" for c in targets)
+            cte_defs.append(
+                f"{name} AS (SELECT * REPLACE ({replacements}) FROM {current})"
+            )
+            report.append({
+                "operation": "parse_number", "columns": targets,
+                "decimal": op.decimal, "thousands": op.thousands,
+                "rows_affected": converted, "confirmation_required": False,
+            })
+            current = name
+        elif op.op == "nullify_values":
+            col = _q(op.column)
+            placeholders = ", ".join("?" for _ in op.values)
+            # Counted before the CTE is added, while params still line up.
+            hits = con.execute(
+                _with(cte_defs)
+                + f"SELECT count(*) FROM {current} WHERE {col} IN ({placeholders})",
+                list(params) + list(op.values),
+            ).fetchone()[0]
+            cte_defs.append(
+                f"{name} AS (SELECT * REPLACE "
+                f"(CASE WHEN {col} IN ({placeholders}) THEN NULL ELSE {col} END AS {col}) "
+                f"FROM {current})"
+            )
+            params.extend(op.values)
+            report.append({
+                "operation": "nullify_values", "column": op.column,
+                "values": [_sanitize_scalar(v) for v in op.values],
+                "rows_affected": int(hits), "confirmation_required": False,
+            })
+            current = name
+        elif op.op == "pivot_longer":
+            # DuckDB's UNPIVOT does the fold natively and carries every unnamed
+            # column down, which is exactly the semantics wanted: the id columns
+            # are "whatever was not folded", and listing them would break the
+            # moment an earlier op added one.
+            folded = ", ".join(_q(c) for c in op.columns)
+            cte_defs.append(
+                f"{name} AS (SELECT * FROM {current} "
+                f"UNPIVOT ({_q(op.values_to)} FOR {_q(op.names_to)} IN ({folded})))"
+            )
+            after = con.execute(
+                _with(cte_defs) + f"SELECT count(*) FROM {name}", list(params)
+            ).fetchone()[0]
+            report.append({
+                "operation": "pivot_longer", "columns": list(op.columns),
+                "names_to": op.names_to, "values_to": op.values_to,
+                # The row count is the effect here, and it goes up, not down.
+                "rows_affected": int(after), "rows_before": int(prev_rows),
+                "confirmation_required": False,
+            })
+            prev_rows, current = after, name
+        elif op.op == "split_column":
+            col = _q(op.column)
+            # Counted first, while `params` still matches the CTEs built so far.
+            # How many rows the separator actually appears in: a split that fires
+            # on 3 of 900 rows is a wrong separator, and this count is the only
+            # thing that says so — every other row simply gets nulls and looks
+            # like ordinary missing data.
+            split_rows = con.execute(
+                _with(cte_defs)
+                + f"SELECT count(*) FROM {current} WHERE contains({col}, ?)",
+                list(params) + [op.separator],
+            ).fetchone()[0]
+            parts = []
+            for i, into in enumerate(op.into, start=1):
+                parts.append(f"list_extract(str_split({col}, ?), {i}) AS {_q(into)}")
+                params.append(op.separator)
+            cte_defs.append(f"{name} AS (SELECT *, {', '.join(parts)} FROM {current})")
+            report.append({
+                "operation": "split_column", "column": op.column,
+                "separator": op.separator, "into": list(op.into),
+                "rows_affected": int(split_rows), "confirmation_required": False,
             })
             current = name
         elif op.op == "clean_categories":
@@ -800,6 +1012,95 @@ def materialize_cleaned_dataset(
     }
 
 
+def cleaning_recipe(dataset_id: str, registry: DatasetRegistry = REGISTRY) -> dict[str, Any]:
+    """The cleaning block that produced a materialised dataset, if it is one.
+
+    Reads it back out of the lineage stored on the profile, so a recipe survives
+    eviction and a restart along with the dataset it describes.
+    """
+    record = registry.get(dataset_id)
+    if record is None:
+        return make_error(UNKNOWN_DATASET, f"Unknown dataset_id: {dataset_id}")
+    lineage = (record.profile or {}).get("lineage") or {}
+    ops = lineage.get("preprocessing") or []
+    if not ops:
+        return make_error(
+            INVALID_PLAN,
+            f"Dataset {dataset_id} was not produced by cleaning, so it carries no "
+            "recipe to reuse.",
+            hint="Pass the id of a dataset created by materialize_cleaned_dataset.",
+        )
+    return {
+        "dataset_id": dataset_id,
+        "version_id": lineage.get("version_id"),
+        "parent_id": lineage.get("parent_id"),
+        "preprocessing": list(ops),
+    }
+
+
+def apply_cleaning_recipe(
+    recipe_dataset_id: str,
+    target_dataset_id: str,
+    registry: DatasetRegistry = REGISTRY,
+    approved_preprocessing_hash: str | None = None,
+    cancel_event: threading.Event | None = None,
+) -> dict[str, Any]:
+    """Clean a new upload exactly the way an earlier one was cleaned.
+
+    ``preprocessing_version`` already makes a cleaning block reproducible — the
+    plan is the recipe and the source is immutable — but there was no way to
+    point an existing block at *different rows*. Which is the actual monthly
+    task: the same report arrives again and has to be prepared the same way.
+
+    Two properties matter more than the convenience:
+
+    * **Column compatibility is checked first, and by name.** A recipe run
+      against a file whose columns were renamed must fail loudly. Silently
+      cleaning nothing would produce a dataset that looks prepared and is raw.
+    * **Consent does not transfer.** The approval token is bound to
+      ``(dataset_id, ops)``, so a row removal that was fine last month re-gates
+      against this month's file, where the same rule may cut 90%. That falls out
+      of ``preprocessing_version`` rather than being re-implemented here.
+    """
+    recipe = cleaning_recipe(recipe_dataset_id, registry)
+    if "error" in recipe:
+        return recipe
+    target = registry.get(target_dataset_id)
+    if target is None:
+        return make_error(UNKNOWN_DATASET, f"Unknown dataset_id: {target_dataset_id}")
+
+    ops = recipe["preprocessing"]
+    try:
+        # Structural parse only — this says what columns the block names, before
+        # anything is checked against the target.
+        stub = AnalysisPlan.model_validate(
+            {"dataset_id": target_dataset_id, "intent": "comparison", "preprocessing": ops}
+        )
+    except Exception as exc:
+        return make_error(INVALID_PLAN, f"The stored recipe is not a valid cleaning block: {exc}")
+
+    missing = sorted(c for c in stub.preprocessing_columns() if c not in target.schema)
+    if missing:
+        return make_error(
+            INVALID_PLAN,
+            f"This cleaning recipe expects column(s) {', '.join(missing)}, which "
+            f"dataset {target_dataset_id} does not have.",
+            hint="The two files need the same column names for a recipe to transfer.",
+        )
+
+    result = materialize_cleaned_dataset(
+        target_dataset_id,
+        ops,
+        registry,
+        approved_preprocessing_hash=approved_preprocessing_hash,
+        cancel_event=cancel_event,
+    )
+    if "error" in result:
+        return result
+    # Which recipe this came from, distinct from `parent_id` (the rows' source).
+    return {**result, "recipe_from": recipe_dataset_id}
+
+
 def execute_analysis(
     dataset_id: str,
     analysis_plan: dict[str, Any],
@@ -870,6 +1171,20 @@ def execute_analysis(
                 user_notices = notices_svc.to_wire(
                     notices_svc.from_preprocessing(pp_report, input_rows)
                     + notices_svc.from_null_exclusions(null_notes, input_rows)
+                    # How the file was read predates every op and survives every
+                    # plan, so it belongs on each answer the file produces — a
+                    # semicolon read as a decimal point is wrong on the tenth
+                    # chart as much as the first. Empty for a well-formed file.
+                    + notices_svc.from_ingest((record.profile or {}).get("ingest"))
+                    # A result cut off at the ceiling describes the rows shown, not
+                    # the dataset. Reported only when the ceiling itself is the cap
+                    # — an explicit `limit` is the user's own instruction and needs
+                    # no disclosure back to them.
+                    + (
+                        notices_svc.from_row_ceiling(len(result), HARD_ROW_CEILING)
+                        if plan.limit is None or plan.limit >= HARD_ROW_CEILING
+                        else []
+                    )
                 )
             except PreprocessError:
                 raise

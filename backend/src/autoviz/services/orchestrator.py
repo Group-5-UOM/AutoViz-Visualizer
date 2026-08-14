@@ -15,7 +15,11 @@ from autoviz.errors import (
     INVALID_PLAN,
     UNKNOWN_DATASET,
 )
-from autoviz.schema.allowlists import DATE_DERIVE_FNS, NUMERIC_DERIVE_FNS
+from autoviz.schema.allowlists import (
+    DATE_DERIVE_FNS,
+    DATETIME_DERIVE_FNS,
+    NUMERIC_DERIVE_FNS,
+)
 from autoviz.schema.analysis_plan import AnalysisPlan
 from autoviz.services.charts import generate_chart, recommend_chart_type, retype_chart_spec
 from autoviz.services.execution import execute_analysis
@@ -116,13 +120,20 @@ def run_pipeline(
         dimension_cols.add(plan.chart.color)
     # Start from the cleaned types: a column cast to a number in preprocessing must
     # reach the chart encoder as a number, or it would be plotted as a text axis.
-    effective_types = {**record.schema, **plan.preprocessing_type_overrides()}
+    effective_types = plan.preprocessing_schema(record.schema)
     for c in coded & dimension_cols:
         effective_types[c] = "categorical"
     for d in plan.derive:
-        effective_types[d.name] = (
-            "number" if d.fn in (DATE_DERIVE_FNS | NUMERIC_DERIVE_FNS) else "string"
-        )
+        # Same three-way split as services/validation.py, and it has to stay in
+        # step with it: a truncation is a timestamp, and typing it as a number
+        # here puts 2026-01-01 on a linear axis at the chart encoder — the exact
+        # mis-rendering the truncating fns exist to prevent.
+        if d.fn in DATETIME_DERIVE_FNS:
+            effective_types[d.name] = "datetime"
+        elif d.fn in (DATE_DERIVE_FNS | NUMERIC_DERIVE_FNS):
+            effective_types[d.name] = "number"
+        else:
+            effective_types[d.name] = "string"
     for a in plan.aggregations:
         effective_types[a.as_] = "number"
 

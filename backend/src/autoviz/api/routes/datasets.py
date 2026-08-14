@@ -155,6 +155,47 @@ def materialize_cleaned(
     )
 
 
+class ApplyRecipeRequest(BaseModel):
+    # A dataset produced by POST /datasets/{id}/cleaned — its stored lineage is
+    # the recipe.
+    recipe_dataset_id: str
+    approved_preprocessing_hash: str | None = None
+
+
+@router.post("/{dataset_id}/apply-recipe", status_code=201)
+def apply_recipe(
+    dataset_id: str,
+    body: ApplyRecipeRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    registry: DatasetRegistry = Depends(get_registry),
+):
+    """Clean this dataset the same way an earlier one was cleaned.
+
+    Both ids are ownership-checked: a recipe is derived from someone's data and
+    reveals its column names, so reading one is as privileged as reading the
+    dataset it came from.
+    """
+    _resolve(db, registry, dataset_id, user)
+    _resolve(db, registry, body.recipe_dataset_id, user)
+    res = execution.apply_cleaning_recipe(
+        body.recipe_dataset_id,
+        dataset_id,
+        registry,
+        approved_preprocessing_hash=body.approved_preprocessing_hash,
+    )
+    if "error" in res:
+        return respond(res)
+    parent = _owned_meta(db, dataset_id, user)
+    name = f"{parent.filename} (cleaned {res['version_id']})"
+    return respond(
+        _persist(db, user, res, name, "", registry)
+        | {"parent_id": dataset_id, "version_id": res["version_id"],
+           "recipe_from": res["recipe_from"]},
+        ok_status=201,
+    )
+
+
 def _owned_meta(db: Session, dataset_id: str, user: User):
     meta = repository.get_dataset_meta(db, dataset_id)
     if meta is None:

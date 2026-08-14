@@ -253,4 +253,5 @@ def test_bucketing_runs_after_the_safe_repairs(registry, tmp_path):
     )
     assert "error" not in out, out
     # Three spellings of "a" counted as one, so it is the clear top category.
-    assert _counts(out) == {"a": 3, "Other": 2}
+    # The label is the spelling the column used, which normalize_case preserves.
+    assert _counts(out) == {"A": 3, "Other": 2}

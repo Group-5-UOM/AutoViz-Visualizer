@@ -3,6 +3,7 @@
 from fastapi.testclient import TestClient
 
 import autoviz.services.dataset as dataset_service
+import autoviz.services.ingest as ingest_service
 from autoviz.api.deps import get_registry
 from autoviz.api.main import create_app
 from autoviz.services.registry import DatasetRegistry
@@ -96,7 +97,7 @@ def test_unknown_dataset_404(api_db):
 
 
 def test_oversized_upload_413(api_db, monkeypatch):
-    monkeypatch.setattr(dataset_service, "MAX_FILE_BYTES", 8)
+    monkeypatch.setattr(ingest_service, "MAX_FILE_BYTES", 8)
     client = TestClient(_app_with_registry())
     token = _token(client, "d@example.com")
     r = client.post(
@@ -161,7 +162,7 @@ def test_materialize_cleaned_dataset_survives_a_cold_registry(api_db):
     assert {parent, cleaned} <= names
 
     rows = client.get(f"/datasets/{cleaned}/preview", headers=_auth(token)).json()["rows"]
-    assert {r["dept"] for r in rows} == {"eng", "sales"}
+    assert {r["dept"] for r in rows} == {"Eng", "Sales"}
 
     original = client.get(f"/datasets/{parent}/preview", headers=_auth(token)).json()["rows"]
     assert " Eng " in {r["dept"] for r in original}
@@ -184,3 +185,77 @@ def test_cannot_clean_someone_elses_dataset(api_db):
         headers=_auth(intruder),
     )
     assert res.status_code == 403
+
+
+def test_apply_recipe_route_cleans_a_second_upload(api_db, tmp_path):
+    """The monthly case over HTTP: clean January, then hand February the same
+    recipe."""
+    client = TestClient(_app_with_registry())
+    token = _token(client, "recipe@example.com")
+
+    def upload(name, body):
+        r = client.post(
+            "/datasets/upload",
+            files={"file": (name, body.encode(), "text/csv")},
+            headers=_auth(token),
+        )
+        assert r.status_code == 201, r.json()
+        return r.json()["dataset_id"]
+
+    jan = upload("jan.csv", "dept,n\nEng ,1\neng,2\nSales,3\n")
+    feb = upload("feb.csv", "dept,n\nEng,7\n eng,8\nSales,9\n")
+
+    cleaned = client.post(
+        f"/datasets/{jan}/cleaned",
+        json={"preprocessing": [
+            {"op": "trim_whitespace", "columns": ["dept"]},
+            {"op": "normalize_case", "column": "dept"},
+        ]},
+        headers=_auth(token),
+    )
+    assert cleaned.status_code == 201, cleaned.json()
+
+    applied = client.post(
+        f"/datasets/{feb}/apply-recipe",
+        json={"recipe_dataset_id": cleaned.json()["dataset_id"]},
+        headers=_auth(token),
+    )
+    assert applied.status_code == 201, applied.json()
+    assert applied.json()["recipe_from"] == cleaned.json()["dataset_id"]
+
+    preview = client.get(
+        f"/datasets/{applied.json()['dataset_id']}/preview", headers=_auth(token)
+    )
+    assert {r["dept"] for r in preview.json()["rows"]} == {"Eng", "Sales"}
+
+
+def test_apply_recipe_requires_owning_the_recipe_too(api_db):
+    """A recipe is derived from someone's data and names its columns, so reading
+    one is as privileged as reading the dataset it came from."""
+    client = TestClient(_app_with_registry())
+    owner = _token(client, "owner2@example.com")
+    other = _token(client, "other2@example.com")
+
+    mine = client.post(
+        "/datasets/upload",
+        files={"file": ("m.csv", b"dept,n\nEng ,1\n", "text/csv")},
+        headers=_auth(owner),
+    ).json()["dataset_id"]
+    cleaned = client.post(
+        f"/datasets/{mine}/cleaned",
+        json={"preprocessing": [{"op": "trim_whitespace", "columns": ["dept"]}]},
+        headers=_auth(owner),
+    ).json()["dataset_id"]
+
+    theirs = client.post(
+        "/datasets/upload",
+        files={"file": ("t.csv", b"dept,n\nEng ,1\n", "text/csv")},
+        headers=_auth(other),
+    ).json()["dataset_id"]
+
+    r = client.post(
+        f"/datasets/{theirs}/apply-recipe",
+        json={"recipe_dataset_id": cleaned},
+        headers=_auth(other),
+    )
+    assert r.status_code == 403

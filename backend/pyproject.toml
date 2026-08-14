@@ -8,6 +8,8 @@ dependencies = [
     "pandas>=2.2",
     # Parquet engine for the durable dataset blobs (pandas has no built-in one).
     "pyarrow>=17.0",
+    # .xlsx reader for services/ingest.py (pandas has no built-in one either).
+    "openpyxl>=3.1",
     "duckdb>=1.1",
     "pydantic>=2.7",
     "langgraph>=1.0",
