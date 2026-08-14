@@ -99,6 +99,16 @@ function App() {
           }
         />
         <Route
+          path="/dashboard/:dashboardId"
+          element={
+            user ? (
+              <DashboardRoute user={user} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
           path="*"
           element={<Navigate to={user ? '/dashboard' : '/login'} replace />}
         />

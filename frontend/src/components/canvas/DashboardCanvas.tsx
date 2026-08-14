@@ -1,4 +1,4 @@
-import { useRef, type ChangeEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { FileSpreadsheet, Table, Upload } from 'lucide-react';
 import { ChartWidgetCard } from './ChartWidget';
 import type { ChartWidget } from '../../types/dashboard';
@@ -59,10 +59,37 @@ export function DashboardCanvas({
     e.target.value = '';
   };
 
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    if (!uploading && showUploadPrompt) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (uploading || !showUploadPrompt) return;
+    
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')) {
+      void onCsvSelected(file);
+    }
+  };
+
   return (
     <main
-      className="dashboard-canvas"
+      className={`dashboard-canvas ${isDragging ? 'is-dragging' : ''}`}
       onPointerDown={() => onSelect(null)}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       aria-label="Dashboard canvas"
     >
       <div className="canvas-grid" aria-hidden />
@@ -76,7 +103,7 @@ export function DashboardCanvas({
             <h2>Add a CSV file</h2>
             <p>
               Upload a structured CSV dataset to start asking questions and
-              building charts on this canvas.
+              building charts on this canvas, or drop a file here.
             </p>
             <button
               type="button"

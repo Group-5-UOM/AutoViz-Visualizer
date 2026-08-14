@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type ChangeEvent } from 'react';
+import { useEffect, useState, useRef, type ChangeEvent, type DragEvent } from 'react';
 import { Database, X, Trash2, Calendar, LayoutGrid, Rows, Upload, Table } from 'lucide-react';
 import { listDatasets, deleteDataset, previewDataset, type DatasetMetadata } from '../../lib/datasets';
 import './DatasetModal.css';
@@ -103,8 +103,32 @@ export function DatasetModal({ currentDatasetId, onClose, onSelect, onCsvSelecte
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      onCsvSelected(file);
+      void onCsvSelected(file);
       e.target.value = '';
+    }
+  };
+
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!uploading) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (uploading) return;
+    
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')) {
+      void onCsvSelected(file);
     }
   };
 
@@ -190,22 +214,14 @@ export function DatasetModal({ currentDatasetId, onClose, onSelect, onCsvSelecte
                 </div>
               )}
             </div>
-            <div className="dataset-sidebar-footer">
-              <label className="upload-label">
-                <Upload size={16} />
-                {uploading ? 'Uploading...' : 'Upload new CSV'}
-                <input
-                  type="file"
-                  accept=".csv"
-                  className="upload-input"
-                  onChange={handleFileChange}
-                  disabled={uploading}
-                />
-              </label>
-            </div>
           </div>
 
-          <div className="dataset-modal-content">
+          <div 
+            className={`dataset-modal-content ${isDragging ? 'is-dragging' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
             {selectedDataset ? (
               <>
                 <div className="dataset-preview-header">
@@ -261,7 +277,20 @@ export function DatasetModal({ currentDatasetId, onClose, onSelect, onCsvSelecte
               <div className="dataset-preview-empty">
                 <Table size={64} strokeWidth={1} />
                 <h3>No dataset selected</h3>
-                <p>Select a dataset from the list to preview its contents.</p>
+                <p>Select a dataset from the list to preview its contents, or drop a new CSV file here.</p>
+                <div style={{ marginTop: '16px' }}>
+                  <label className="upload-label">
+                    <Upload size={16} />
+                    {uploading ? 'Uploading...' : 'Upload new CSV'}
+                    <input
+                      type="file"
+                      accept=".csv"
+                      className="upload-input"
+                      onChange={handleFileChange}
+                      disabled={uploading}
+                    />
+                  </label>
+                </div>
               </div>
             )}
           </div>
