@@ -58,6 +58,25 @@
   box-shadow: inset 2px 0 0 var(--danger);
 }
 
+.chat-bubble-tone {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.chat-bubble--validation .chat-bubble-tone {
+  color: var(--accent);
+}
+
+.chat-bubble--error .chat-bubble-tone {
+  color: var(--danger);
+}
+
 .chat-retry-btn {
   display: inline-flex;
   align-items: center;

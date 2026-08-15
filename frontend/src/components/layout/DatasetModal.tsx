@@ -2,6 +2,8 @@ import { useEffect, useState, useRef, type ChangeEvent } from 'react';
 import { Database, X, Trash2, Calendar, LayoutGrid, RotateCcw, Rows, Upload, Table } from 'lucide-react';
 import { errorMessage } from '../../lib/api';
 import { listDatasets, deleteDataset, previewDataset, type DatasetMetadata } from '../../lib/datasets';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
+import { ConfirmDialog } from './ConfirmDialog';
 import './DatasetModal.css';
 
 interface DatasetModalProps {
@@ -27,7 +29,11 @@ export function DatasetModal({ currentDatasetId, onClose, onSelect, onCsvSelecte
   /** A failed action on the list — kept apart from `error`, which means the
    *  list itself could not load and replaces the whole panel. */
   const [actionError, setActionError] = useState<string | null>(null);
+  /** The dataset a delete has been requested for, awaiting confirmation. */
+  const [pendingDelete, setPendingDelete] = useState<DatasetMetadata | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, !pendingDelete);
 
   useEffect(() => {
     let mounted = true;
@@ -68,11 +74,8 @@ export function DatasetModal({ currentDatasetId, onClose, onSelect, onCsvSelecte
     if (e.target === overlayRef.current) onClose();
   };
 
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation(); 
-    if (!confirm('Are you sure you want to delete this dataset? This will also remove associated charts.')) {
-      return;
-    }
+  const runDelete = async (id: string) => {
+    setPendingDelete(null);
     setActionError(null);
     try {
       await deleteDataset(id);
@@ -133,7 +136,7 @@ export function DatasetModal({ currentDatasetId, onClose, onSelect, onCsvSelecte
 
   return (
     <div className="dataset-modal-overlay" ref={overlayRef} onClick={handleOverlayClick}>
-      <div className="dataset-modal" role="dialog" aria-modal="true">
+      <div className="dataset-modal" role="dialog" aria-modal="true" ref={dialogRef}>
         <div className="dataset-modal-header">
           <h2 className="dataset-header-title">
             <Database size={18} />
@@ -214,7 +217,10 @@ export function DatasetModal({ currentDatasetId, onClose, onSelect, onCsvSelecte
                         <div className="dataset-item-actions">
                           <button
                             className="btn-delete"
-                            onClick={(e) => handleDelete(e, dataset.dataset_id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPendingDelete(dataset);
+                            }}
                             title="Delete dataset"
                             aria-label="Delete dataset"
                           >
@@ -316,6 +322,29 @@ export function DatasetModal({ currentDatasetId, onClose, onSelect, onCsvSelecte
           </div>
         </div>
       </div>
+
+      {pendingDelete && (
+        <ConfirmDialog
+          destructive
+          title="Delete this dataset?"
+          body={
+            <>
+              <p>
+                <strong>{pendingDelete.logical_name}</strong> —{' '}
+                {pendingDelete.row_count.toLocaleString()} rows ×{' '}
+                {pendingDelete.column_count.toLocaleString()} columns.
+              </p>
+              <p>
+                Every saved chart built from this dataset is deleted with it, and any
+                dashboard holding one of those charts loses it. This cannot be undone.
+              </p>
+            </>
+          }
+          confirmLabel="Delete dataset"
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => void runDelete(pendingDelete.dataset_id)}
+        />
+      )}
     </div>
   );
 }

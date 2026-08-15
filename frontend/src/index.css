@@ -119,6 +119,27 @@ button {
   color: var(--text-primary);
 }
 
+/* Honour the OS-level request for less motion, everywhere rather than per
+   component. Spinners keep a slow turn instead of stopping dead: a frozen
+   spinner reads as a hung application, which is the opposite of what a loading
+   indicator is for. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .spinner,
+  .is-spinning {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

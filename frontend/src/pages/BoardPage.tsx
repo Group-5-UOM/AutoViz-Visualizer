@@ -204,7 +204,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         message: saveError
           ? `Could not save the dashboard. ${saveError}`
           : 'Could not save the dashboard.',
-        onRetry: () => void saveNow(),
+        action: { label: 'Try again', onClick: () => void saveNow() },
       });
     } else if (saveStatus === 'saved') {
       dismissKey('save');
@@ -488,15 +488,27 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   };
 
   const handleNewDashboard = async () => {
-    if (saveStatus === 'dirty') {
-      const confirmSave = window.confirm('You have unsaved changes. Do you want to save them before creating a new dashboard?');
-      if (confirmSave) {
-        await saveNow();
+    // Was a window.confirm offering "save first?" — whose Cancel button
+    // silently discarded the work, and which had no third option for "actually,
+    // don't create one". The board autosaves on every other path, so asking
+    // here was the anomaly: save, and only proceed if the work is safe.
+    if (saveStatus === 'dirty' || saveStatus === 'error') {
+      const saved = await saveNow();
+      if (!saved) {
+        // The save failure already raised its own notice with a retry; this
+        // says why the new dashboard did not appear.
+        notify({
+          key: 'new-dashboard',
+          kind: 'validation',
+          message:
+            'This dashboard has unsaved changes that could not be saved, so a new one was not created.',
+        });
+        return;
       }
     }
-    
+
     if (!dataset) return;
-    
+
     try {
       const { createDashboard } = await import('../lib/dashboards');
       const newDash = await createDashboard(dataset.fileName);
@@ -641,7 +653,25 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             referencedWidgetId={referencedWidgetId}
             onDelete={(id) => {
               if (styleWidgetId === id) setStyleWidgetId(null);
-              deleteWidget(id);
+              const title = dashboard.widgets.find((w) => w.id === id)?.title;
+              const restore = deleteWidget(id);
+              if (!restore) return;
+              // Deleting a chart is a single unconfirmed click and autosave
+              // commits it 1.5 s later. An undo is a better answer than a
+              // confirmation: it costs nothing on the ordinary path, where the
+              // user meant it.
+              notify({
+                key: 'delete-widget',
+                kind: 'success',
+                message: title ? `Removed “${title}”.` : 'Chart removed.',
+                action: {
+                  label: 'Undo',
+                  onClick: () => {
+                    restore();
+                    dismissKey('delete-widget');
+                  },
+                },
+              });
             }}
             onCsvSelected={handleCsvPicked}
             onOpenData={() => {

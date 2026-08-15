@@ -173,7 +173,23 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     [],
   );
 
-  const deleteWidget = useCallback((id: string) => {
+  /**
+   * Remove a chart, and return what it takes to put it back.
+   *
+   * Deleting a chart is one unconfirmed click and autosave commits it within
+   * 1.5 seconds, so without this the only record of a chart the user spent
+   * several turns refining is gone before they can react. The caller offers the
+   * undo; this just makes it possible.
+   *
+   * Resolves to `null` when there was nothing to delete, so a double click on a
+   * disappearing card cannot offer an undo that restores nothing.
+   */
+  const deleteWidget = useCallback((id: string): (() => void) | null => {
+    const at = dashboardRef.current.widgets.findIndex((w) => w.id === id);
+    if (at === -1) return null;
+    const removed = dashboardRef.current.widgets[at];
+    const wasSelected = dashboardRef.current.selectedWidgetId === id;
+
     setDashboard((prev) => ({
       widgets: prev.widgets.filter((w) => w.id !== id),
       selectedWidgetId: prev.selectedWidgetId === id ? null : prev.selectedWidgetId,
@@ -181,6 +197,23 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     // An attachment pointing at a chart that no longer exists would send a
     // chart_id the backend cannot resolve, and quietly behave as if unattached.
     setReferencedWidgetId((prev) => (prev === id ? null : prev));
+
+    return () => {
+      setDashboard((prev) => {
+        // Guard against restoring twice, and against a restore landing after
+        // the board was replaced by opening a different dashboard.
+        if (prev.widgets.some((w) => w.id === removed.id)) return prev;
+        const widgets = [...prev.widgets];
+        // Back where it was, not appended: the canvas is positioned absolutely,
+        // but widget order still decides paint order for overlapping cards.
+        widgets.splice(Math.min(at, widgets.length), 0, removed);
+        return {
+          ...prev,
+          widgets,
+          selectedWidgetId: wasSelected ? removed.id : prev.selectedWidgetId,
+        };
+      });
+    };
   }, []);
 
   const pushAssistant = useCallback((message: Omit<ChatMessage, 'id' | 'role' | 'timestamp'>) => {
@@ -378,17 +411,18 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
    * by the time this runs, so the new name has to be handed over rather than
    * read back off the mirror ref.
    */
-  const runSave = useCallback(async (nameOverride?: string) => {
+  const runSave = useCallback(async (nameOverride?: string): Promise<boolean> => {
     // A save is already going. The scheduler re-checks when it lands, so
     // dropping this attempt loses nothing and never doubles up a request.
-    if (inFlight.current) return;
+    if (inFlight.current) return false;
 
     const live = dashboardRef.current;
     const snapshot: DashboardState = nameOverride
       ? { ...live, dashboardName: nameOverride, nameIsAuto: false }
       : live;
-    // An untouched canvas is not worth a dashboard row.
-    if (snapshot.widgets.length === 0 && !snapshot.dashboardId) return;
+    // An untouched canvas is not worth a dashboard row. Reported as success —
+    // there is nothing at risk, which is what the caller is asking about.
+    if (snapshot.widgets.length === 0 && !snapshot.dashboardId) return true;
 
     // Captured before the await so that edits made while the request is in
     // flight stay dirty: the baseline may only claim what was actually sent.
@@ -424,12 +458,14 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
       }));
       setLastSavedAt(Date.now());
       setSaveStatus('saved');
+      return true;
     } catch (err) {
       // The baseline is left stale on purpose — the change really is unsaved,
       // so Retry re-sends it instead of declaring victory over it.
       retryBlocked.current = true;
       setSaveError(errorMessage(err));
       setSaveStatus('error');
+      return false;
     } finally {
       inFlight.current = false;
     }
@@ -475,12 +511,17 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     return () => window.removeEventListener('beforeunload', warn);
   }, [saveStatus]);
 
-  /** Flush now — the Save button, and anything about to replace the canvas. */
+  /**
+   * Flush now — the Save button, and anything about to replace the canvas.
+   *
+   * Resolves to whether the canvas is safely on the server, so a caller that is
+   * about to throw the canvas away can decline to do so.
+   */
   const saveNow = useCallback(
-    async (nameOverride?: string) => {
+    async (nameOverride?: string): Promise<boolean> => {
       cancelPendingSave();
       retryBlocked.current = false;
-      await runSave(nameOverride);
+      return runSave(nameOverride);
     },
     [cancelPendingSave, runSave],
   );
