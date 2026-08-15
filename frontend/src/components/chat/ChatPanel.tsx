@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { AtSign, BarChart3, RotateCcw, SendHorizontal, X } from 'lucide-react';
+import { AlertTriangle, AtSign, BarChart3, Info, RotateCcw, SendHorizontal, X } from 'lucide-react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import { MessageContent } from './MessageContent';
 import type { ChartWidget, ChatMessage } from '../../types/dashboard';
@@ -95,6 +95,14 @@ export function ChatPanel({
               <p className="chat-bubble-reference" title={msg.referencedTitle}>
                 <AtSign size={11} />
                 {msg.referencedTitle}
+              </p>
+            )}
+            {/* Carries the same distinction the bubble's colour does, for
+                readers who cannot use colour to make it. */}
+            {msg.tone && (
+              <p className="chat-bubble-tone">
+                {msg.tone === 'validation' ? <Info size={12} /> : <AlertTriangle size={12} />}
+                {msg.tone === 'validation' ? 'Request not accepted' : 'Something went wrong'}
               </p>
             )}
             <MessageContent content={msg.content} role={msg.role} />

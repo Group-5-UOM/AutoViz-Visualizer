@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { FileSpreadsheet, X } from 'lucide-react';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 import './SaveDashboardModal.css';
 
 interface NameUploadModalProps {
@@ -16,9 +17,12 @@ function stemFromFilename(name: string): string {
 export function NameUploadModal({ file, onCancel, onConfirm }: NameUploadModalProps) {
   const [name, setName] = useState(stemFromFilename(file.name) || 'dataset');
   const overlayRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const trimmed = name.trim();
 
+  // The trap focuses the field; this selects the default name in it.
+  useFocusTrap(dialogRef, true, inputRef);
   useEffect(() => {
     inputRef.current?.select();
   }, []);
@@ -46,6 +50,7 @@ export function NameUploadModal({ file, onCancel, onConfirm }: NameUploadModalPr
         role="dialog"
         aria-modal="true"
         aria-labelledby="name-upload-title"
+        ref={dialogRef}
       >
         <div className="dashboard-modal-header">
           <h2 id="name-upload-title">

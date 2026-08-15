@@ -10,16 +10,28 @@ import { classifyError, errorMessage, type ErrorKind } from '../lib/api';
  */
 export type NoticeKind = 'working' | 'success' | 'validation' | 'error';
 
+/**
+ * The one thing a notice offers the user to do about it.
+ *
+ * Deliberately open rather than a fixed "retry": the same banner shape carries
+ * "Try again" after a failed export and "Undo" after a deleted chart, and those
+ * are the same interaction — a single reversal of the thing just reported.
+ */
+export interface NoticeAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface Notice {
   id: number;
   kind: NoticeKind;
   message: string;
   /**
-   * Present only on recoverable failures. A validation error deliberately never
+   * A retry is present only on recoverable failures. A validation error never
    * carries one: re-sending a rejected request produces the same rejection, and
    * a button that promises otherwise is worse than no button.
    */
-  onRetry?: () => void;
+  action?: NoticeAction;
 }
 
 /** How long a self-clearing notice stays up. Failures never self-clear. */
@@ -109,7 +121,10 @@ export function useNotices() {
         key: options.key,
         kind: kind === 'validation' ? 'validation' : 'error',
         message: `${context} ${errorMessage(err)}`,
-        onRetry: kind === 'recoverable' ? options.onRetry : undefined,
+        action:
+          kind === 'recoverable' && options.onRetry
+            ? { label: 'Try again', onClick: options.onRetry }
+            : undefined,
       });
     },
     [notify],

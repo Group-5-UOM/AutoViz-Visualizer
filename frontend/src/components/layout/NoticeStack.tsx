@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Info, Loader2, RotateCcw, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Loader2, X } from 'lucide-react';
 import type { Notice } from '../../hooks/useNotices';
 import './NoticeStack.css';
 
@@ -37,10 +37,9 @@ export function NoticeStack({ notices, onDismiss }: NoticeStackProps) {
               aria-hidden
             />
             <span className="notice-message">{notice.message}</span>
-            {notice.onRetry && (
-              <button type="button" className="notice-retry" onClick={notice.onRetry}>
-                <RotateCcw size={13} />
-                Try again
+            {notice.action && (
+              <button type="button" className="notice-retry" onClick={notice.action.onClick}>
+                {notice.action.label}
               </button>
             )}
             {notice.kind !== 'working' && (

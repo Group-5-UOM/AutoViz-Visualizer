@@ -5,6 +5,8 @@ import { listDatasets, type DatasetMetadata } from '../../lib/datasets';
 import { getChart, listDashboards, deleteDashboard, type DashboardResult, type SavedChartResult } from '../../lib/dashboards';
 import { inferChartType } from '../../lib/chartType';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
+import { ConfirmDialog } from './ConfirmDialog';
 import './DashboardsModal.css';
 
 export interface SavedDatasetEntry {
@@ -90,7 +92,25 @@ export function DashboardsModal({
   /** A failed action on the list — kept apart from `error`, which means the
    *  list itself could not load and replaces the whole panel. */
   const [actionError, setActionError] = useState<string | null>(null);
+  /** The dashboard a delete has been requested for, awaiting confirmation. */
+  const [pendingDelete, setPendingDelete] = useState<SavedDatasetEntry | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, open && !pendingDelete);
+
+  const runDelete = async (entry: SavedDatasetEntry) => {
+    setPendingDelete(null);
+    setActionError(null);
+    try {
+      await deleteDashboard(entry.dashboard!.id);
+      setEntries((current) => current.filter((e) => e.id !== entry.id));
+      setExpandedId(null);
+    } catch (err) {
+      // Was a `window.alert` that guessed at the cause ("It might already be
+      // deleted"). The server knows, and now says so.
+      setActionError(`Could not delete that dashboard. ${errorMessage(err)}`);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -170,7 +190,7 @@ export function DashboardsModal({
 
   return (
     <div className="dashboards-modal-overlay" ref={overlayRef} onClick={handleOverlayClick}>
-      <div className="dashboards-modal" role="dialog" aria-modal="true">
+      <div className="dashboards-modal" role="dialog" aria-modal="true" ref={dialogRef}>
         <header className="dashboards-modal-header">
           <h2 className="dashboards-header-title">
             <LayoutDashboard size={18} />
@@ -310,20 +330,7 @@ export function DashboardsModal({
                     <button
                       className="btn-delete"
                       style={{ backgroundColor: '#ef4444', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 500 }}
-                      onClick={async () => {
-                        if (!window.confirm('Are you sure you want to delete this dashboard? This cannot be undone.')) return;
-                        setActionError(null);
-                        try {
-                          await deleteDashboard(selectedEntry.dashboard!.id);
-                          setEntries(entries => entries.filter(e => e.id !== selectedEntry.id));
-                          setExpandedId(null);
-                        } catch (err) {
-                          // Was a `window.alert` that guessed at the cause
-                          // ("It might already be deleted"). The server knows,
-                          // and now says so.
-                          setActionError(`Could not delete that dashboard. ${errorMessage(err)}`);
-                        }
-                      }}
+                      onClick={() => setPendingDelete(selectedEntry)}
                     >
                       Delete Dashboard
                     </button>
@@ -351,6 +358,32 @@ export function DashboardsModal({
           </div>
         </div>
       </div>
+
+      {pendingDelete?.dashboard && (
+        <ConfirmDialog
+          destructive
+          title="Delete this dashboard?"
+          body={
+            <>
+              <p>
+                <strong>{pendingDelete.dashboard.name}</strong> —{' '}
+                {pendingDelete.chartCount === 1
+                  ? '1 chart'
+                  : `${pendingDelete.chartCount} charts`}
+                .
+              </p>
+              <p>
+                The layout is deleted. The dataset{' '}
+                <strong>{pendingDelete.dataset.logical_name}</strong> is kept, so you can
+                build a new dashboard from it. This cannot be undone.
+              </p>
+            </>
+          }
+          confirmLabel="Delete dashboard"
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => void runDelete(pendingDelete)}
+        />
+      )}
     </div>
   );
 }
