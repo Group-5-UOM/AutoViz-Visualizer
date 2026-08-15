@@ -532,7 +532,6 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     } finally {
       setExporting(null);
     }
-    }
   };
 
   const handleSendMessage = (text: string, chartType?: ChartType | null) => {

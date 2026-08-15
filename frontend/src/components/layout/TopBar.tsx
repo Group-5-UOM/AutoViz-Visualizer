@@ -11,7 +11,6 @@ import {
   Share2,
   Save,
   FilePlus2,
-  Image,
 } from 'lucide-react';
 import type { ExportFormat } from '../../lib/exportDashboard';
 import { ShareDropdownPanel } from './ShareDropdownPanel';
