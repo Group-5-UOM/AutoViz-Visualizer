@@ -61,6 +61,85 @@ button {
   padding: 0;
 }
 
+/* The retry offered beside a failed panel load. Global because the same
+   affordance belongs to every list that can fail to fetch, and there is nothing
+   panel-specific about it. */
+.panel-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  transition: background 0.15s ease;
+}
+
+.panel-retry-btn:hover {
+  background: var(--bg-hover);
+}
+
+/* A failed action inside a modal — a delete that did not go through. Sits under
+   the header so it is attached to the panel the action belonged to, rather than
+   stopping the page the way the `window.alert` it replaced did. */
+.modal-action-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 16px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger) 7%, var(--bg-surface));
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+
+.modal-action-error span {
+  flex: 1;
+  min-width: 0;
+}
+
+.modal-action-error button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+.modal-action-error button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Honour the OS-level request for less motion, everywhere rather than per
+   component. Spinners keep a slow turn instead of stopping dead: a frozen
+   spinner reads as a hung application, which is the opposite of what a loading
+   indicator is for. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .spinner,
+  .is-spinning {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

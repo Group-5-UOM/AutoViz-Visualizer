@@ -1,5 +1,19 @@
-import { useState, useRef, useEffect } from 'react';
-import { Download, KeyRound, LogOut, Menu, PanelLeft, Share2, Save, FilePlus2, ChevronDown, Image, FileText } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ChevronDown,
+  Download,
+  FileImage,
+  FileText,
+  KeyRound,
+  LogOut,
+  Menu,
+  PanelLeft,
+  Share2,
+  Save,
+  FilePlus2,
+  Image,
+} from 'lucide-react';
+import type { ExportFormat } from '../../lib/exportDashboard';
 import { ShareDropdownPanel } from './ShareDropdownPanel';
 import './TopBar.css';
 
@@ -10,11 +24,16 @@ interface TopBarProps {
   username?: string;
   onToggleSidebar: () => void;
   onRename: () => void;
-  onExportImage: () => void;
-  onExportPdf: () => void;
+  onExport: (format: ExportFormat) => void;
+  exporting?: ExportFormat | null;
   shareDashboardId?: string | null;
   onSave?: () => void;
   saveStatus?: 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+  /**
+   * Why the last save failed. Shown on the button, because "Error" on its own
+   * tells the user something went wrong and nothing about what.
+   */
+  saveError?: string | null;
   onNewDashboard?: () => void;
   onSetPassword?: () => void;
   onLogout?: () => void | Promise<void>;
@@ -29,11 +48,12 @@ export function TopBar({
   username,
   onToggleSidebar,
   onRename,
-  onExportImage,
-  onExportPdf,
+  onExport,
+  exporting = null,
   shareDashboardId,
   onSave,
   saveStatus,
+  saveError,
   onNewDashboard,
   onSetPassword,
   onLogout,
@@ -46,18 +66,34 @@ export function TopBar({
   const shareRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (exportRef.current && !exportRef.current.contains(target)) {
+    if (!exportOpen && !shareMenuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (exportOpen && !exportRef.current?.contains(target)) {
         setExportOpen(false);
       }
-      if (shareRef.current && !shareRef.current.contains(target)) {
+      if (shareMenuOpen && !shareRef.current?.contains(target)) {
         setShareMenuOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setExportOpen(false);
+        setShareMenuOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [exportOpen, shareMenuOpen]);
+
+  const runExport = (format: ExportFormat) => {
+    setExportOpen(false);
+    onExport(format);
+  };
 
   return (
     <header className="board-topbar">
@@ -132,48 +168,46 @@ export function TopBar({
             }}
             onClick={onSave}
             disabled={saveStatus === 'saving' || saveStatus === 'saved'}
-            title={saveStatus === 'error' ? 'Failed to save. Click to retry.' : 'Save dashboard charts and positions'}
+            title={
+              saveStatus === 'error'
+                ? `Failed to save${saveError ? `: ${saveError}` : ''}. Click to retry.`
+                : 'Save dashboard charts and positions'
+            }
           >
             <Save size={15} />
-            {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Error' : 'Save'}
+            {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Retry save' : 'Save'}
           </button>
         )}
-        <div className="topbar-export-dropdown" ref={exportRef}>
+        <div className="topbar-export" ref={exportRef}>
           <button
             type="button"
             className="topbar-primary-btn"
-            onClick={() => setExportOpen(!exportOpen)}
-            disabled={!canExport}
-            title="Export dashboard"
+            onClick={() => setExportOpen((open) => !open)}
+            disabled={!canExport || exporting !== null}
+            aria-haspopup="menu"
+            aria-expanded={exportOpen}
+            title={!canExport ? 'Add a chart first' : 'Export this dashboard'}
           >
             <Download size={15} />
-            Export
-            <ChevronDown size={14} style={{ marginLeft: '-2px', opacity: 0.8 }} />
+            {exporting === 'pdf' ? 'Making PDF…' : exporting === 'png' ? 'Making image…' : 'Export'}
+            <ChevronDown size={13} />
           </button>
-          
-          {exportOpen && canExport && (
-            <div className="export-menu">
-              <button
-                type="button"
-                className="export-menu-item"
-                onClick={() => {
-                  setExportOpen(false);
-                  onExportImage();
-                }}
-              >
-                <Image size={15} />
-                <span>Export as PNG</span>
+
+          {exportOpen && (
+            <div className="topbar-menu" role="menu" aria-label="Export format">
+              <button type="button" role="menuitem" onClick={() => runExport('png')}>
+                <FileImage size={15} />
+                <span>
+                  PNG image
+                  <small>One picture of the canvas</small>
+                </span>
               </button>
-              <button
-                type="button"
-                className="export-menu-item"
-                onClick={() => {
-                  setExportOpen(false);
-                  onExportPdf();
-                }}
-              >
+              <button type="button" role="menuitem" onClick={() => runExport('pdf')}>
                 <FileText size={15} />
-                <span>Export as PDF</span>
+                <span>
+                  PDF document
+                  <small>A single page, sized to fit</small>
+                </span>
               </button>
             </div>
           )}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Save, X } from 'lucide-react';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 // The overlay, panel, header and footer shells were originally shared with the dashboards
 // picker but are now defined locally since DashboardsModal is gone.
 import './SaveDashboardModal.css';
@@ -14,11 +15,14 @@ interface SaveDashboardModalProps {
 export function SaveDashboardModal({ initialName, onCancel, onConfirm }: SaveDashboardModalProps) {
   const [name, setName] = useState(initialName);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const trimmed = name.trim();
 
-  // Select rather than just focus: the field arrives prefilled with a guess,
-  // and typing over it should be the fastest thing to do.
+  // The trap focuses the field; this selects what is in it. The field arrives
+  // prefilled with a guess, and typing over it should be the fastest thing to
+  // do.
+  useFocusTrap(dialogRef, true, inputRef);
   useEffect(() => {
     inputRef.current?.select();
   }, []);
@@ -46,6 +50,7 @@ export function SaveDashboardModal({ initialName, onCancel, onConfirm }: SaveDas
         role="dialog"
         aria-modal="true"
         aria-labelledby="save-dashboard-title"
+        ref={dialogRef}
       >
         <div className="dashboard-modal-header">
           <h2 id="save-dashboard-title">

@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test \"tests/**/*.test.ts\"",
     "preview": "vite preview",
     "verify:specs": "node scripts/verify-specs.mjs",
     "verify:markdown": "node scripts/verify-markdown.mjs"

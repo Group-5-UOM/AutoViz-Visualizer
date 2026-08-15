@@ -44,6 +44,57 @@
   border-bottom-left-radius: 4px;
 }
 
+/* A request that was refused, and one that never got an answer, are different
+   things to a user: the first tells them what to change, the second is worth
+   trying again. They are coloured apart so the difference is visible before the
+   sentence is read. */
+.chat-bubble--validation {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.chat-bubble--error {
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg-muted));
+  box-shadow: inset 2px 0 0 var(--danger);
+}
+
+.chat-bubble-tone {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.chat-bubble--validation .chat-bubble-tone {
+  color: var(--accent);
+}
+
+.chat-bubble--error .chat-bubble-tone {
+  color: var(--danger);
+}
+
+.chat-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.chat-retry-btn:hover {
+  background: var(--bg-hover);
+}
+
 .chat-chart-link {
   margin-top: 8px;
   font-size: 12px;

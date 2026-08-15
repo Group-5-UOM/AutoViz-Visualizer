@@ -182,6 +182,13 @@ npm run build
 npm run preview
 ```
 
+Tests (Node's built-in runner; no extra dependency):
+
+```bash
+cd frontend
+npm test
+```
+
 ---
 
 ## Typical local workflow

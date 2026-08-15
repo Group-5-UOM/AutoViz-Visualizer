@@ -1,3 +1,17 @@
+import { ApiError, NETWORK_ERROR_STATUS } from './errors';
+
+// The error taxonomy lives in ./errors so it can be tested under Node — this
+// module cannot be imported there, because `import.meta.env` below is a Vite
+// construct. Re-exported so call sites still import everything from `lib/api`.
+export {
+  ApiError,
+  NETWORK_ERROR_STATUS,
+  classifyError,
+  isRetryable,
+  errorMessage,
+} from './errors';
+export type { ErrorKind } from './errors';
+
 const TOKEN_KEY = 'autoviz-access-token';
 const EMAIL_KEY = 'autoviz-user-email';
 const USERNAME_KEY = 'autoviz-username';
@@ -5,16 +19,6 @@ const USERNAME_KEY = 'autoviz-username';
 export const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL as string | undefined
 )?.replace(/\/+$/, '') || '/api';
-
-export class ApiError extends Error {
-  status: number;
-
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-  }
-}
 
 export function getAccessToken(): string | null {
   return sessionStorage.getItem(TOKEN_KEY);
@@ -63,8 +67,24 @@ function formatDetail(data: unknown, status: number): string {
         })
         .join('; ');
     }
+    // A rejected analysis plan comes back as {valid: false, errors: [...]}.
+    // Without this the most explanatory failure the backend produces — the one
+    // that names the column or the aggregation it would not accept — reached
+    // the user as "Request failed (422)".
+    if (Array.isArray(obj.errors) && obj.errors.length > 0) {
+      return obj.errors.map((item) => String(item)).join('; ');
+    }
   }
   return `Request failed (${status})`;
+}
+
+/** The backend's typed error code, if the body carries one. */
+function errorCode(data: unknown): string | undefined {
+  if (data && typeof data === 'object') {
+    const code = (data as Record<string, unknown>).error_code;
+    if (typeof code === 'string') return code;
+  }
+  return undefined;
 }
 
 export async function apiRequest<T>(
@@ -95,11 +115,23 @@ export async function apiRequest<T>(
     payload = JSON.stringify(body);
   }
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    headers,
-    body: payload,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers,
+      body: payload,
+    });
+  } catch {
+    // fetch rejects for a dropped connection, DNS failure or CORS refusal — all
+    // of which are recoverable and none of which are distinguishable from here.
+    // Normalised into ApiError so callers have one error type to classify
+    // rather than a bare TypeError reading "Failed to fetch".
+    throw new ApiError(
+      'Could not reach the server. Check your connection and try again.',
+      NETWORK_ERROR_STATUS,
+    );
+  }
 
   let data: unknown = null;
   const text = await res.text();
@@ -116,7 +148,7 @@ export async function apiRequest<T>(
       clearSession();
       window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
     }
-    throw new ApiError(formatDetail(data, res.status), res.status);
+    throw new ApiError(formatDetail(data, res.status), res.status, errorCode(data));
   }
 
   return data as T;

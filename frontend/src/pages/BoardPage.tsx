@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
 import { Sidebar } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
+import { NoticeStack } from '../components/layout/NoticeStack';
 import { AccountPasswordModal } from '../components/layout/AccountPasswordModal';
 import { AddPanel } from '../components/layout/AddPanel';
 import { SetupPanel, buildChartPrompt } from '../components/layout/SetupPanel';
@@ -20,7 +19,9 @@ import { DatasetModal } from '../components/layout/DatasetModal';
 import { NameUploadModal, namedCsvFile } from '../components/layout/NameUploadModal';
 import { SaveDashboardModal } from '../components/layout/SaveDashboardModal';
 import { useDashboard } from '../hooks/useDashboard';
-import { ApiError } from '../lib/api';
+import { useNotices } from '../hooks/useNotices';
+import { errorMessage } from '../lib/api';
+import { exportDashboard, type ExportFormat } from '../lib/exportDashboard';
 import { fetchMe } from '../lib/auth';
 import { loadBoardSession, saveBoardSession } from '../lib/boardSession';
 import { fetchConversation, saveConversation, type Conversation } from '../lib/conversations';
@@ -107,6 +108,8 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const [browseOpen, setBrowseOpen] = useState(false);
   const [dashboardsOpen, setDashboardsOpen] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<File | null>(null);
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const { notices, notify, notifyError, dismiss, dismissKey } = useNotices();
 
   useEffect(() => {
     let cancelled = false;
@@ -143,6 +146,9 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     isThinking,
     referencedWidgetId,
     saveStatus,
+    saveError,
+    canRetrySend,
+    retryLastMessage,
     referenceWidget,
     selectWidget,
     updateWidget,
@@ -235,6 +241,30 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     loadFromRoute();
     return () => { mounted = false; };
   }, [routeDashboardId, dashboard.dashboardId]);
+
+  /**
+   * Autosave failures, said out loud.
+   *
+   * `saveError` was computed and returned by the hook and then read by nobody:
+   * the only sign of a failed save was the Save button turning red, which told
+   * the user something had gone wrong and nothing about what — and autosave
+   * stops retrying on failure, so a board could sit unsaved indefinitely with
+   * the reason known only to the code that threw it away.
+   */
+  useEffect(() => {
+    if (saveStatus === 'error') {
+      notify({
+        key: 'save',
+        kind: 'error',
+        message: saveError
+          ? `Could not save the dashboard. ${saveError}`
+          : 'Could not save the dashboard.',
+        action: { label: 'Try again', onClick: () => void saveNow() },
+      });
+    } else if (saveStatus === 'saved') {
+      dismissKey('save');
+    }
+  }, [saveStatus, saveError, notify, dismissKey, saveNow]);
 
   const closeSideTool = () => setActiveItem(chatOpen ? 'ai-chat' : null);
   const setupMessages = messages.slice(-8);
@@ -343,8 +373,10 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         navigate(`/dashboard/${activeDashboard.id}`, { replace: true });
       }
     } catch (err) {
-      console.error('Failed to load saved dataset:', err);
-      alert('Failed to load dataset canvas.');
+      notifyError(err, 'Could not open that dashboard.', {
+        key: 'load-dashboard',
+        onRetry: () => void handleLoadSavedDataset(entry),
+      });
     }
   };
 
@@ -425,13 +457,10 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       setBrowseOpen(false);
       setPendingUpload(null);
     } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : 'Upload failed.';
-      setUploadError(message);
+      // Shown next to the upload control rather than in the notice stack: the
+      // user is looking at the file picker, and that is where the answer to
+      // "what happened to my file" belongs.
+      setUploadError(errorMessage(err));
     } finally {
       setUploading(false);
     }
@@ -470,37 +499,39 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     });
   };
 
-  const handleExportImage = async () => {
-    const el = document.querySelector('.dashboard-canvas') as HTMLElement;
-    if (!el) return;
-    try {
-      const canvas = await html2canvas(el, { backgroundColor: '#f4f5f7' });
-      const link = document.createElement('a');
-      link.download = `dashboard-${dataset?.fileName || 'export'}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    } catch (err) {
-      console.error('Failed to export dashboard image:', err);
-    }
-  };
-
-  const handleExportPdf = async () => {
-    const el = document.querySelector('.dashboard-canvas') as HTMLElement;
-    if (!el) return;
-    try {
-      const canvas = await html2canvas(el, { backgroundColor: '#f4f5f7' });
-      const imgData = canvas.toDataURL('image/png');
-      
-      const pdf = new jsPDF({
-        orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
-        unit: 'px',
-        format: [canvas.width, canvas.height]
+  const handleExportDashboard = async (format: ExportFormat) => {
+    const el = document.querySelector<HTMLElement>('.dashboard-canvas');
+    if (!el) {
+      notify({
+        key: 'export',
+        kind: 'validation',
+        message: 'Open the dashboard canvas before exporting — the Data view cannot be exported.',
       });
-      
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-      pdf.save(`dashboard-${dataset?.fileName || 'export'}.pdf`);
+      return;
+    }
+
+    const name = boardTitle(dashboard.dashboardName, dataset?.fileName);
+    setExporting(format);
+    notify({
+      key: 'export',
+      kind: 'working',
+      message: format === 'pdf' ? 'Building the PDF…' : 'Rendering the image…',
+    });
+    try {
+      const fileName = await exportDashboard(el, { format, name });
+      notify({ key: 'export', kind: 'success', message: `Saved ${fileName} to your downloads.` });
     } catch (err) {
-      console.error('Failed to export dashboard pdf:', err);
+      // Rasterising a large canvas can run out of memory, and the encoders can
+      // refuse — both worth retrying, and neither previously visible: this used
+      // to be a console.error, so a failed export looked exactly like a
+      // successful one that the browser had saved somewhere unnoticed.
+      notifyError(err, 'Export failed.', {
+        key: 'export',
+        onRetry: () => void handleExportDashboard(format),
+      });
+    } finally {
+      setExporting(null);
+    }
     }
   };
 
@@ -516,15 +547,27 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   };
 
   const handleNewDashboard = async () => {
-    if (saveStatus === 'dirty') {
-      const confirmSave = window.confirm('You have unsaved changes. Do you want to save them before creating a new dashboard?');
-      if (confirmSave) {
-        await saveNow();
+    // Was a window.confirm offering "save first?" — whose Cancel button
+    // silently discarded the work, and which had no third option for "actually,
+    // don't create one". The board autosaves on every other path, so asking
+    // here was the anomaly: save, and only proceed if the work is safe.
+    if (saveStatus === 'dirty' || saveStatus === 'error') {
+      const saved = await saveNow();
+      if (!saved) {
+        // The save failure already raised its own notice with a retry; this
+        // says why the new dashboard did not appear.
+        notify({
+          key: 'new-dashboard',
+          kind: 'validation',
+          message:
+            'This dashboard has unsaved changes that could not be saved, so a new one was not created.',
+        });
+        return;
       }
     }
-    
+
     if (!dataset) return;
-    
+
     try {
       const { createDashboard } = await import('../lib/dashboards');
       const newDash = await createDashboard(dataset.fileName);
@@ -532,7 +575,10 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       openAiChat(setActiveItem, setChatOpen);
       navigate(`/dashboard/${newDash.id}`);
     } catch (err) {
-      console.error('Failed to create new dashboard:', err);
+      notifyError(err, 'Could not create a new dashboard.', {
+        key: 'new-dashboard',
+        onRetry: () => void handleNewDashboard(),
+      });
     }
   };
 
@@ -551,10 +597,11 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         username={username}
         onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
         onRename={() => setRenameOpen(true)}
-        onExportImage={handleExportImage}
-        onExportPdf={handleExportPdf}
+        onExport={(format) => void handleExportDashboard(format)}
+        exporting={exporting}
         onSave={() => saveNow()}
         saveStatus={saveStatus}
+        saveError={saveError}
         shareDashboardId={dashboard.dashboardId}
         onNewDashboard={handleNewDashboard}
         onSetPassword={!hasPassword ? () => setPasswordOpen(true) : undefined}
@@ -570,6 +617,8 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       />
 
       <div className="board-body">
+        <NoticeStack notices={notices} onDismiss={dismiss} />
+
         <Sidebar
           collapsed={sidebarCollapsed}
           activeItem={activeItem}
@@ -618,6 +667,8 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
           referenceable={dashboard.widgets.filter((w) => w.agentChartId)}
           referencedWidgetId={referencedWidgetId}
           onReference={referenceWidget}
+          canRetry={canRetrySend}
+          onRetry={retryLastMessage}
         />
 
         {dashboardsOpen && (
@@ -663,7 +714,25 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             referencedWidgetId={referencedWidgetId}
             onDelete={(id) => {
               if (styleWidgetId === id) setStyleWidgetId(null);
-              deleteWidget(id);
+              const title = dashboard.widgets.find((w) => w.id === id)?.title;
+              const restore = deleteWidget(id);
+              if (!restore) return;
+              // Deleting a chart is a single unconfirmed click and autosave
+              // commits it 1.5 s later. An undo is a better answer than a
+              // confirmation: it costs nothing on the ordinary path, where the
+              // user meant it.
+              notify({
+                key: 'delete-widget',
+                kind: 'success',
+                message: title ? `Removed “${title}”.` : 'Chart removed.',
+                action: {
+                  label: 'Undo',
+                  onClick: () => {
+                    restore();
+                    dismissKey('delete-widget');
+                  },
+                },
+              });
             }}
             onCsvSelected={handleCsvPicked}
             onOpenData={() => {

@@ -1,9 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
-import { Calendar, Database, FileSpreadsheet, Layers, LayoutDashboard, X, BarChart } from 'lucide-react';
+import { Calendar, Database, FileSpreadsheet, Layers, LayoutDashboard, RotateCcw, X, BarChart } from 'lucide-react';
+import { errorMessage } from '../../lib/api';
 import { listDatasets, type DatasetMetadata } from '../../lib/datasets';
 import { getChart, listDashboards, deleteDashboard, type DashboardResult, type SavedChartResult } from '../../lib/dashboards';
 import { inferChartType } from '../../lib/chartType';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
+import { ConfirmDialog } from './ConfirmDialog';
 import './DashboardsModal.css';
 
 export interface SavedDatasetEntry {
@@ -82,7 +85,32 @@ export function DashboardsModal({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [previewCharts, setPreviewCharts] = useState<SavedChartResult[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  // Bumped by the retry button. A counter rather than a boolean so a second
+  // attempt after a second failure still re-runs the effect.
+  const [attempt, setAttempt] = useState(0);
+  /** A failed action on the list — kept apart from `error`, which means the
+   *  list itself could not load and replaces the whole panel. */
+  const [actionError, setActionError] = useState<string | null>(null);
+  /** The dashboard a delete has been requested for, awaiting confirmation. */
+  const [pendingDelete, setPendingDelete] = useState<SavedDatasetEntry | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, open && !pendingDelete);
+
+  const runDelete = async (entry: SavedDatasetEntry) => {
+    setPendingDelete(null);
+    setActionError(null);
+    try {
+      await deleteDashboard(entry.dashboard!.id);
+      setEntries((current) => current.filter((e) => e.id !== entry.id));
+      setExpandedId(null);
+    } catch (err) {
+      // Was a `window.alert` that guessed at the cause ("It might already be
+      // deleted"). The server knows, and now says so.
+      setActionError(`Could not delete that dashboard. ${errorMessage(err)}`);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -94,8 +122,10 @@ export function DashboardsModal({
       .then((next) => {
         if (mounted) setEntries(next);
       })
-      .catch(() => {
-        if (mounted) setError('Failed to load saved datasets.');
+      .catch((err: unknown) => {
+        // The server's own words, not a generic sentence — "Not signed in" and
+        // "Could not reach the server" call for different things from the user.
+        if (mounted) setError(errorMessage(err));
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -103,7 +133,7 @@ export function DashboardsModal({
     return () => {
       mounted = false;
     };
-  }, [open]);
+  }, [open, attempt]);
 
   useEscapeToClose(onClose, open);
 
@@ -119,6 +149,7 @@ export function DashboardsModal({
     }
 
     setPreviewLoading(true);
+    setPreviewError(null);
     try {
       const charts = await Promise.all(
         entry.dashboard.widgets.map(async (w) => {
@@ -131,7 +162,9 @@ export function DashboardsModal({
       );
       setPreviewCharts(charts.filter(Boolean) as SavedChartResult[]);
     } catch (err) {
-      console.error('Failed to load preview charts:', err);
+      // Without this the pane fell back to "no charts", which is a statement
+      // about the dashboard, made because a request failed.
+      setPreviewError(errorMessage(err));
     } finally {
       setPreviewLoading(false);
     }
@@ -157,7 +190,7 @@ export function DashboardsModal({
 
   return (
     <div className="dashboards-modal-overlay" ref={overlayRef} onClick={handleOverlayClick}>
-      <div className="dashboards-modal" role="dialog" aria-modal="true">
+      <div className="dashboards-modal" role="dialog" aria-modal="true" ref={dialogRef}>
         <header className="dashboards-modal-header">
           <h2 className="dashboards-header-title">
             <LayoutDashboard size={18} />
@@ -168,6 +201,15 @@ export function DashboardsModal({
           </button>
         </header>
 
+        {actionError && (
+          <div className="modal-action-error" role="alert">
+            <span>{actionError}</span>
+            <button type="button" onClick={() => setActionError(null)} aria-label="Dismiss">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         <div className="dashboards-modal-body">
           <div className="dashboards-modal-sidebar">
             <div className="dashboards-list-container">
@@ -177,8 +219,16 @@ export function DashboardsModal({
                   <span>Loading saved datasets…</span>
                 </div>
               ) : error ? (
-                <div className="dashboards-loading">
+                <div className="dashboards-loading" role="alert">
                   <span style={{ color: 'var(--danger, #ef4444)' }}>{error}</span>
+                  <button
+                    type="button"
+                    className="panel-retry-btn"
+                    onClick={() => setAttempt((n) => n + 1)}
+                  >
+                    <RotateCcw size={13} />
+                    Try again
+                  </button>
                 </div>
               ) : entries.length === 0 ? (
                 <div className="dashboards-empty">
@@ -237,6 +287,18 @@ export function DashboardsModal({
                        <div className="spinner" style={{ width: 32, height: 32 }} />
                        <span>Loading preview...</span>
                      </div>
+                  ) : previewError ? (
+                    <div className="dashboards-loading" style={{ paddingTop: 80 }} role="alert">
+                      <span style={{ color: 'var(--danger, #ef4444)' }}>{previewError}</span>
+                      <button
+                        type="button"
+                        className="panel-retry-btn"
+                        onClick={() => void handleDashboardClick(selectedEntry)}
+                      >
+                        <RotateCcw size={13} />
+                        Try again
+                      </button>
+                    </div>
                   ) : previewCharts.length > 0 ? (
                     <div className="dashboard-preview-grid">
                       {previewCharts.map((chart) => {
@@ -268,16 +330,7 @@ export function DashboardsModal({
                     <button
                       className="btn-delete"
                       style={{ backgroundColor: '#ef4444', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 500 }}
-                      onClick={async () => {
-                        if (!window.confirm('Are you sure you want to delete this dashboard? This cannot be undone.')) return;
-                        try {
-                          await deleteDashboard(selectedEntry.dashboard!.id);
-                          setEntries(entries => entries.filter(e => e.id !== selectedEntry.id));
-                          setExpandedId(null);
-                        } catch (err) {
-                          alert('Failed to delete dashboard. It might already be deleted.');
-                        }
-                      }}
+                      onClick={() => setPendingDelete(selectedEntry)}
                     >
                       Delete Dashboard
                     </button>
@@ -305,6 +358,32 @@ export function DashboardsModal({
           </div>
         </div>
       </div>
+
+      {pendingDelete?.dashboard && (
+        <ConfirmDialog
+          destructive
+          title="Delete this dashboard?"
+          body={
+            <>
+              <p>
+                <strong>{pendingDelete.dashboard.name}</strong> —{' '}
+                {pendingDelete.chartCount === 1
+                  ? '1 chart'
+                  : `${pendingDelete.chartCount} charts`}
+                .
+              </p>
+              <p>
+                The layout is deleted. The dataset{' '}
+                <strong>{pendingDelete.dataset.logical_name}</strong> is kept, so you can
+                build a new dashboard from it. This cannot be undone.
+              </p>
+            </>
+          }
+          confirmLabel="Delete dashboard"
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => void runDelete(pendingDelete)}
+        />
+      )}
     </div>
   );
 }
