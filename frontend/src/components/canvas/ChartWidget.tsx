@@ -49,6 +49,7 @@ interface ChartWidgetCardProps {
   onDelete: () => void;
   onMove: (x: number, y: number) => void;
   onResize: (width: number, height: number) => void;
+  readOnly?: boolean;
 }
 
 export function ChartWidgetCard({
@@ -62,6 +63,7 @@ export function ChartWidgetCard({
   onDelete,
   onMove,
   onResize,
+  readOnly,
 }: ChartWidgetCardProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   // Held so the resize observer below can drive the live view. Not state: it
@@ -249,74 +251,77 @@ export function ChartWidgetCard({
       <header
         className="chart-widget-header"
         onPointerDown={(e) => {
+          if (readOnly) return;
           // Never start a drag from the action buttons — that ate clicks before.
           if ((e.target as HTMLElement).closest('.chart-widget-actions')) return;
           startDrag(e, 'move');
         }}
       >
         <h3 title={widget.title}>{widget.title}</h3>
-        <div className="chart-widget-actions" onPointerDown={stopActionPointer}>
-          {widget.agentChartId && (
+        {!readOnly && (
+          <div className="chart-widget-actions" onPointerDown={stopActionPointer}>
+            {widget.agentChartId && (
+              <button
+                type="button"
+                className="chart-header-btn"
+                title={referenced ? 'Attached to the chat' : 'Ask the chat about this chart'}
+                aria-label={referenced ? 'Attached to the chat' : 'Ask the chat about this chart'}
+                aria-pressed={referenced}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect();
+                  onReference();
+                }}
+              >
+                <AtSign size={14} />
+              </button>
+            )}
+
             <button
               type="button"
               className="chart-header-btn"
-              title={referenced ? 'Attached to the chat' : 'Ask the chat about this chart'}
-              aria-label={referenced ? 'Attached to the chat' : 'Ask the chat about this chart'}
-              aria-pressed={referenced}
+              title="Style options"
+              aria-label="Style options"
               onClick={(e) => {
                 e.stopPropagation();
                 onSelect();
-                onReference();
+                setEditing(false);
+                onOpenStyle();
               }}
             >
-              <AtSign size={14} />
+              <Palette size={14} />
             </button>
-          )}
 
-          <button
-            type="button"
-            className="chart-header-btn"
-            title="Style options"
-            aria-label="Style options"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect();
-              setEditing(false);
-              onOpenStyle();
-            }}
-          >
-            <Palette size={14} />
-          </button>
+            <button
+              type="button"
+              className="chart-header-btn"
+              title="Change how this chart looks"
+              aria-label="Change how this chart looks"
+              aria-pressed={editing}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect();
+                setEditing((on) => !on);
+                setEditError(null);
+              }}
+            >
+              <WandSparkles size={14} />
+            </button>
 
-          <button
-            type="button"
-            className="chart-header-btn"
-            title="Change how this chart looks"
-            aria-label="Change how this chart looks"
-            aria-pressed={editing}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect();
-              setEditing((on) => !on);
-              setEditError(null);
-            }}
-          >
-            <WandSparkles size={14} />
-          </button>
-
-          <button
-            type="button"
-            className="chart-header-btn is-danger"
-            title="Delete chart"
-            aria-label="Delete chart"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-          >
-            <Trash2 size={14} />
-          </button>
-        </div>
+            <button
+              type="button"
+              className="chart-header-btn is-danger"
+              title="Delete chart"
+              aria-label="Delete chart"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        )}
       </header>
 
       <div
@@ -365,11 +370,13 @@ export function ChartWidgetCard({
         )
       )}
 
-      <div
-        className="chart-resize-handle"
-        onPointerDown={(e) => startDrag(e, 'resize')}
-        aria-hidden
-      />
+      {!readOnly && (
+        <div
+          className="chart-resize-handle"
+          onPointerDown={(e) => startDrag(e, 'resize')}
+          aria-hidden
+        />
+      )}
     </article>
   );
 }

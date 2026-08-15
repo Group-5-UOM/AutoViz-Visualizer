@@ -39,12 +39,14 @@ class WidgetSpec(BaseModel):
 class UpdateDashboardRequest(BaseModel):
     name: str | None = None
     widgets: list[WidgetSpec] | None = None
+    is_public: bool | None = None
 
 
 def _dashboard_dict(d: Dashboard) -> dict[str, Any]:
     return {
         "id": d.id,
         "name": d.name,
+        "is_public": d.is_public,
         "created_at": d.created_at.isoformat(),
         "updated_at": d.updated_at.isoformat(),
         "widgets": [
@@ -93,6 +95,8 @@ def update(
     dashboard = _owned_dashboard(db, dashboard_id, user)
     if body.name is not None:
         dashboard.name = body.name
+    if body.is_public is not None:
+        dashboard.is_public = body.is_public
     if body.widgets is not None:
         for w in body.widgets:
             chart = repository.get_chart(db, w.chart_id)
@@ -108,3 +112,25 @@ def update(
 def delete(dashboard_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     repository.delete_dashboard(db, _owned_dashboard(db, dashboard_id, user))
     return {"removed": True, "id": dashboard_id}
+
+
+@router.get("/shared/{dashboard_id}")
+def get_shared(dashboard_id: str, db: Session = Depends(get_db)):
+    dashboard = repository.get_dashboard(db, dashboard_id)
+    if dashboard is None or not dashboard.is_public:
+        raise HTTPException(status_code=404, detail="Dashboard not found or not public")
+    
+    charts = {}
+    for w in dashboard.widgets:
+        chart = repository.get_chart(db, w.chart_id)
+        if chart:
+            charts[w.chart_id] = {
+                "id": chart.id,
+                "name": chart.name,
+                "dataset_id": chart.dataset_id,
+                "spec": chart.vega_lite_spec,
+            }
+            
+    res = _dashboard_dict(dashboard)
+    res["charts"] = charts
+    return res

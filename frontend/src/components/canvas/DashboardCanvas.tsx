@@ -1,4 +1,4 @@
-import { useRef, type ChangeEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { FileSpreadsheet, Table, Upload } from 'lucide-react';
 import { ChartWidgetCard } from './ChartWidget';
 import type { ChartWidget } from '../../types/dashboard';
@@ -30,6 +30,7 @@ interface DashboardCanvasProps {
   onCsvSelected: (file: File) => void;
   /** Open the spreadsheet view (Data tab). */
   onOpenData?: () => void;
+  readOnly?: boolean;
 }
 
 export function DashboardCanvas({
@@ -47,6 +48,7 @@ export function DashboardCanvas({
   onDelete,
   onCsvSelected,
   onOpenData,
+  readOnly,
 }: DashboardCanvasProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const showUploadPrompt = widgets.length === 0 && !dataset;
@@ -59,10 +61,37 @@ export function DashboardCanvas({
     e.target.value = '';
   };
 
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    if (!uploading && showUploadPrompt) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (uploading || !showUploadPrompt) return;
+    
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')) {
+      void onCsvSelected(file);
+    }
+  };
+
   return (
     <main
-      className="dashboard-canvas"
-      onPointerDown={() => onSelect(null)}
+      className={`dashboard-canvas ${isDragging ? 'is-dragging' : ''} ${readOnly ? 'is-readonly' : ''}`}
+      onPointerDown={() => !readOnly && onSelect(null)}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       aria-label="Dashboard canvas"
     >
       <div className="canvas-grid" aria-hidden />
@@ -76,7 +105,7 @@ export function DashboardCanvas({
             <h2>Add a CSV file</h2>
             <p>
               Upload a structured CSV dataset to start asking questions and
-              building charts on this canvas.
+              building charts on this canvas, or drop a file here.
             </p>
             <button
               type="button"
@@ -162,8 +191,9 @@ export function DashboardCanvas({
           <ChartWidgetCard
             key={widget.id}
             widget={widget}
+            readOnly={readOnly}
             selected={selectedWidgetId === widget.id}
-            onSelect={() => onSelect(widget.id)}
+            onSelect={() => !readOnly && onSelect(widget.id)}
             onEditStyle={(request) => onEditStyle(widget.id, request)}
             onOpenStyle={() => onOpenStyle(widget.id)}
             onReference={() => onReference(widget.id)}

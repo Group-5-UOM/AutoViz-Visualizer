@@ -1,0 +1,113 @@
+.share-dropdown-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 320px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border-subtle, #e5e7eb);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  padding: 1rem;
+  color: var(--text-primary, #111827);
+  cursor: default;
+  animation: slideDown 0.15s ease-out;
+}
+
+.share-dropdown-header {
+  margin-bottom: 1rem;
+}
+
+.share-dropdown-header strong {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.share-dropdown-subtitle {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #a1a1aa);
+}
+
+.toggle-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.toggle-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.toggle-switch {
+  appearance: none;
+  width: 36px;
+  height: 20px;
+  background-color: var(--border-color, #d1d5db);
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+}
+
+.toggle-switch:checked {
+  background-color: var(--primary-color, #3b82f6);
+}
+
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.toggle-switch:checked::after {
+  transform: translateX(16px);
+}
+
+.toggle-switch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.share-link-container {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.share-link-input {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  background-color: var(--bg-surface, #fff);
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 4px;
+  color: var(--text-primary, #111827);
+  font-family: monospace;
+  font-size: 0.75rem;
+  min-width: 0; /* allows input to shrink in flex container */
+}
+
+.share-link-input:focus {
+  outline: none;
+  border-color: var(--primary-color, #3b82f6);
+}
+
+.copy-btn {
+  white-space: nowrap;
+  font-size: 0.75rem;
+  padding: 0.4rem 0.75rem;
+}

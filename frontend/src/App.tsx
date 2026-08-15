@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { SharedBoardPage } from './pages/SharedBoardPage';
 import {
   SESSION_EXPIRED_EVENT,
   clearSession,
@@ -98,6 +99,17 @@ function App() {
             )
           }
         />
+        <Route
+          path="/dashboard/:dashboardId"
+          element={
+            user ? (
+              <DashboardRoute user={user} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route path="/shared/:dashboardId" element={<SharedBoardPage />} />
         <Route
           path="*"
           element={<Navigate to={user ? '/dashboard' : '/login'} replace />}
