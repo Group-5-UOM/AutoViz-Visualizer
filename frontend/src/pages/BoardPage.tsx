@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { Sidebar } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
 import { AccountPasswordModal } from '../components/layout/AccountPasswordModal';
@@ -469,7 +470,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     });
   };
 
-  const handleExportDashboard = async () => {
+  const handleExportImage = async () => {
     const el = document.querySelector('.dashboard-canvas') as HTMLElement;
     if (!el) return;
     try {
@@ -479,7 +480,27 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       link.href = canvas.toDataURL('image/png');
       link.click();
     } catch (err) {
-      console.error('Failed to export dashboard:', err);
+      console.error('Failed to export dashboard image:', err);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    const el = document.querySelector('.dashboard-canvas') as HTMLElement;
+    if (!el) return;
+    try {
+      const canvas = await html2canvas(el, { backgroundColor: '#f4f5f7' });
+      const imgData = canvas.toDataURL('image/png');
+      
+      const pdf = new jsPDF({
+        orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+        unit: 'px',
+        format: [canvas.width, canvas.height]
+      });
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+      pdf.save(`dashboard-${dataset?.fileName || 'export'}.pdf`);
+    } catch (err) {
+      console.error('Failed to export dashboard pdf:', err);
     }
   };
 
@@ -530,9 +551,11 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         username={username}
         onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
         onRename={() => setRenameOpen(true)}
-        onExport={handleExportDashboard}
+        onExportImage={handleExportImage}
+        onExportPdf={handleExportPdf}
         onSave={() => saveNow()}
         saveStatus={saveStatus}
+        shareDashboardId={dashboard.dashboardId}
         onNewDashboard={handleNewDashboard}
         onSetPassword={!hasPassword ? () => setPasswordOpen(true) : undefined}
         onLogout={onLogout}

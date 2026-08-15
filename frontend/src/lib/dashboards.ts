@@ -37,6 +37,7 @@ export interface WidgetSpec {
 export interface DashboardResult {
   id: string;
   name: string;
+  is_public: boolean;
   created_at: string;
   updated_at: string;
   widgets: {
@@ -60,11 +61,12 @@ export async function createDashboard(name: string): Promise<DashboardResult> {
 export async function updateDashboard(
   dashboardId: string,
   name?: string,
-  widgets?: WidgetSpec[]
+  widgets?: WidgetSpec[],
+  is_public?: boolean
 ): Promise<DashboardResult> {
   return apiRequest<DashboardResult>(`/dashboards/${dashboardId}`, {
     method: 'PUT',
-    body: { name, widgets },
+    body: { name, widgets, is_public },
   });
 }
 
@@ -96,4 +98,12 @@ export async function getDashboard(dashboardId: string): Promise<DashboardResult
 
 export async function deleteDashboard(dashboardId: string): Promise<{ removed: boolean; id: string }> {
   return apiRequest<{ removed: boolean; id: string }>(`/dashboards/${dashboardId}`, { method: 'DELETE' });
+}
+
+export interface SharedDashboardResult extends DashboardResult {
+  charts: Record<string, { id: string; name: string; dataset_id: string | null; spec: Record<string, unknown> }>;
+}
+
+export async function getSharedDashboard(dashboardId: string): Promise<SharedDashboardResult> {
+  return apiRequest<SharedDashboardResult>(`/dashboards/shared/${dashboardId}`, { method: 'GET', auth: false });
 }

@@ -1,4 +1,6 @@
-import { Download, KeyRound, LogOut, Menu, PanelLeft, Share2, Save, FilePlus2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Download, KeyRound, LogOut, Menu, PanelLeft, Share2, Save, FilePlus2, ChevronDown, Image, FileText } from 'lucide-react';
+import { ShareDropdownPanel } from './ShareDropdownPanel';
 import './TopBar.css';
 
 interface TopBarProps {
@@ -8,7 +10,9 @@ interface TopBarProps {
   username?: string;
   onToggleSidebar: () => void;
   onRename: () => void;
-  onExport: () => void;
+  onExportImage: () => void;
+  onExportPdf: () => void;
+  shareDashboardId?: string | null;
   onSave?: () => void;
   saveStatus?: 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
   onNewDashboard?: () => void;
@@ -25,7 +29,9 @@ export function TopBar({
   username,
   onToggleSidebar,
   onRename,
-  onExport,
+  onExportImage,
+  onExportPdf,
+  shareDashboardId,
   onSave,
   saveStatus,
   onNewDashboard,
@@ -34,6 +40,24 @@ export function TopBar({
   canExport = true,
 }: TopBarProps) {
   const displayName = username || userEmail?.split('@')[0] || userEmail;
+  const [exportOpen, setExportOpen] = useState(false);
+  const [shareMenuOpen, setShareMenuOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+  const shareRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (exportRef.current && !exportRef.current.contains(target)) {
+        setExportOpen(false);
+      }
+      if (shareRef.current && !shareRef.current.contains(target)) {
+        setShareMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <header className="board-topbar">
@@ -66,10 +90,24 @@ export function TopBar({
       </div>
 
       <div className="topbar-right">
-        <button type="button" className="topbar-text-btn" disabled title="Coming soon">
-          <Share2 size={15} />
-          Share
-        </button>
+        {shareDashboardId && (
+          <div className="topbar-export-dropdown" ref={shareRef}>
+            <button 
+              type="button" 
+              className="topbar-text-btn" 
+              onClick={() => setShareMenuOpen(!shareMenuOpen)} 
+              title="Share dashboard"
+            >
+              <Share2 size={15} />
+              Share
+              <ChevronDown size={14} style={{ marginLeft: '-2px', opacity: 0.8 }} />
+            </button>
+            
+            {shareMenuOpen && (
+              <ShareDropdownPanel dashboardId={shareDashboardId} />
+            )}
+          </div>
+        )}
         {onNewDashboard && (
           <button
             type="button"
@@ -100,16 +138,46 @@ export function TopBar({
             {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Error' : 'Save'}
           </button>
         )}
-        <button
-          type="button"
-          className="topbar-primary-btn"
-          onClick={onExport}
-          disabled={!canExport}
-          title={!canExport ? 'Add a chart first' : 'Export the canvas as a PNG'}
-        >
-          <Download size={15} />
-          Export
-        </button>
+        <div className="topbar-export-dropdown" ref={exportRef}>
+          <button
+            type="button"
+            className="topbar-primary-btn"
+            onClick={() => setExportOpen(!exportOpen)}
+            disabled={!canExport}
+            title="Export dashboard"
+          >
+            <Download size={15} />
+            Export
+            <ChevronDown size={14} style={{ marginLeft: '-2px', opacity: 0.8 }} />
+          </button>
+          
+          {exportOpen && canExport && (
+            <div className="export-menu">
+              <button
+                type="button"
+                className="export-menu-item"
+                onClick={() => {
+                  setExportOpen(false);
+                  onExportImage();
+                }}
+              >
+                <Image size={15} />
+                <span>Export as PNG</span>
+              </button>
+              <button
+                type="button"
+                className="export-menu-item"
+                onClick={() => {
+                  setExportOpen(false);
+                  onExportPdf();
+                }}
+              >
+                <FileText size={15} />
+                <span>Export as PDF</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {displayName && (
           <div className="topbar-user">

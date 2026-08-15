@@ -30,6 +30,7 @@ interface DashboardCanvasProps {
   onCsvSelected: (file: File) => void;
   /** Open the spreadsheet view (Data tab). */
   onOpenData?: () => void;
+  readOnly?: boolean;
 }
 
 export function DashboardCanvas({
@@ -47,6 +48,7 @@ export function DashboardCanvas({
   onDelete,
   onCsvSelected,
   onOpenData,
+  readOnly,
 }: DashboardCanvasProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const showUploadPrompt = widgets.length === 0 && !dataset;
@@ -85,8 +87,8 @@ export function DashboardCanvas({
 
   return (
     <main
-      className={`dashboard-canvas ${isDragging ? 'is-dragging' : ''}`}
-      onPointerDown={() => onSelect(null)}
+      className={`dashboard-canvas ${isDragging ? 'is-dragging' : ''} ${readOnly ? 'is-readonly' : ''}`}
+      onPointerDown={() => !readOnly && onSelect(null)}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -189,8 +191,9 @@ export function DashboardCanvas({
           <ChartWidgetCard
             key={widget.id}
             widget={widget}
+            readOnly={readOnly}
             selected={selectedWidgetId === widget.id}
-            onSelect={() => onSelect(widget.id)}
+            onSelect={() => !readOnly && onSelect(widget.id)}
             onEditStyle={(request) => onEditStyle(widget.id, request)}
             onOpenStyle={() => onOpenStyle(widget.id)}
             onReference={() => onReference(widget.id)}
