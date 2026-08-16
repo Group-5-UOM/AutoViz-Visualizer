@@ -284,3 +284,39 @@ def test_both_findings_yield_a_repair_and_a_question(registry, tmp_path):
     auto, proposals = quality.recommend(quality.scan(rec, {"k"}), len(rec.df))
     assert {op["op"] for op in auto} == {"normalize_case"}
     assert [p.slot for p in proposals] == ["cardinality:k"]
+
+
+# --- magnitude floor on missing-value questions ------------------------------
+#
+# Found by bench/nl_suite.py T05: "Compare average fare across embarkation
+# towns" stopped to ask about 2 missing values in 891 rows (0.2%). The question
+# was legitimate and the interruption was not worth it.
+
+
+def _missing_proposal(registry, tmp_path, present: int, missing: int):
+    rows = "\n".join(["a,1"] * present + [",1"] * missing)
+    rec = _register(registry, tmp_path, "miss.csv", f"k,v\n{rows}\n")
+    _auto, proposals = quality.recommend(quality.scan(rec, {"k"}), len(rec.df))
+    return next(p for p in proposals if p.issue.kind == "missing_values")
+
+
+def test_tiny_missing_share_is_disclosed_not_asked(registry, tmp_path):
+    proposal = _missing_proposal(registry, tmp_path, present=889, missing=2)
+    assert proposal.issue.fraction < 0.05
+    assert quality.is_worth_asking(proposal, dimensions={"k"}) is False
+
+
+def test_material_missing_share_on_a_dimension_is_still_asked(registry, tmp_path):
+    proposal = _missing_proposal(registry, tmp_path, present=80, missing=20)
+    assert proposal.issue.fraction >= 0.05
+    assert quality.is_worth_asking(proposal, dimensions={"k"}) is True
+
+
+def test_high_cardinality_is_not_silenced_by_the_row_fraction_floor(registry, tmp_path):
+    """Its `fraction` is 0.0 by construction — it counts values, not rows."""
+    rows = "\n".join(f"v{i},1" for i in range(30))
+    rec = _register(registry, tmp_path, "dim2.csv", f"k,v\n{rows}\n")
+    _auto, proposals = quality.recommend(quality.scan(rec, {"k"}), len(rec.df))
+    bucket = next(p for p in proposals if p.slot == "cardinality:k")
+    assert bucket.issue.fraction == 0.0
+    assert quality.is_worth_asking(bucket, dimensions={"k"}) is True

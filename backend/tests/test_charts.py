@@ -241,3 +241,37 @@ def test_pipeline_honours_a_boxplot_over_raw_values(registry, iris_id):
     out = run_pipeline(iris_id, plan, registry, preferred_chart_type="boxplot")
     assert out["status"] == "ok"
     assert out["chart_spec"]["type"] == "boxplot"
+
+
+# --- empty results -----------------------------------------------------------
+#
+# A query that matches nothing is a real answer, not a chart error — so the spec
+# is still built and still valid. What was missing was anyone saying so: the axes
+# rendered as usual and the user was left to infer the emptiness from a blank
+# panel. Found by bench/chart_quality.py's legibility guards.
+
+
+def test_empty_result_still_produces_a_valid_spec():
+    out = generate_chart([], {"type": "bar", "x": "region", "y": "revenue"})
+    assert out["valid"] is True
+    assert out["vega_lite_spec"]["data"]["values"] == []
+
+
+def test_empty_result_is_disclosed_rather_than_left_blank():
+    out = generate_chart([], {"type": "bar", "x": "region", "y": "revenue"})
+    notice = next(n for n in out["notices"] if n["kind"] == "empty_result")
+    assert notice["severity"] == "advisory"
+    assert "no rows" in notice["note"]
+
+
+def test_empty_result_caveat_rides_on_the_spec_itself():
+    """A saved dashboard has no chat behind it to carry the explanation."""
+    out = generate_chart([], {"type": "bar", "x": "region", "y": "revenue"})
+    subtitle = out["vega_lite_spec"]["title"]["subtitle"]
+    assert any("no rows" in line for line in subtitle)
+
+
+def test_non_empty_result_carries_no_empty_notice():
+    rows = [{"region": "North", "revenue": 10.0}]
+    out = generate_chart(rows, {"type": "bar", "x": "region", "y": "revenue"})
+    assert [n for n in out["notices"] if n["kind"] == "empty_result"] == []

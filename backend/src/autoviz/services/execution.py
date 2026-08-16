@@ -56,6 +56,11 @@ def _env_float(name: str, default: float) -> float:
 DUCKDB_MEMORY_LIMIT = _env_value("AUTOVIZ_DUCKDB_MEMORY_LIMIT", "1GB")
 DUCKDB_THREADS = _env_value("AUTOVIZ_DUCKDB_THREADS", "2")
 EXECUTION_TIMEOUT_S = _env_float("AUTOVIZ_EXECUTION_TIMEOUT_S", 30.0)
+# Which view of the frame DuckDB scans: "arrow" (default) or "pandas". See
+# _register_source — read at call time, not frozen here, so a test or a
+# benchmark arm can flip it with monkeypatch.setenv.
+def _scan_source() -> str:
+    return _env_value("AUTOVIZ_SCAN_SOURCE", "arrow").lower()
 # How often the cancellation watcher checks its event. Short enough that Cancel
 # feels immediate, long enough that the extra thread costs nothing.
 _CANCEL_POLL_S = 0.05
@@ -87,6 +92,18 @@ _FILTER_SQL = {
     "lt": "{col} < ?",
     "lte": "{col} <= ?",
     "contains": "contains(CAST({col} AS VARCHAR), ?)",
+}
+
+# Value-less predicates. Kept apart from _FILTER_SQL because they bind no
+# parameter, and the difference has to be visible where the params list is
+# built — the two were previously conflated by omission: `is_null`/`is_not_null`
+# were in FILTER_OPS and accepted by validation, but had no entry here at all,
+# so a plan that validated cleanly died on a KeyError inside the engine. Worse,
+# that surfaced as a *retryable* EXECUTION_ERROR, so the agent re-ran a plan
+# that could never succeed. Found by bench/nl_suite.py T05.
+_NULL_FILTER_SQL = {
+    "is_null": "{col} IS NULL",
+    "is_not_null": "{col} IS NOT NULL",
 }
 
 # Safe-tier value rewrites. Each is a pure function of the cell — no aggregate, no
@@ -140,6 +157,23 @@ def _interrupt(con: "duckdb.DuckDBPyConnection") -> None:
         pass
 
 
+def _register_source(con: "duckdb.DuckDBPyConnection", record: DatasetRecord) -> None:
+    """Expose the record's immutable frame to the connection as `df_raw`.
+
+    Prefers the record's cached Arrow table: DuckDB scanning a pandas frame
+    re-crosses the pandas boundary on every query, which measured as 817 ms of
+    the 1102 ms a 2-key group-by took over 1M rows. The Arrow table is converted
+    once per record and shares the frame's buffers, so the same query runs in
+    61 ms — 18x — for 0.2 MiB more resident memory (`Docs/24 §3`).
+
+    Falls back to the frame when it will not convert, so a mixed-type column
+    costs speed and never correctness. ``AUTOVIZ_SCAN_SOURCE=pandas`` forces the
+    old path: an operational escape hatch, and what the benchmark's A/B arm sets.
+    """
+    table = None if _scan_source() == "pandas" else record.arrow()
+    con.register("df_raw", record.df if table is None else table)
+
+
 def _q(identifier: str) -> str:
     return '"' + identifier.replace('"', '""') + '"'
 
@@ -185,6 +219,9 @@ def build_sql(
             placeholders = ", ".join("?" for _ in f.value)
             where_parts.append(f"{col} IN ({placeholders})")
             params.extend(f.value)
+        elif f.op in _NULL_FILTER_SQL:
+            # No parameter: the predicate is entirely in the SQL.
+            where_parts.append(_NULL_FILTER_SQL[f.op].format(col=col))
         else:
             where_parts.append(_FILTER_SQL[f.op].format(col=col))
             params.append(f.value)
@@ -758,7 +795,7 @@ def preprocessing_impact(
     """
     plan = AnalysisPlan.model_validate(analysis_plan)
     with _governed_connection(cancel_event) as (con, guard):
-        con.register("df_raw", record.df)
+        _register_source(con, record)
         try:
             _ctes, _params, _rel, report, input_rows, output_rows = _apply_preprocessing(
                 con, plan, record.schema
@@ -964,7 +1001,7 @@ def materialize_cleaned_dataset(
     version = plan.preprocessing_version(dataset_id)
     try:
         with _governed_connection(cancel_event) as (con, guard):
-            con.register("df_raw", record.df)
+            _register_source(con, record)
             try:
                 cte_defs, params, source_rel, report, input_rows, output_rows = (
                     _apply_preprocessing(con, plan, record.schema)
@@ -1149,7 +1186,7 @@ def execute_analysis(
         with _governed_connection(cancel_event) as (con, guard):
             # Immutable source: register the raw frame under df_raw and build the
             # preprocessing working view over it — record.df is never modified.
-            con.register("df_raw", record.df)
+            _register_source(con, record)
             try:
                 pp_ctes, pp_params, source_rel, pp_report, input_rows, output_rows = (
                     _apply_preprocessing(con, plan, record.schema)

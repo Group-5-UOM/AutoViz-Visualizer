@@ -17,7 +17,7 @@ from autoviz.services import skew
 from autoviz.services.chart_interaction import attach as attach_interaction
 from autoviz.services.chart_labels import build_label_layer
 from autoviz.services.chart_theme import attach as attach_theme
-from autoviz.services.notices import Notice
+from autoviz.services.notices import ADVISORY, Notice
 from autoviz.vega import VEGA_LITE_SCHEMA
 
 _VEGA_MARK = {
@@ -243,9 +243,21 @@ def _mark_def(chart_type: str) -> Any:
         # their container, so a literal innerRadius inverts at small widths.
         return {"type": "arc", "innerRadius": {"expr": "min(width, height) / 5"}}
     if chart_type == "boxplot":
-        # Vega-Lite rejects selection params on composite marks, so the mark's
-        # own tooltip is the only way to surface the quartiles it computes.
-        return {"type": "boxplot", "extent": 1.5, "tooltip": True}
+        # Vega-Lite rejects selection params on composite marks, so a mark
+        # tooltip is the only way to surface the quartiles it computes.
+        #
+        # It has to go on the *sub-parts*, not on the composite mark: `BoxPlotDef`
+        # sets additionalProperties:false and has no `tooltip`, so a top-level
+        # `tooltip: true` made every boxplot spec non-conformant against the
+        # Vega-Lite v6 schema — and bought no tooltip for it. `box` carries the
+        # quartiles and `outliers` the individual points, which are the two parts
+        # a reader hovers. Caught by bench/chart_quality.py.
+        return {
+            "type": "boxplot",
+            "extent": 1.5,
+            "box": {"tooltip": True},
+            "outliers": {"tooltip": True},
+        }
     return _VEGA_MARK[chart_type]
 
 
@@ -262,6 +274,24 @@ def generate_chart(
 
     columns = set(result_table[0].keys()) if result_table else set()
     warnings: list[str] = []
+    # An empty result is not a chart error — the query ran and matched nothing,
+    # which is a real answer. But it is also not a chart anybody can read, and
+    # until this notice existed the axes rendered as usual and the emptiness was
+    # left for the user to infer from a blank panel. Say it instead.
+    empty_notices: list[Notice] = []
+    if not result_table:
+        empty_notices.append(
+            Notice(
+                kind="empty_result",
+                severity=ADVISORY,
+                note=(
+                    "This query matched no rows, so the chart is empty. The filters "
+                    "are the usual cause — a value spelled differently from the data, "
+                    "or a date range outside it."
+                ),
+                detail={"row_count": 0},
+            )
+        )
     channels = {k: chart_spec.get(k) for k in ("x", "y", "color") if chart_spec.get(k)}
     missing = [f"{ch} -> '{col}'" for ch, col in channels.items() if columns and col not in columns]
     if missing:
@@ -399,15 +429,16 @@ def generate_chart(
     # The caveat rides on the spec as well as the reply. A saved dashboard has no
     # chat behind it, so an explanation that lives only in the conversation is one
     # a reader will not have tomorrow — and a log axis nobody mentions misleads.
-    if axis_notices:
+    chart_notices = empty_notices + axis_notices
+    if chart_notices:
         spec["title"] = {
             "text": "",
-            "subtitle": [n.note for n in axis_notices],
+            "subtitle": [n.note for n in chart_notices],
             "anchor": "start",
         }
     return {
         "vega_lite_spec": spec,
         "valid": True,
         "warnings": warnings,
-        "notices": [n.to_wire() for n in axis_notices],
+        "notices": [n.to_wire() for n in chart_notices],
     }

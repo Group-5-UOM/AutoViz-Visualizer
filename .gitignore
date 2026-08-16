@@ -1,4 +1,13 @@
-Docs/
+# Documentation is TRACKED. `Docs/` was ignored wholesale, which hid all 25
+# numbered documents — the proposal, the SAD, the architecture and MCP
+# references, the whole preprocessing record and every status report — on one
+# laptop, invisible to teammates, mentors and evaluators and backed up by
+# nothing. All of it is 688 KB of Markdown.
+#
+# What genuinely does not belong in git is the 46 MB of third-party PDFs, which
+# is what made the blanket rule look reasonable in the first place.
+Docs/**/*.pdf
+Docs/Research Papers/
 
 # Python
 .venv/

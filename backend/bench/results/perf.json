@@ -1,0 +1,1949 @@
+{
+  "meta": {
+    "generated_at": "2026-08-16T11:02:24",
+    "python": "3.12.13",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 141 Stepping 1, GenuineIntel",
+    "cpu_count": 16,
+    "duckdb": "1.5.5",
+    "pandas": "3.0.3",
+    "quick": false,
+    "scales": [
+      1000,
+      10000,
+      100000,
+      500000,
+      1000000
+    ],
+    "peak_rss_mib": 897.2,
+    "wall_seconds": 261.3
+  },
+  "limits": {
+    "max_file_bytes": 52428800,
+    "max_file_mib": 50.0,
+    "max_rows": 1000000,
+    "max_columns": 512,
+    "hard_row_ceiling": 100000,
+    "bench_bytes_per_row": 99.6,
+    "rows_at_file_limit": 526450,
+    "duckdb_memory_limit": "1GB",
+    "duckdb_threads": "2",
+    "execution_timeout_s": 30.0
+  },
+  "ingest": [
+    {
+      "rows": 1000,
+      "columns": 11,
+      "csv_bytes": 99698,
+      "csv_mib": 0.1,
+      "frame_mib": 0.13,
+      "expansion_x": 1.4,
+      "refused": false,
+      "read_table": {
+        "median_ms": 7.72,
+        "min_ms": 6.94,
+        "max_ms": 8.19,
+        "repeats": 3
+      },
+      "build_record_profile": {
+        "median_ms": 18.01,
+        "min_ms": 15.33,
+        "max_ms": 18.05,
+        "repeats": 3
+      },
+      "total_median_ms": 25.73
+    },
+    {
+      "rows": 10000,
+      "columns": 11,
+      "csv_bytes": 996037,
+      "csv_mib": 0.95,
+      "frame_mib": 1.33,
+      "expansion_x": 1.4,
+      "refused": false,
+      "read_table": {
+        "median_ms": 26.5,
+        "min_ms": 22.97,
+        "max_ms": 28.7,
+        "repeats": 3
+      },
+      "build_record_profile": {
+        "median_ms": 53.8,
+        "min_ms": 49.98,
+        "max_ms": 54.9,
+        "repeats": 3
+      },
+      "total_median_ms": 80.3
+    },
+    {
+      "rows": 100000,
+      "columns": 11,
+      "csv_bytes": 9960874,
+      "csv_mib": 9.5,
+      "frame_mib": 13.34,
+      "expansion_x": 1.4,
+      "refused": false,
+      "read_table": {
+        "median_ms": 213.07,
+        "min_ms": 202.15,
+        "max_ms": 225.75,
+        "repeats": 3
+      },
+      "build_record_profile": {
+        "median_ms": 423.96,
+        "min_ms": 420.21,
+        "max_ms": 426.86,
+        "repeats": 3
+      },
+      "total_median_ms": 637.03
+    },
+    {
+      "rows": 500000,
+      "columns": 11,
+      "csv_bytes": 49804861,
+      "csv_mib": 47.5,
+      "frame_mib": 66.68,
+      "expansion_x": 1.4,
+      "refused": false,
+      "read_table": {
+        "median_ms": 1134.43,
+        "min_ms": 1132.61,
+        "max_ms": 1136.24,
+        "repeats": 2
+      },
+      "build_record_profile": {
+        "median_ms": 2137.57,
+        "min_ms": 2133.28,
+        "max_ms": 2141.85,
+        "repeats": 2
+      },
+      "total_median_ms": 3272.0
+    },
+    {
+      "rows": 1000000,
+      "columns": 11,
+      "csv_bytes": 99607558,
+      "csv_mib": 94.99,
+      "refused": true,
+      "error_code": "RESOURCE_LIMIT",
+      "error": "File is 99607558 bytes; the limit is 52428800 bytes."
+    }
+  ],
+  "query": [
+    {
+      "rows": 1000,
+      "shape": "scan_limit",
+      "label": "Projection + limit (1k rows out)",
+      "note": "Row delivery with no aggregation \u2014 the floor for any query.",
+      "result_rows": 1000,
+      "engine_reported_ms": 16.11,
+      "validate": {
+        "median_ms": 0.44,
+        "min_ms": 0.41,
+        "max_ms": 0.5,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 28.99,
+        "min_ms": 25.48,
+        "max_ms": 32.43,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 1000,
+      "shape": "filter_scan",
+      "label": "Filter + projection (1k rows out)",
+      "note": "Adds a predicate over the full table to the scan above.",
+      "result_rows": 179,
+      "engine_reported_ms": 19.47,
+      "validate": {
+        "median_ms": 0.39,
+        "min_ms": 0.34,
+        "max_ms": 0.58,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 21.9,
+        "min_ms": 20.02,
+        "max_ms": 39.26,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 1000,
+      "shape": "agg_1key",
+      "label": "Group by 1 key, sum (5 groups)",
+      "note": "The commonest shape in the product: full scan, tiny output.",
+      "result_rows": 5,
+      "engine_reported_ms": 19.42,
+      "validate": {
+        "median_ms": 0.34,
+        "min_ms": 0.26,
+        "max_ms": 0.53,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 21.86,
+        "min_ms": 19.26,
+        "max_ms": 23.61,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 1000,
+      "shape": "agg_2key",
+      "label": "Group by 2 keys, 2 aggregates (60 groups)",
+      "note": "MAX_GROUP_BY=2 \u2014 the widest grouping the grammar allows.",
+      "result_rows": 60,
+      "engine_reported_ms": 17.37,
+      "validate": {
+        "median_ms": 0.4,
+        "min_ms": 0.37,
+        "max_ms": 0.7,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 20.89,
+        "min_ms": 18.73,
+        "max_ms": 23.46,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 1000,
+      "shape": "agg_highcard",
+      "label": "Group by high-cardinality key (n/8 groups)",
+      "note": "Output grows with the table \u2014 the worst case for a group-by.",
+      "result_rows": 125,
+      "engine_reported_ms": 19.15,
+      "validate": {
+        "median_ms": 0.3,
+        "min_ms": 0.27,
+        "max_ms": 0.68,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 20.92,
+        "min_ms": 20.0,
+        "max_ms": 24.0,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 1000,
+      "shape": "agg_median",
+      "label": "Group by 1 key, median",
+      "note": "A holistic aggregate: cannot stream, must materialise per group.",
+      "result_rows": 5,
+      "engine_reported_ms": 17.43,
+      "validate": {
+        "median_ms": 0.31,
+        "min_ms": 0.28,
+        "max_ms": 0.33,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 20.66,
+        "min_ms": 18.34,
+        "max_ms": 24.04,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 1000,
+      "shape": "agg_count_distinct",
+      "label": "Group by 1 key, count_distinct",
+      "note": "Hash-set state per group over a high-cardinality column.",
+      "result_rows": 5,
+      "engine_reported_ms": 18.66,
+      "validate": {
+        "median_ms": 0.31,
+        "min_ms": 0.28,
+        "max_ms": 0.47,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 21.36,
+        "min_ms": 19.14,
+        "max_ms": 31.66,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 1000,
+      "shape": "derive_trend",
+      "label": "Derive month_start + group + sum (36 points)",
+      "note": "The trend shape: a computed key, then a group-by over it.",
+      "result_rows": 36,
+      "engine_reported_ms": 18.24,
+      "validate": {
+        "median_ms": 0.34,
+        "min_ms": 0.31,
+        "max_ms": 0.5,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 21.17,
+        "min_ms": 19.21,
+        "max_ms": 23.48,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 1000,
+      "shape": "top_n",
+      "label": "Filter + group + sort + limit 10 (\u201ctop 10\u201d)",
+      "note": "The full ranking pipeline end to end.",
+      "result_rows": 10,
+      "engine_reported_ms": 19.7,
+      "validate": {
+        "median_ms": 0.31,
+        "min_ms": 0.29,
+        "max_ms": 0.37,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 19.93,
+        "min_ms": 18.49,
+        "max_ms": 22.29,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 1000,
+      "shape": "clean_agg",
+      "label": "Cleaning block (3 ops) + group + sum",
+      "note": "Median imputation, whitespace trim and exact-duplicate removal ahead of the same aggregate as agg_1key \u2014 so the difference is the cleaning.",
+      "result_rows": 5,
+      "engine_reported_ms": 24.05,
+      "validate": {
+        "median_ms": 0.42,
+        "min_ms": 0.37,
+        "max_ms": 0.45,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 51.84,
+        "min_ms": 49.81,
+        "max_ms": 55.15,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 10000,
+      "shape": "scan_limit",
+      "label": "Projection + limit (1k rows out)",
+      "note": "Row delivery with no aggregation \u2014 the floor for any query.",
+      "result_rows": 1000,
+      "engine_reported_ms": 18.49,
+      "validate": {
+        "median_ms": 0.41,
+        "min_ms": 0.39,
+        "max_ms": 0.68,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 27.69,
+        "min_ms": 26.47,
+        "max_ms": 30.25,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 10000,
+      "shape": "filter_scan",
+      "label": "Filter + projection (1k rows out)",
+      "note": "Adds a predicate over the full table to the scan above.",
+      "result_rows": 1000,
+      "engine_reported_ms": 17.38,
+      "validate": {
+        "median_ms": 0.41,
+        "min_ms": 0.37,
+        "max_ms": 0.51,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 25.67,
+        "min_ms": 22.87,
+        "max_ms": 29.35,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 10000,
+      "shape": "agg_1key",
+      "label": "Group by 1 key, sum (5 groups)",
+      "note": "The commonest shape in the product: full scan, tiny output.",
+      "result_rows": 5,
+      "engine_reported_ms": 21.39,
+      "validate": {
+        "median_ms": 0.29,
+        "min_ms": 0.27,
+        "max_ms": 0.43,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 19.18,
+        "min_ms": 18.09,
+        "max_ms": 23.03,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 10000,
+      "shape": "agg_2key",
+      "label": "Group by 2 keys, 2 aggregates (60 groups)",
+      "note": "MAX_GROUP_BY=2 \u2014 the widest grouping the grammar allows.",
+      "result_rows": 60,
+      "engine_reported_ms": 18.4,
+      "validate": {
+        "median_ms": 0.4,
+        "min_ms": 0.37,
+        "max_ms": 0.51,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 21.68,
+        "min_ms": 19.88,
+        "max_ms": 22.98,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 10000,
+      "shape": "agg_highcard",
+      "label": "Group by high-cardinality key (n/8 groups)",
+      "note": "Output grows with the table \u2014 the worst case for a group-by.",
+      "result_rows": 1249,
+      "engine_reported_ms": 20.64,
+      "validate": {
+        "median_ms": 0.32,
+        "min_ms": 0.29,
+        "max_ms": 1.43,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 26.97,
+        "min_ms": 24.45,
+        "max_ms": 32.33,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 10000,
+      "shape": "agg_median",
+      "label": "Group by 1 key, median",
+      "note": "A holistic aggregate: cannot stream, must materialise per group.",
+      "result_rows": 5,
+      "engine_reported_ms": 22.61,
+      "validate": {
+        "median_ms": 0.32,
+        "min_ms": 0.29,
+        "max_ms": 0.41,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 21.31,
+        "min_ms": 19.27,
+        "max_ms": 23.5,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 10000,
+      "shape": "agg_count_distinct",
+      "label": "Group by 1 key, count_distinct",
+      "note": "Hash-set state per group over a high-cardinality column.",
+      "result_rows": 5,
+      "engine_reported_ms": 27.95,
+      "validate": {
+        "median_ms": 0.3,
+        "min_ms": 0.27,
+        "max_ms": 0.42,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 29.42,
+        "min_ms": 26.92,
+        "max_ms": 51.57,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 10000,
+      "shape": "derive_trend",
+      "label": "Derive month_start + group + sum (36 points)",
+      "note": "The trend shape: a computed key, then a group-by over it.",
+      "result_rows": 36,
+      "engine_reported_ms": 26.52,
+      "validate": {
+        "median_ms": 0.45,
+        "min_ms": 0.36,
+        "max_ms": 0.74,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 25.94,
+        "min_ms": 21.78,
+        "max_ms": 29.42,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 10000,
+      "shape": "top_n",
+      "label": "Filter + group + sort + limit 10 (\u201ctop 10\u201d)",
+      "note": "The full ranking pipeline end to end.",
+      "result_rows": 10,
+      "engine_reported_ms": 19.33,
+      "validate": {
+        "median_ms": 0.49,
+        "min_ms": 0.38,
+        "max_ms": 2.69,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 21.71,
+        "min_ms": 19.35,
+        "max_ms": 25.41,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 10000,
+      "shape": "clean_agg",
+      "label": "Cleaning block (3 ops) + group + sum",
+      "note": "Median imputation, whitespace trim and exact-duplicate removal ahead of the same aggregate as agg_1key \u2014 so the difference is the cleaning.",
+      "result_rows": 5,
+      "engine_reported_ms": 37.68,
+      "validate": {
+        "median_ms": 0.42,
+        "min_ms": 0.39,
+        "max_ms": 0.49,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 86.07,
+        "min_ms": 62.36,
+        "max_ms": 120.2,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 100000,
+      "shape": "scan_limit",
+      "label": "Projection + limit (1k rows out)",
+      "note": "Row delivery with no aggregation \u2014 the floor for any query.",
+      "result_rows": 1000,
+      "engine_reported_ms": 22.74,
+      "validate": {
+        "median_ms": 0.63,
+        "min_ms": 0.5,
+        "max_ms": 2.25,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 33.02,
+        "min_ms": 28.21,
+        "max_ms": 51.26,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 100000,
+      "shape": "filter_scan",
+      "label": "Filter + projection (1k rows out)",
+      "note": "Adds a predicate over the full table to the scan above.",
+      "result_rows": 1000,
+      "engine_reported_ms": 23.33,
+      "validate": {
+        "median_ms": 0.53,
+        "min_ms": 0.49,
+        "max_ms": 0.88,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 33.7,
+        "min_ms": 29.6,
+        "max_ms": 56.4,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 100000,
+      "shape": "agg_1key",
+      "label": "Group by 1 key, sum (5 groups)",
+      "note": "The commonest shape in the product: full scan, tiny output.",
+      "result_rows": 5,
+      "engine_reported_ms": 23.1,
+      "validate": {
+        "median_ms": 0.37,
+        "min_ms": 0.34,
+        "max_ms": 0.42,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 24.97,
+        "min_ms": 22.45,
+        "max_ms": 40.0,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 100000,
+      "shape": "agg_2key",
+      "label": "Group by 2 keys, 2 aggregates (60 groups)",
+      "note": "MAX_GROUP_BY=2 \u2014 the widest grouping the grammar allows.",
+      "result_rows": 60,
+      "engine_reported_ms": 27.67,
+      "validate": {
+        "median_ms": 0.5,
+        "min_ms": 0.46,
+        "max_ms": 0.92,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 27.72,
+        "min_ms": 25.07,
+        "max_ms": 47.61,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 100000,
+      "shape": "agg_highcard",
+      "label": "Group by high-cardinality key (n/8 groups)",
+      "note": "Output grows with the table \u2014 the worst case for a group-by.",
+      "result_rows": 12496,
+      "engine_reported_ms": 27.89,
+      "validate": {
+        "median_ms": 0.45,
+        "min_ms": 0.34,
+        "max_ms": 0.88,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 91.91,
+        "min_ms": 84.79,
+        "max_ms": 104.9,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 100000,
+      "shape": "agg_median",
+      "label": "Group by 1 key, median",
+      "note": "A holistic aggregate: cannot stream, must materialise per group.",
+      "result_rows": 5,
+      "engine_reported_ms": 27.77,
+      "validate": {
+        "median_ms": 0.39,
+        "min_ms": 0.35,
+        "max_ms": 0.64,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 27.02,
+        "min_ms": 22.92,
+        "max_ms": 29.32,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 100000,
+      "shape": "agg_count_distinct",
+      "label": "Group by 1 key, count_distinct",
+      "note": "Hash-set state per group over a high-cardinality column.",
+      "result_rows": 5,
+      "engine_reported_ms": 32.75,
+      "validate": {
+        "median_ms": 0.41,
+        "min_ms": 0.34,
+        "max_ms": 0.64,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 37.09,
+        "min_ms": 30.91,
+        "max_ms": 41.0,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 100000,
+      "shape": "derive_trend",
+      "label": "Derive month_start + group + sum (36 points)",
+      "note": "The trend shape: a computed key, then a group-by over it.",
+      "result_rows": 36,
+      "engine_reported_ms": 23.05,
+      "validate": {
+        "median_ms": 0.54,
+        "min_ms": 0.46,
+        "max_ms": 0.86,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 25.7,
+        "min_ms": 24.34,
+        "max_ms": 29.83,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 100000,
+      "shape": "top_n",
+      "label": "Filter + group + sort + limit 10 (\u201ctop 10\u201d)",
+      "note": "The full ranking pipeline end to end.",
+      "result_rows": 10,
+      "engine_reported_ms": 25.39,
+      "validate": {
+        "median_ms": 0.45,
+        "min_ms": 0.38,
+        "max_ms": 0.77,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 27.0,
+        "min_ms": 24.97,
+        "max_ms": 29.09,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 100000,
+      "shape": "clean_agg",
+      "label": "Cleaning block (3 ops) + group + sum",
+      "note": "Median imputation, whitespace trim and exact-duplicate removal ahead of the same aggregate as agg_1key \u2014 so the difference is the cleaning.",
+      "result_rows": 5,
+      "engine_reported_ms": 119.13,
+      "validate": {
+        "median_ms": 0.53,
+        "min_ms": 0.49,
+        "max_ms": 0.65,
+        "repeats": 9
+      },
+      "execute": {
+        "median_ms": 197.8,
+        "min_ms": 186.64,
+        "max_ms": 211.59,
+        "repeats": 9
+      }
+    },
+    {
+      "rows": 500000,
+      "shape": "scan_limit",
+      "label": "Projection + limit (1k rows out)",
+      "note": "Row delivery with no aggregation \u2014 the floor for any query.",
+      "result_rows": 1000,
+      "engine_reported_ms": 19.71,
+      "validate": {
+        "median_ms": 1.23,
+        "min_ms": 1.05,
+        "max_ms": 1.62,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 31.49,
+        "min_ms": 29.33,
+        "max_ms": 33.49,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 500000,
+      "shape": "filter_scan",
+      "label": "Filter + projection (1k rows out)",
+      "note": "Adds a predicate over the full table to the scan above.",
+      "result_rows": 1000,
+      "engine_reported_ms": 45.41,
+      "validate": {
+        "median_ms": 1.13,
+        "min_ms": 0.99,
+        "max_ms": 1.92,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 54.04,
+        "min_ms": 52.49,
+        "max_ms": 60.3,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 500000,
+      "shape": "agg_1key",
+      "label": "Group by 1 key, sum (5 groups)",
+      "note": "The commonest shape in the product: full scan, tiny output.",
+      "result_rows": 5,
+      "engine_reported_ms": 33.85,
+      "validate": {
+        "median_ms": 0.69,
+        "min_ms": 0.61,
+        "max_ms": 0.82,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 34.87,
+        "min_ms": 33.18,
+        "max_ms": 36.16,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 500000,
+      "shape": "agg_2key",
+      "label": "Group by 2 keys, 2 aggregates (60 groups)",
+      "note": "MAX_GROUP_BY=2 \u2014 the widest grouping the grammar allows.",
+      "result_rows": 60,
+      "engine_reported_ms": 46.67,
+      "validate": {
+        "median_ms": 0.93,
+        "min_ms": 0.91,
+        "max_ms": 0.98,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 50.15,
+        "min_ms": 46.48,
+        "max_ms": 55.33,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 500000,
+      "shape": "agg_highcard",
+      "label": "Group by high-cardinality key (n/8 groups)",
+      "note": "Output grows with the table \u2014 the worst case for a group-by.",
+      "result_rows": 62486,
+      "engine_reported_ms": 56.39,
+      "validate": {
+        "median_ms": 0.59,
+        "min_ms": 0.59,
+        "max_ms": 1.26,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 347.56,
+        "min_ms": 339.47,
+        "max_ms": 350.06,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 500000,
+      "shape": "agg_median",
+      "label": "Group by 1 key, median",
+      "note": "A holistic aggregate: cannot stream, must materialise per group.",
+      "result_rows": 5,
+      "engine_reported_ms": 42.55,
+      "validate": {
+        "median_ms": 0.66,
+        "min_ms": 0.6,
+        "max_ms": 0.71,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 43.63,
+        "min_ms": 42.35,
+        "max_ms": 45.55,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 500000,
+      "shape": "agg_count_distinct",
+      "label": "Group by 1 key, count_distinct",
+      "note": "Hash-set state per group over a high-cardinality column.",
+      "result_rows": 5,
+      "engine_reported_ms": 71.14,
+      "validate": {
+        "median_ms": 0.39,
+        "min_ms": 0.37,
+        "max_ms": 0.45,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 76.59,
+        "min_ms": 72.2,
+        "max_ms": 80.53,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 500000,
+      "shape": "derive_trend",
+      "label": "Derive month_start + group + sum (36 points)",
+      "note": "The trend shape: a computed key, then a group-by over it.",
+      "result_rows": 36,
+      "engine_reported_ms": 42.26,
+      "validate": {
+        "median_ms": 1.02,
+        "min_ms": 0.94,
+        "max_ms": 1.08,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 43.69,
+        "min_ms": 42.82,
+        "max_ms": 48.02,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 500000,
+      "shape": "top_n",
+      "label": "Filter + group + sort + limit 10 (\u201ctop 10\u201d)",
+      "note": "The full ranking pipeline end to end.",
+      "result_rows": 10,
+      "engine_reported_ms": 47.57,
+      "validate": {
+        "median_ms": 0.61,
+        "min_ms": 0.57,
+        "max_ms": 0.79,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 54.21,
+        "min_ms": 48.83,
+        "max_ms": 56.78,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 500000,
+      "shape": "clean_agg",
+      "label": "Cleaning block (3 ops) + group + sum",
+      "note": "Median imputation, whitespace trim and exact-duplicate removal ahead of the same aggregate as agg_1key \u2014 so the difference is the cleaning.",
+      "result_rows": 5,
+      "engine_reported_ms": 533.75,
+      "validate": {
+        "median_ms": 1.17,
+        "min_ms": 0.93,
+        "max_ms": 1.73,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 856.86,
+        "min_ms": 846.72,
+        "max_ms": 872.28,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 1000000,
+      "shape": "scan_limit",
+      "label": "Projection + limit (1k rows out)",
+      "note": "Row delivery with no aggregation \u2014 the floor for any query.",
+      "result_rows": 1000,
+      "engine_reported_ms": 27.07,
+      "validate": {
+        "median_ms": 1.78,
+        "min_ms": 1.65,
+        "max_ms": 2.0,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 36.32,
+        "min_ms": 35.24,
+        "max_ms": 38.86,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 1000000,
+      "shape": "filter_scan",
+      "label": "Filter + projection (1k rows out)",
+      "note": "Adds a predicate over the full table to the scan above.",
+      "result_rows": 1000,
+      "engine_reported_ms": 67.84,
+      "validate": {
+        "median_ms": 1.89,
+        "min_ms": 1.6,
+        "max_ms": 2.1,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 79.53,
+        "min_ms": 76.13,
+        "max_ms": 81.07,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 1000000,
+      "shape": "agg_1key",
+      "label": "Group by 1 key, sum (5 groups)",
+      "note": "The commonest shape in the product: full scan, tiny output.",
+      "result_rows": 5,
+      "engine_reported_ms": 51.11,
+      "validate": {
+        "median_ms": 0.95,
+        "min_ms": 0.88,
+        "max_ms": 1.06,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 50.04,
+        "min_ms": 47.66,
+        "max_ms": 53.77,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 1000000,
+      "shape": "agg_2key",
+      "label": "Group by 2 keys, 2 aggregates (60 groups)",
+      "note": "MAX_GROUP_BY=2 \u2014 the widest grouping the grammar allows.",
+      "result_rows": 60,
+      "engine_reported_ms": 72.26,
+      "validate": {
+        "median_ms": 1.43,
+        "min_ms": 1.34,
+        "max_ms": 2.76,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 76.13,
+        "min_ms": 74.93,
+        "max_ms": 91.97,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 1000000,
+      "shape": "agg_highcard",
+      "label": "Group by high-cardinality key (n/8 groups)",
+      "note": "Output grows with the table \u2014 the worst case for a group-by.",
+      "result_rows": 100000,
+      "engine_reported_ms": 88.75,
+      "validate": {
+        "median_ms": 1.15,
+        "min_ms": 1.0,
+        "max_ms": 2.73,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 570.65,
+        "min_ms": 562.64,
+        "max_ms": 634.76,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 1000000,
+      "shape": "agg_median",
+      "label": "Group by 1 key, median",
+      "note": "A holistic aggregate: cannot stream, must materialise per group.",
+      "result_rows": 5,
+      "engine_reported_ms": 70.16,
+      "validate": {
+        "median_ms": 0.94,
+        "min_ms": 0.92,
+        "max_ms": 1.09,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 73.33,
+        "min_ms": 69.42,
+        "max_ms": 75.91,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 1000000,
+      "shape": "agg_count_distinct",
+      "label": "Group by 1 key, count_distinct",
+      "note": "Hash-set state per group over a high-cardinality column.",
+      "result_rows": 5,
+      "engine_reported_ms": 130.84,
+      "validate": {
+        "median_ms": 0.42,
+        "min_ms": 0.39,
+        "max_ms": 0.47,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 134.33,
+        "min_ms": 129.43,
+        "max_ms": 142.7,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 1000000,
+      "shape": "derive_trend",
+      "label": "Derive month_start + group + sum (36 points)",
+      "note": "The trend shape: a computed key, then a group-by over it.",
+      "result_rows": 36,
+      "engine_reported_ms": 69.82,
+      "validate": {
+        "median_ms": 1.9,
+        "min_ms": 1.52,
+        "max_ms": 2.9,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 68.77,
+        "min_ms": 65.74,
+        "max_ms": 72.45,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 1000000,
+      "shape": "top_n",
+      "label": "Filter + group + sort + limit 10 (\u201ctop 10\u201d)",
+      "note": "The full ranking pipeline end to end.",
+      "result_rows": 10,
+      "engine_reported_ms": 85.16,
+      "validate": {
+        "median_ms": 1.01,
+        "min_ms": 0.9,
+        "max_ms": 1.9,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 89.35,
+        "min_ms": 86.89,
+        "max_ms": 93.49,
+        "repeats": 4
+      }
+    },
+    {
+      "rows": 1000000,
+      "shape": "clean_agg",
+      "label": "Cleaning block (3 ops) + group + sum",
+      "note": "Median imputation, whitespace trim and exact-duplicate removal ahead of the same aggregate as agg_1key \u2014 so the difference is the cleaning.",
+      "result_rows": 5,
+      "engine_reported_ms": 1192.08,
+      "validate": {
+        "median_ms": 1.89,
+        "min_ms": 1.65,
+        "max_ms": 2.18,
+        "repeats": 4
+      },
+      "execute": {
+        "median_ms": 1830.17,
+        "min_ms": 1684.71,
+        "max_ms": 1981.33,
+        "repeats": 4
+      }
+    }
+  ],
+  "overhead": [
+    {
+      "rows": 1000,
+      "connect_ms": 12.95,
+      "pandas_to_arrow_once_ms": 0.69,
+      "pandas": {
+        "register_ms": 3.75,
+        "query_ms": 2.87,
+        "governed_total_ms": 21.78
+      },
+      "arrow": {
+        "register_ms": 0.7,
+        "query_ms": 2.51,
+        "governed_total_ms": 16.93
+      },
+      "speedup_x": 1.29,
+      "repeats": 7
+    },
+    {
+      "rows": 10000,
+      "connect_ms": 12.63,
+      "pandas_to_arrow_once_ms": 2.15,
+      "pandas": {
+        "register_ms": 10.3,
+        "query_ms": 5.58,
+        "governed_total_ms": 26.67
+      },
+      "arrow": {
+        "register_ms": 0.72,
+        "query_ms": 2.77,
+        "governed_total_ms": 16.87
+      },
+      "speedup_x": 1.58,
+      "repeats": 7
+    },
+    {
+      "rows": 100000,
+      "connect_ms": 12.17,
+      "pandas_to_arrow_once_ms": 2.6,
+      "pandas": {
+        "register_ms": 83.58,
+        "query_ms": 36.06,
+        "governed_total_ms": 129.99
+      },
+      "arrow": {
+        "register_ms": 0.72,
+        "query_ms": 6.78,
+        "governed_total_ms": 22.81
+      },
+      "speedup_x": 5.7,
+      "repeats": 7
+    },
+    {
+      "rows": 500000,
+      "connect_ms": 11.79,
+      "pandas_to_arrow_once_ms": 3.47,
+      "pandas": {
+        "register_ms": 459.58,
+        "query_ms": 159.9,
+        "governed_total_ms": 582.82
+      },
+      "arrow": {
+        "register_ms": 0.7,
+        "query_ms": 24.73,
+        "governed_total_ms": 38.6
+      },
+      "speedup_x": 15.1,
+      "repeats": 7
+    },
+    {
+      "rows": 1000000,
+      "connect_ms": 14.69,
+      "pandas_to_arrow_once_ms": 5.04,
+      "pandas": {
+        "register_ms": 995.72,
+        "query_ms": 329.6,
+        "governed_total_ms": 1332.75
+      },
+      "arrow": {
+        "register_ms": 0.73,
+        "query_ms": 50.95,
+        "governed_total_ms": 65.07
+      },
+      "speedup_x": 20.48,
+      "repeats": 7
+    }
+  ],
+  "memory": [
+    {
+      "rows": 1000,
+      "frame_mib": 0.13,
+      "rss_after_load_mib": 500.4,
+      "rss_delta_frame_mib": -148.0,
+      "rss_delta_arrow_mib": 0.0,
+      "arrow_logical_mib": 0.1
+    },
+    {
+      "rows": 10000,
+      "frame_mib": 1.33,
+      "rss_after_load_mib": 500.4,
+      "rss_delta_frame_mib": 0.0,
+      "rss_delta_arrow_mib": -1.0,
+      "arrow_logical_mib": 1.3
+    },
+    {
+      "rows": 100000,
+      "frame_mib": 13.34,
+      "rss_after_load_mib": 527.2,
+      "rss_delta_frame_mib": 27.8,
+      "rss_delta_arrow_mib": 0.0,
+      "arrow_logical_mib": 13.3
+    },
+    {
+      "rows": 500000,
+      "frame_mib": 66.68,
+      "rss_after_load_mib": 640.1,
+      "rss_delta_frame_mib": 115.2,
+      "rss_delta_arrow_mib": 0.0,
+      "arrow_logical_mib": 66.7
+    },
+    {
+      "rows": 1000000,
+      "frame_mib": 133.36,
+      "rss_after_load_mib": 724.2,
+      "rss_delta_frame_mib": 103.2,
+      "rss_delta_arrow_mib": 0.2,
+      "arrow_logical_mib": 133.5
+    }
+  ],
+  "ab_scan_source": [
+    {
+      "rows": 1000,
+      "shape": "agg_2key",
+      "pandas": {
+        "median_ms": 25.24,
+        "min_ms": 22.7,
+        "max_ms": 47.76,
+        "repeats": 9
+      },
+      "arrow": {
+        "median_ms": 23.21,
+        "min_ms": 18.98,
+        "max_ms": 24.34,
+        "repeats": 9
+      },
+      "speedup_x": 1.09
+    },
+    {
+      "rows": 1000,
+      "shape": "derive_trend",
+      "pandas": {
+        "median_ms": 23.47,
+        "min_ms": 22.04,
+        "max_ms": 25.88,
+        "repeats": 9
+      },
+      "arrow": {
+        "median_ms": 21.02,
+        "min_ms": 17.78,
+        "max_ms": 25.83,
+        "repeats": 9
+      },
+      "speedup_x": 1.12
+    },
+    {
+      "rows": 1000,
+      "shape": "top_n",
+      "pandas": {
+        "median_ms": 24.04,
+        "min_ms": 22.29,
+        "max_ms": 27.07,
+        "repeats": 9
+      },
+      "arrow": {
+        "median_ms": 20.83,
+        "min_ms": 17.6,
+        "max_ms": 22.4,
+        "repeats": 9
+      },
+      "speedup_x": 1.15
+    },
+    {
+      "rows": 10000,
+      "shape": "agg_2key",
+      "pandas": {
+        "median_ms": 37.74,
+        "min_ms": 36.56,
+        "max_ms": 41.82,
+        "repeats": 9
+      },
+      "arrow": {
+        "median_ms": 21.77,
+        "min_ms": 19.2,
+        "max_ms": 25.63,
+        "repeats": 9
+      },
+      "speedup_x": 1.73
+    },
+    {
+      "rows": 10000,
+      "shape": "derive_trend",
+      "pandas": {
+        "median_ms": 39.03,
+        "min_ms": 34.89,
+        "max_ms": 41.71,
+        "repeats": 9
+      },
+      "arrow": {
+        "median_ms": 20.55,
+        "min_ms": 18.8,
+        "max_ms": 23.19,
+        "repeats": 9
+      },
+      "speedup_x": 1.9
+    },
+    {
+      "rows": 10000,
+      "shape": "top_n",
+      "pandas": {
+        "median_ms": 36.34,
+        "min_ms": 34.7,
+        "max_ms": 38.61,
+        "repeats": 9
+      },
+      "arrow": {
+        "median_ms": 22.16,
+        "min_ms": 18.73,
+        "max_ms": 24.09,
+        "repeats": 9
+      },
+      "speedup_x": 1.64
+    },
+    {
+      "rows": 100000,
+      "shape": "agg_2key",
+      "pandas": {
+        "median_ms": 236.98,
+        "min_ms": 229.42,
+        "max_ms": 263.67,
+        "repeats": 9
+      },
+      "arrow": {
+        "median_ms": 33.99,
+        "min_ms": 32.04,
+        "max_ms": 40.04,
+        "repeats": 9
+      },
+      "speedup_x": 6.97
+    },
+    {
+      "rows": 100000,
+      "shape": "derive_trend",
+      "pandas": {
+        "median_ms": 187.93,
+        "min_ms": 178.69,
+        "max_ms": 197.77,
+        "repeats": 9
+      },
+      "arrow": {
+        "median_ms": 24.74,
+        "min_ms": 22.52,
+        "max_ms": 29.07,
+        "repeats": 9
+      },
+      "speedup_x": 7.6
+    },
+    {
+      "rows": 100000,
+      "shape": "top_n",
+      "pandas": {
+        "median_ms": 188.44,
+        "min_ms": 181.72,
+        "max_ms": 199.37,
+        "repeats": 9
+      },
+      "arrow": {
+        "median_ms": 27.38,
+        "min_ms": 25.2,
+        "max_ms": 31.84,
+        "repeats": 9
+      },
+      "speedup_x": 6.88
+    },
+    {
+      "rows": 500000,
+      "shape": "agg_2key",
+      "pandas": {
+        "median_ms": 1099.95,
+        "min_ms": 1048.27,
+        "max_ms": 1303.38,
+        "repeats": 4
+      },
+      "arrow": {
+        "median_ms": 50.1,
+        "min_ms": 48.43,
+        "max_ms": 50.95,
+        "repeats": 4
+      },
+      "speedup_x": 21.96
+    },
+    {
+      "rows": 500000,
+      "shape": "derive_trend",
+      "pandas": {
+        "median_ms": 1142.27,
+        "min_ms": 831.84,
+        "max_ms": 1427.04,
+        "repeats": 4
+      },
+      "arrow": {
+        "median_ms": 58.59,
+        "min_ms": 53.86,
+        "max_ms": 83.07,
+        "repeats": 4
+      },
+      "speedup_x": 19.5
+    },
+    {
+      "rows": 500000,
+      "shape": "top_n",
+      "pandas": {
+        "median_ms": 900.31,
+        "min_ms": 835.66,
+        "max_ms": 1138.49,
+        "repeats": 4
+      },
+      "arrow": {
+        "median_ms": 60.32,
+        "min_ms": 50.8,
+        "max_ms": 95.06,
+        "repeats": 4
+      },
+      "speedup_x": 14.93
+    },
+    {
+      "rows": 1000000,
+      "shape": "agg_2key",
+      "pandas": {
+        "median_ms": 2099.17,
+        "min_ms": 1992.35,
+        "max_ms": 2202.48,
+        "repeats": 4
+      },
+      "arrow": {
+        "median_ms": 80.53,
+        "min_ms": 78.65,
+        "max_ms": 81.47,
+        "repeats": 4
+      },
+      "speedup_x": 26.07
+    },
+    {
+      "rows": 1000000,
+      "shape": "derive_trend",
+      "pandas": {
+        "median_ms": 2148.38,
+        "min_ms": 1856.76,
+        "max_ms": 2415.98,
+        "repeats": 4
+      },
+      "arrow": {
+        "median_ms": 65.78,
+        "min_ms": 63.23,
+        "max_ms": 67.89,
+        "repeats": 4
+      },
+      "speedup_x": 32.66
+    },
+    {
+      "rows": 1000000,
+      "shape": "top_n",
+      "pandas": {
+        "median_ms": 1909.76,
+        "min_ms": 1697.53,
+        "max_ms": 2283.84,
+        "repeats": 4
+      },
+      "arrow": {
+        "median_ms": 83.03,
+        "min_ms": 74.34,
+        "max_ms": 117.63,
+        "repeats": 4
+      },
+      "speedup_x": 23.0
+    }
+  ],
+  "result_delivery": [
+    {
+      "result_rows": 100,
+      "shape": "full_11col",
+      "columns": 11,
+      "cells": 1100,
+      "sanitize": {
+        "median_ms": 3.61,
+        "min_ms": 3.37,
+        "max_ms": 3.84,
+        "repeats": 5
+      },
+      "us_per_cell": 3.282,
+      "json_bytes": 26371,
+      "json_mib": 0.03
+    },
+    {
+      "result_rows": 100,
+      "shape": "narrow_2col",
+      "columns": 2,
+      "cells": 200,
+      "sanitize": {
+        "median_ms": 0.77,
+        "min_ms": 0.75,
+        "max_ms": 0.79,
+        "repeats": 5
+      },
+      "us_per_cell": 3.85,
+      "json_bytes": 5208,
+      "json_mib": 0.0
+    },
+    {
+      "result_rows": 1000,
+      "shape": "full_11col",
+      "columns": 11,
+      "cells": 11000,
+      "sanitize": {
+        "median_ms": 24.02,
+        "min_ms": 21.83,
+        "max_ms": 25.05,
+        "repeats": 5
+      },
+      "us_per_cell": 2.184,
+      "json_bytes": 263794,
+      "json_mib": 0.25
+    },
+    {
+      "result_rows": 1000,
+      "shape": "narrow_2col",
+      "columns": 2,
+      "cells": 2000,
+      "sanitize": {
+        "median_ms": 4.43,
+        "min_ms": 4.33,
+        "max_ms": 4.66,
+        "repeats": 5
+      },
+      "us_per_cell": 2.215,
+      "json_bytes": 52115,
+      "json_mib": 0.05
+    },
+    {
+      "result_rows": 10000,
+      "shape": "full_11col",
+      "columns": 11,
+      "cells": 110000,
+      "sanitize": {
+        "median_ms": 257.91,
+        "min_ms": 245.0,
+        "max_ms": 261.37,
+        "repeats": 5
+      },
+      "us_per_cell": 2.345,
+      "json_bytes": 2639088,
+      "json_mib": 2.52
+    },
+    {
+      "result_rows": 10000,
+      "shape": "narrow_2col",
+      "columns": 2,
+      "cells": 20000,
+      "sanitize": {
+        "median_ms": 49.0,
+        "min_ms": 48.43,
+        "max_ms": 55.98,
+        "repeats": 5
+      },
+      "us_per_cell": 2.45,
+      "json_bytes": 521308,
+      "json_mib": 0.5
+    },
+    {
+      "result_rows": 50000,
+      "shape": "full_11col",
+      "columns": 11,
+      "cells": 550000,
+      "sanitize": {
+        "median_ms": 1435.9,
+        "min_ms": 1349.78,
+        "max_ms": 1453.08,
+        "repeats": 5
+      },
+      "us_per_cell": 2.611,
+      "json_bytes": 13197689,
+      "json_mib": 12.59
+    },
+    {
+      "result_rows": 50000,
+      "shape": "narrow_2col",
+      "columns": 2,
+      "cells": 100000,
+      "sanitize": {
+        "median_ms": 276.54,
+        "min_ms": 254.19,
+        "max_ms": 286.54,
+        "repeats": 5
+      },
+      "us_per_cell": 2.765,
+      "json_bytes": 2606137,
+      "json_mib": 2.49
+    },
+    {
+      "result_rows": 100000,
+      "shape": "full_11col",
+      "columns": 11,
+      "cells": 1100000,
+      "sanitize": {
+        "median_ms": 2718.84,
+        "min_ms": 2685.57,
+        "max_ms": 2874.75,
+        "repeats": 5
+      },
+      "us_per_cell": 2.472,
+      "json_bytes": 26393765,
+      "json_mib": 25.17
+    },
+    {
+      "result_rows": 100000,
+      "shape": "narrow_2col",
+      "columns": 2,
+      "cells": 200000,
+      "sanitize": {
+        "median_ms": 512.55,
+        "min_ms": 461.01,
+        "max_ms": 559.56,
+        "repeats": 5
+      },
+      "us_per_cell": 2.563,
+      "json_bytes": 5212141,
+      "json_mib": 4.97
+    }
+  ],
+  "chart": [
+    {
+      "result_rows": 12,
+      "recommend": {
+        "median_ms": 0.01,
+        "min_ms": 0.01,
+        "max_ms": 0.01,
+        "repeats": 7
+      },
+      "generate_chart": {
+        "median_ms": 0.11,
+        "min_ms": 0.1,
+        "max_ms": 0.12,
+        "repeats": 7
+      },
+      "spec_valid": true,
+      "spec_bytes": 2563
+    },
+    {
+      "result_rows": 100,
+      "recommend": {
+        "median_ms": 0.01,
+        "min_ms": 0.01,
+        "max_ms": 0.01,
+        "repeats": 7
+      },
+      "generate_chart": {
+        "median_ms": 0.18,
+        "min_ms": 0.17,
+        "max_ms": 0.25,
+        "repeats": 7
+      },
+      "spec_valid": true,
+      "spec_bytes": 5713
+    },
+    {
+      "result_rows": 1000,
+      "recommend": {
+        "median_ms": 0.01,
+        "min_ms": 0.01,
+        "max_ms": 0.01,
+        "repeats": 7
+      },
+      "generate_chart": {
+        "median_ms": 1.03,
+        "min_ms": 0.8,
+        "max_ms": 1.07,
+        "repeats": 7
+      },
+      "spec_valid": true,
+      "spec_bytes": 41838
+    },
+    {
+      "result_rows": 10000,
+      "recommend": {
+        "median_ms": 0.01,
+        "min_ms": 0.01,
+        "max_ms": 0.03,
+        "repeats": 7
+      },
+      "generate_chart": {
+        "median_ms": 7.56,
+        "min_ms": 7.32,
+        "max_ms": 8.39,
+        "repeats": 7
+      },
+      "spec_valid": true,
+      "spec_bytes": 402830
+    },
+    {
+      "result_rows": 100000,
+      "recommend": {
+        "median_ms": 0.01,
+        "min_ms": 0.01,
+        "max_ms": 0.01,
+        "repeats": 7
+      },
+      "generate_chart": {
+        "median_ms": 87.26,
+        "min_ms": 80.8,
+        "max_ms": 119.74,
+        "repeats": 7
+      },
+      "spec_valid": true,
+      "spec_bytes": 4014298
+    }
+  ],
+  "pipeline": [
+    {
+      "rows": 10000,
+      "shape": "agg_2key",
+      "status": "ok",
+      "pipeline": {
+        "median_ms": 20.41,
+        "min_ms": 18.94,
+        "max_ms": 33.85,
+        "repeats": 9
+      },
+      "chart_type": "grouped_bar"
+    },
+    {
+      "rows": 10000,
+      "shape": "derive_trend",
+      "status": "ok",
+      "pipeline": {
+        "median_ms": 19.01,
+        "min_ms": 18.29,
+        "max_ms": 20.63,
+        "repeats": 9
+      },
+      "chart_type": "line"
+    },
+    {
+      "rows": 10000,
+      "shape": "top_n",
+      "status": "ok",
+      "pipeline": {
+        "median_ms": 19.68,
+        "min_ms": 18.94,
+        "max_ms": 20.5,
+        "repeats": 9
+      },
+      "chart_type": "bar"
+    },
+    {
+      "rows": 100000,
+      "shape": "agg_2key",
+      "status": "ok",
+      "pipeline": {
+        "median_ms": 25.1,
+        "min_ms": 23.03,
+        "max_ms": 26.3,
+        "repeats": 9
+      },
+      "chart_type": "grouped_bar"
+    },
+    {
+      "rows": 100000,
+      "shape": "derive_trend",
+      "status": "ok",
+      "pipeline": {
+        "median_ms": 24.16,
+        "min_ms": 23.04,
+        "max_ms": 25.66,
+        "repeats": 9
+      },
+      "chart_type": "line"
+    },
+    {
+      "rows": 100000,
+      "shape": "top_n",
+      "status": "ok",
+      "pipeline": {
+        "median_ms": 25.81,
+        "min_ms": 24.38,
+        "max_ms": 27.47,
+        "repeats": 9
+      },
+      "chart_type": "bar"
+    },
+    {
+      "rows": 1000000,
+      "shape": "agg_2key",
+      "status": "ok",
+      "pipeline": {
+        "median_ms": 78.09,
+        "min_ms": 71.1,
+        "max_ms": 106.22,
+        "repeats": 4
+      },
+      "chart_type": "grouped_bar"
+    },
+    {
+      "rows": 1000000,
+      "shape": "derive_trend",
+      "status": "ok",
+      "pipeline": {
+        "median_ms": 68.33,
+        "min_ms": 65.22,
+        "max_ms": 75.64,
+        "repeats": 4
+      },
+      "chart_type": "line"
+    },
+    {
+      "rows": 1000000,
+      "shape": "top_n",
+      "status": "ok",
+      "pipeline": {
+        "median_ms": 76.68,
+        "min_ms": 75.61,
+        "max_ms": 77.28,
+        "repeats": 4
+      },
+      "chart_type": "bar"
+    }
+  ],
+  "join_headroom": [
+    {
+      "rows": 100000,
+      "join": "small_dim",
+      "dim_rows": 200,
+      "result_rows": 200,
+      "duckdb": {
+        "median_ms": 33.1,
+        "min_ms": 25.3,
+        "max_ms": 46.77,
+        "repeats": 4
+      },
+      "shipped_capability": false
+    },
+    {
+      "rows": 100000,
+      "join": "large_dim",
+      "dim_rows": 125000,
+      "result_rows": 33,
+      "duckdb": {
+        "median_ms": 42.24,
+        "min_ms": 35.05,
+        "max_ms": 43.91,
+        "repeats": 4
+      },
+      "shipped_capability": false
+    },
+    {
+      "rows": 500000,
+      "join": "small_dim",
+      "dim_rows": 200,
+      "result_rows": 200,
+      "duckdb": {
+        "median_ms": 68.52,
+        "min_ms": 65.7,
+        "max_ms": 82.78,
+        "repeats": 4
+      },
+      "shipped_capability": false
+    },
+    {
+      "rows": 500000,
+      "join": "large_dim",
+      "dim_rows": 125000,
+      "result_rows": 33,
+      "duckdb": {
+        "median_ms": 77.48,
+        "min_ms": 73.98,
+        "max_ms": 116.46,
+        "repeats": 4
+      },
+      "shipped_capability": false
+    },
+    {
+      "rows": 1000000,
+      "join": "small_dim",
+      "dim_rows": 200,
+      "result_rows": 200,
+      "duckdb": {
+        "median_ms": 141.55,
+        "min_ms": 126.06,
+        "max_ms": 158.4,
+        "repeats": 4
+      },
+      "shipped_capability": false
+    },
+    {
+      "rows": 1000000,
+      "join": "large_dim",
+      "dim_rows": 125000,
+      "result_rows": 33,
+      "duckdb": {
+        "median_ms": 153.47,
+        "min_ms": 148.77,
+        "max_ms": 159.14,
+        "repeats": 4
+      },
+      "shipped_capability": false
+    }
+  ]
+}

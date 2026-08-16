@@ -75,10 +75,19 @@ def test_recommender_picks_heatmap_for_two_categories_crossed():
 
 
 def test_boxplot_is_a_composite_mark_with_its_own_tooltip():
+    """The tooltip belongs on the sub-parts, not on the composite mark.
+
+    `BoxPlotDef` sets additionalProperties:false and has no `tooltip`, so the
+    top-level form this used to assert made every boxplot spec fail the
+    Vega-Lite v6 schema — and produced no tooltip either.
+    """
     spec = _spec(_RAW, {"type": "boxplot", "x": "cls", "y": "v"})
-    assert primary_layer(spec)["mark"]["type"] == "boxplot"
-    assert primary_layer(spec)["mark"]["tooltip"] is True
-    assert primary_layer(spec)["mark"]["extent"] == 1.5
+    mark = primary_layer(spec)["mark"]
+    assert mark["type"] == "boxplot"
+    assert mark["extent"] == 1.5
+    assert "tooltip" not in mark
+    assert mark["box"]["tooltip"] is True
+    assert mark["outliers"]["tooltip"] is True
 
 
 def test_boxplot_gets_no_selection_params():

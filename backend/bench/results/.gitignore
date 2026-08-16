@@ -1,0 +1,5 @@
+# Run logs are console noise; the JSON beside them is the evidence and is tracked.
+*.log
+# Scratch runs (--quick, --only) — keep the full ones only.
+*_quick.json
+*_smoke.json

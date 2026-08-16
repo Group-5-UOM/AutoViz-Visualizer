@@ -179,3 +179,58 @@ def test_invalid_plan_returns_structured_error(registry, iris_id):
     result = execute_analysis(iris_id, plan, registry)
     assert result["error"] == "Plan failed validation"
     assert result["validation_errors"]
+
+
+# --- null predicates ---------------------------------------------------------
+#
+# `is_null` / `is_not_null` were in FILTER_OPS and accepted by validation from
+# the start, but `build_sql` had no rule for either, so a plan that validated
+# cleanly raised KeyError inside the engine — reported as a *retryable*
+# EXECUTION_ERROR, which sent the agent into a backoff loop re-running a plan
+# that could never succeed. Found by bench/nl_suite.py T05.
+
+
+def test_is_not_null_filters_out_missing(registry, titanic_id):
+    plan = {
+        "dataset_id": titanic_id,
+        "intent": "comparison",
+        "filters": [{"column": "embark_town", "op": "is_not_null"}],
+        "group_by": ["embark_town"],
+        "aggregations": [{"column": "fare", "fn": "mean", "as": "avg_fare"}],
+    }
+    result = execute_analysis(titanic_id, plan, registry)
+    assert "error" not in result, result
+    towns = [r["embark_town"] for r in result["result_table"]]
+    assert None not in towns
+    assert "IS NOT NULL" in result["provenance"]["sql"]
+
+
+def test_is_null_selects_only_missing(registry, titanic_id):
+    plan = {
+        "dataset_id": titanic_id,
+        "intent": "comparison",
+        "filters": [{"column": "embark_town", "op": "is_null"}],
+        "group_by": ["embark_town"],
+        "aggregations": [{"column": "fare", "fn": "mean", "as": "avg_fare"}],
+    }
+    result = execute_analysis(titanic_id, plan, registry)
+    assert "error" not in result, result
+    assert [r["embark_town"] for r in result["result_table"]] == [None]
+    assert "IS NULL" in result["provenance"]["sql"]
+
+
+def test_null_predicates_bind_no_parameters(registry, titanic_id):
+    """A stray placeholder here would shift every later filter's parameter."""
+    plan = {
+        "dataset_id": titanic_id,
+        "intent": "comparison",
+        "filters": [
+            {"column": "embark_town", "op": "is_not_null"},
+            {"column": "fare", "op": "gt", "value": 50},
+        ],
+        "group_by": ["embark_town"],
+        "aggregations": [{"column": "fare", "fn": "min", "as": "min_fare"}],
+    }
+    result = execute_analysis(titanic_id, plan, registry)
+    assert "error" not in result, result
+    assert all(r["min_fare"] > 50 for r in result["result_table"])

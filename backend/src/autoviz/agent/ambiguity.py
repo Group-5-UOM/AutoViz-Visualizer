@@ -24,11 +24,28 @@ _TEMPORAL_HINTS = (
     "over the years", "over the months", "change over", "across time",
 )
 
-# Superlatives/rankings that imply a ranking metric the user may not have named.
-_SUPERLATIVES = (
-    "best", "worst", "top", "bottom", "most", "least", "highest", "lowest",
-    "greatest", "largest", "smallest", "biggest", "maximum", "minimum",
+# Superlatives that imply a ranking metric the user may not have named.
+#
+# Split by how the word is actually used, because treating them alike produced a
+# false positive that blocked ordinary requests. "How did the maximum
+# temperature change over the years?" is not a ranking question — "maximum" is
+# an adjective naming a column (`temp_max`), and stopping to ask "which measure
+# should rank them?" is wrong twice over: nothing is being ranked, and the
+# measure was named.
+#
+# _RANKING_WORDS are superlatives that ask for an ordering however they are
+# phrased: "best passengers", "top products", "most sales".
+_RANKING_WORDS = (
+    "best", "worst", "top", "bottom", "most", "least",
+    "greatest", "largest", "smallest", "biggest",
 )
+# _MEASURE_ADJECTIVES far more often name a quantity than request an ordering —
+# "maximum temperature", "minimum wage", "highest recorded rainfall". They count
+# as a ranking request only when used substantively ("show me the highest"),
+# which _used_substantively decides.
+_MEASURE_ADJECTIVES = ("highest", "lowest", "maximum", "minimum", "max", "min")
+
+_SUPERLATIVES = _RANKING_WORDS + _MEASURE_ADJECTIVES
 
 # Explicit aggregation words: if one appears the metric is likely already stated.
 _AGG_WORDS = ("average", "avg", "mean", "median", "sum", "total", "count", "number of")
@@ -130,7 +147,19 @@ def _detect_missing_metric(
     request: str, schema: list[dict[str, str]], profile: dict[str, Any]
 ) -> Ambiguity | None:
     """A superlative ("best", "top") with no measure named => which metric ranks them?"""
-    if not _has_any(request, _SUPERLATIVES, word_boundary=True):
+    trigger = _first_match(request, _RANKING_WORDS)
+    if trigger is None:
+        # A measure adjective only asks for a ranking when it is not modifying
+        # the thing being measured — see _MEASURE_ADJECTIVES.
+        trigger = next(
+            (
+                w
+                for w in _MEASURE_ADJECTIVES
+                if _used_substantively(request, w)
+            ),
+            None,
+        )
+    if trigger is None:
         return None
     numeric_cols = _cols_of_type(schema, "number")
     # Metric is already clear if the user named a numeric column, or used an
@@ -155,7 +184,9 @@ def _detect_missing_metric(
     return Ambiguity(
         type="missing_metric",
         slot="metric",
-        question="Which measure should rank them? \"best\"/\"most\" isn't a column.",
+        # Quote the word that actually fired. A fixed "best"/"most" text sent
+        # the user looking for words their request did not contain.
+        question=f'Which measure should rank them? "{trigger}" isn\'t a column.',
         options=options,
         detail={"numeric_candidates": numeric_cols},
     )
@@ -248,6 +279,42 @@ def _rank_by_cardinality(cols: list[str], profile: dict[str, Any]) -> list[str]:
     """Order columns by distinct-value count (desc); stable for unknown/ties."""
     card = profile.get("cardinality", {})
     return sorted(cols, key=lambda c: card.get(c, 0), reverse=True)
+
+
+def _first_match(text: str, needles: tuple[str, ...]) -> str | None:
+    """The first needle present as a whole word, or None."""
+    hay = _norm(text)
+    for n in needles:
+        if re.search(rf"\b{re.escape(n)}\b", hay):
+            return n
+    return None
+
+
+def _used_substantively(text: str, word: str) -> bool:
+    """Is `word` standing on its own rather than modifying the noun after it?
+
+    "the highest" and "which is the maximum?" ask for an ordering. "maximum
+    temperature" and "highest recorded rainfall" name a quantity, and treating
+    them as ranking requests stops an ordinary question to ask an irrelevant one.
+
+    Adjectives attach to the right, so the test is what follows: another word
+    means the superlative is modifying it. Adverbs between the two ("highest
+    *ever* recorded") are rare enough to leave on the adjectival side, where the
+    cost of being wrong is a missed clarification rather than a blocked query.
+    """
+    hay = _norm(text)
+    match = re.search(rf"\b{re.escape(word)}\b(?P<rest>.*)$", hay, flags=re.DOTALL)
+    if match is None:
+        return False
+    rest = match.group("rest").lstrip()
+    if not rest:
+        return True  # ends the request: "show me the highest"
+    # A following word makes it a modifier — unless that word is punctuation or
+    # a preposition, which detach it again ("the maximum of fare", "the top 5").
+    head = re.match(r"[a-z0-9]+", rest)
+    if head is None:
+        return True  # punctuation: "which is the maximum?"
+    return head.group(0) in ("of", "in", "for", "by", "per", "among", "across")
 
 
 def _has_any(text: str, needles: tuple[str, ...], *, word_boundary: bool = False) -> bool:

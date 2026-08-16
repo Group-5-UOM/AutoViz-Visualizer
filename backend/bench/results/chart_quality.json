@@ -1,0 +1,260 @@
+{
+  "meta": {
+    "generated_at": "2026-08-16T11:02:16"
+  },
+  "type_accuracy": {
+    "cases": 14,
+    "passed": 14,
+    "accuracy_pct": 100.0,
+    "detail": [
+      {
+        "case": "trend over time",
+        "intent": "trend",
+        "expected": [
+          "line"
+        ],
+        "got": "line",
+        "pass": true,
+        "rationale": "Trend intent with temporal column 'month' \u2014 line chart shows change over time."
+      },
+      {
+        "case": "trend over time, split by series",
+        "intent": "trend",
+        "expected": [
+          "line"
+        ],
+        "got": "line",
+        "pass": true,
+        "rationale": "Trend intent with temporal column 'month' \u2014 line chart shows change over time."
+      },
+      {
+        "case": "trend over an ordered category",
+        "intent": "trend",
+        "expected": [
+          "bar",
+          "line"
+        ],
+        "got": "line",
+        "pass": true,
+        "rationale": "Trend intent over ordered category 'quarter_label' \u2014 line chart."
+      },
+      {
+        "case": "ranking over one category",
+        "intent": "ranking",
+        "expected": [
+          "bar"
+        ],
+        "got": "bar",
+        "pass": true,
+        "rationale": "Ranking intent \u2014 sorted bar chart over 'product'."
+      },
+      {
+        "case": "comparison over one category",
+        "intent": "comparison",
+        "expected": [
+          "bar"
+        ],
+        "got": "bar",
+        "pass": true,
+        "rationale": "Comparison across categories of 'region' \u2014 bar chart."
+      },
+      {
+        "case": "comparison across two categories",
+        "intent": "comparison",
+        "expected": [
+          "grouped_bar",
+          "heatmap"
+        ],
+        "got": "grouped_bar",
+        "pass": true,
+        "rationale": "Comparison across 'region' split by 'channel' \u2014 grouped bars sit side by side so the series can be compared directly."
+      },
+      {
+        "case": "part-to-whole, few categories",
+        "intent": "composition",
+        "expected": [
+          "bar",
+          "donut",
+          "pie"
+        ],
+        "got": "donut",
+        "pass": true,
+        "rationale": "Composition intent over 'channel' \u2014 donut shows part-to-whole shares."
+      },
+      {
+        "case": "two measures",
+        "intent": "relationship",
+        "expected": [
+          "scatter"
+        ],
+        "got": "scatter",
+        "pass": true,
+        "rationale": "Relationship intent with two numeric columns \u2014 scatter shows correlation."
+      },
+      {
+        "case": "two measures, coloured by class",
+        "intent": "relationship",
+        "expected": [
+          "scatter"
+        ],
+        "got": "scatter",
+        "pass": true,
+        "rationale": "Relationship intent with two numeric columns \u2014 scatter shows correlation."
+      },
+      {
+        "case": "two categories crossed with a measure",
+        "intent": "relationship",
+        "expected": [
+          "grouped_bar",
+          "heatmap"
+        ],
+        "got": "heatmap",
+        "pass": true,
+        "rationale": "Two categorical columns crossed with 'avg_tip' \u2014 heatmap grid of 'day' by 'time', colour carrying the measure."
+      },
+      {
+        "case": "one measure, no dimension",
+        "intent": "distribution",
+        "expected": [
+          "histogram"
+        ],
+        "got": "histogram",
+        "pass": true,
+        "rationale": "Distribution intent over numeric 'age' \u2014 histogram of binned counts."
+      },
+      {
+        "case": "counts per category",
+        "intent": "distribution",
+        "expected": [
+          "bar",
+          "histogram"
+        ],
+        "got": "bar",
+        "pass": true,
+        "rationale": "Distribution intent \u2014 bar chart of counts over 'weather'."
+      },
+      {
+        "case": "measure across two categories",
+        "intent": "distribution",
+        "expected": [
+          "bar",
+          "grouped_bar",
+          "heatmap"
+        ],
+        "got": "heatmap",
+        "pass": true,
+        "rationale": "Two categorical columns crossed with 'fare' \u2014 heatmap grid of 'class' by 'sex', colour carrying the measure."
+      },
+      {
+        "case": "no measure to plot",
+        "intent": "comparison",
+        "expected": "refusal",
+        "got": "NO_CHART_FIT",
+        "pass": true
+      }
+    ]
+  },
+  "spec_validity": {
+    "chart_types": 10,
+    "schema_valid": 10,
+    "schema_valid_pct": 100.0,
+    "vega_lite_schema": "frontend\\node_modules\\vega-lite\\build\\vega-lite-schema.json",
+    "detail": [
+      {
+        "chart_type": "area",
+        "structurally_valid": true,
+        "warnings": [],
+        "schema_valid": true,
+        "schema_errors": []
+      },
+      {
+        "chart_type": "bar",
+        "structurally_valid": true,
+        "warnings": [],
+        "schema_valid": true,
+        "schema_errors": []
+      },
+      {
+        "chart_type": "boxplot",
+        "structurally_valid": true,
+        "warnings": [],
+        "schema_valid": true,
+        "schema_errors": []
+      },
+      {
+        "chart_type": "donut",
+        "structurally_valid": true,
+        "warnings": [],
+        "schema_valid": true,
+        "schema_errors": []
+      },
+      {
+        "chart_type": "grouped_bar",
+        "structurally_valid": true,
+        "warnings": [],
+        "schema_valid": true,
+        "schema_errors": []
+      },
+      {
+        "chart_type": "heatmap",
+        "structurally_valid": true,
+        "warnings": [],
+        "schema_valid": true,
+        "schema_errors": []
+      },
+      {
+        "chart_type": "histogram",
+        "structurally_valid": true,
+        "warnings": [],
+        "schema_valid": true,
+        "schema_errors": []
+      },
+      {
+        "chart_type": "line",
+        "structurally_valid": true,
+        "warnings": [],
+        "schema_valid": true,
+        "schema_errors": []
+      },
+      {
+        "chart_type": "pie",
+        "structurally_valid": true,
+        "warnings": [],
+        "schema_valid": true,
+        "schema_errors": []
+      },
+      {
+        "chart_type": "scatter",
+        "structurally_valid": true,
+        "warnings": [],
+        "schema_valid": true,
+        "schema_errors": []
+      }
+    ]
+  },
+  "legibility": {
+    "guards": 3,
+    "fired": 3,
+    "fired_pct": 100.0,
+    "detail": [
+      {
+        "guard": "scatter colour series > 3",
+        "series": 12,
+        "warned": true,
+        "detail": "color channel has 12 distinct values (> 3 for 'scatter') \u2014 series will not be reliably distinguishable"
+      },
+      {
+        "guard": "pie with 40 categories",
+        "series": 40,
+        "warned": true,
+        "detail": "pie has 40 categories (> 6) \u2014 consider a bar chart"
+      },
+      {
+        "guard": "empty result table",
+        "series": 0,
+        "warned": true,
+        "detail": "This query matched no rows, so the chart is empty. The filters are the usual cause \u2014 a value spelled differently from the data, or a date range outside it."
+      }
+    ]
+  }
+}

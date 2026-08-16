@@ -70,6 +70,60 @@ def test_no_superlative_no_metric_ambiguity():
     assert _detect("revenue by region", TWO_DATES) == []
 
 
+# --- superlative-as-adjective (regression, found by bench/nl_suite W03/W07) ---
+#
+# "maximum"/"minimum"/"highest"/"lowest" name a quantity far more often than
+# they request an ordering. Firing on the adjectival use stopped ordinary
+# questions to ask which measure should "rank them" when nothing was being
+# ranked and the measure was already named.
+
+WEATHER = [
+    {"name": "date", "type": "datetime"},
+    {"name": "precipitation", "type": "number"},
+    {"name": "temp_max", "type": "number"},
+    {"name": "temp_min", "type": "number"},
+    {"name": "weather", "type": "string"},
+]
+
+
+def test_measure_adjective_before_a_noun_is_not_a_ranking_request():
+    assert [
+        a for a in _detect("How did the maximum temperature change over the years?", WEATHER)
+        if a.type == "missing_metric"
+    ] == []
+
+
+def test_measure_adjective_in_a_grouped_request_is_not_a_ranking_request():
+    assert [
+        a for a in _detect("the spread of daily maximum temperatures by weather type", WEATHER)
+        if a.type == "missing_metric"
+    ] == []
+
+
+def test_measure_adjective_used_substantively_still_asks():
+    amb = next(
+        a for a in _detect("show me the highest", WEATHER) if a.type == "missing_metric"
+    )
+    assert amb.slot == "metric"
+
+
+def test_measure_adjective_detached_by_a_preposition_still_asks():
+    amb = next(
+        a for a in _detect("which weather type has the maximum?", WEATHER)
+        if a.type == "missing_metric"
+    )
+    assert amb.slot == "metric"
+
+
+def test_question_quotes_the_word_that_actually_fired():
+    """A fixed "best"/"most" text sent users hunting for words they never typed."""
+    amb = next(
+        a for a in _detect("which region is largest", TWO_DATES)
+        if a.type == "missing_metric"
+    )
+    assert '"largest"' in amb.question
+
+
 def test_metric_options_are_capped():
     many = [{"name": f"n{i}", "type": "number"} for i in range(9)] + [
         {"name": "cat", "type": "string"}

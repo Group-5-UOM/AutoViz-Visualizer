@@ -65,13 +65,50 @@ class DatasetRecord:
     scan_cache: dict[Any, Any] = field(
         default_factory=dict, compare=False, repr=False
     )
+    # The frame as an Arrow table, converted once. See arrow() below; same
+    # immutability argument and same lifetime as scan_cache.
+    _arrow: Any = field(default=None, compare=False, repr=False)
 
     def nbytes(self) -> int:
-        """Resident size of the frame, object columns included (deep=True)."""
+        """Resident size of the frame, object columns included (deep=True).
+
+        The Arrow view is deliberately not added: under Arrow-backed pandas it
+        shares the frame's buffers, so counting it would bill the same bytes
+        twice and evict datasets that fit. Measured at 0.9 MiB of real RSS
+        against an 85.7 MiB frame — see `Docs/24 §3`.
+        """
         try:
             return int(self.df.memory_usage(deep=True).sum())
         except Exception:  # pragma: no cover - exotic dtypes
             return 0
+
+    def arrow(self) -> Any:
+        """The frame as an Arrow table for DuckDB, or None if it will not convert.
+
+        DuckDB can scan a pandas frame directly, but it re-crosses the pandas
+        boundary on *every* query, and that conversion — not the analysis — is
+        the dominant cost: 439 ms of a 613 ms group-by over 500k rows. Converting
+        once and reusing the result makes the same query 15x faster for about 1%
+        more memory, because the conversion is near-zero-copy.
+
+        Sound only because the frame is immutable. Cleaning compiles to CTEs over
+        `df_raw` and never writes back, so a converted table cannot go stale
+        while the record lives; an evicted record takes its table with it.
+
+        Returns None when the frame will not convert — a column of genuinely
+        mixed Python types is the realistic case, and messy CSVs produce those.
+        Callers fall back to registering the frame itself, which is the slower
+        path but always works. A racing double conversion is possible and
+        harmless: both threads produce equal tables and the last one wins.
+        """
+        if self._arrow is None:
+            try:
+                import pyarrow as pa
+
+                self._arrow = pa.Table.from_pandas(self.df, preserve_index=False)
+            except Exception:
+                self._arrow = False  # sentinel: tried once, cannot convert
+        return self._arrow or None
 
 
 # Returns the record for a dataset_id, or None if it cannot be restored.

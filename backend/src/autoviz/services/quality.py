@@ -29,6 +29,7 @@ import pandas as pd
 from autoviz.schema.allowlists import (
     MAX_PREPROCESSING_STEPS,
     ROW_DROP_CONFIRM_FRACTION,
+    ROW_DROP_NOTICE_FRACTION,
 )
 from autoviz.services.registry import DatasetRecord
 from autoviz.services.safety import neutralize_text
@@ -699,8 +700,26 @@ def is_worth_asking(proposal: CleaningProposal, dimensions: set[str]) -> bool:
 
     Duplicates are always asked about: whether repeated rows are real events is
     not something the data can answer.
+
+    **For missing values, magnitude is judged before role.** A dimension with 2
+    missing values in 891 rows (0.2%) draws a null category too small to read,
+    and stopping the whole analysis to ask about it costs the user more than the
+    defect does. Below ``ROW_DROP_NOTICE_FRACTION`` — the project's existing
+    "small enough to mention rather than ask about" line — the finding is
+    disclosed instead of asked: unasked proposals already reach the user through
+    ``notices.from_unasked_proposals``, so nothing is hidden, only de-escalated.
+    Found by ``bench/nl_suite.py`` T05, which this rule turns from an
+    interruption into an answer.
+
+    The floor is deliberately *not* applied to high cardinality, whose
+    ``fraction`` is 0.0 by construction — it counts distinct values, not a share
+    of rows, so comparing it to a row fraction would silence every one of them.
     """
-    if proposal.issue.kind in ("missing_values", "high_cardinality"):
+    if proposal.issue.kind == "missing_values":
+        if proposal.issue.fraction < ROW_DROP_NOTICE_FRACTION:
+            return False
+        return proposal.issue.column in dimensions
+    if proposal.issue.kind == "high_cardinality":
         return proposal.issue.column in dimensions
     return True
 
