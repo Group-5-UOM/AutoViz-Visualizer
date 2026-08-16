@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
 import { NoticeStack } from '../components/layout/NoticeStack';
@@ -89,6 +90,9 @@ async function widgetsFromDashboard(selected: DashboardResult): Promise<ChartWid
 }
 
 export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
+  const { dashboardId: routeDashboardId } = useParams();
+  const navigate = useNavigate();
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
   const [activeItem, setActiveItem] = useState<SidebarItemId | null>('ai-chat');
@@ -186,6 +190,57 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     }, 800);
     return () => window.clearTimeout(timer);
   }, [dataset?.datasetId, hydratedDatasetId, dashboard.dashboardId, messages, threadId]);
+
+  useEffect(() => {
+    if (!routeDashboardId) return;
+    if (dashboard.dashboardId === routeDashboardId) return;
+
+    let mounted = true;
+    async function loadFromRoute() {
+      try {
+        const { getDashboard } = await import('../lib/dashboards');
+        const dash = await getDashboard(routeDashboardId!);
+        
+        const { listDatasets } = await import('../lib/datasets');
+        const { datasets } = await listDatasets();
+        
+        let foundDatasetId = null;
+        if (dash.widgets.length > 0) {
+          const { getChart } = await import('../lib/dashboards');
+          const chart = await getChart(dash.widgets[0].chart_id);
+          foundDatasetId = chart.dataset_id;
+        }
+        
+        let foundDataset = null;
+        if (foundDatasetId) {
+           foundDataset = datasets.find((d) => d.dataset_id === foundDatasetId);
+        }
+
+        if (!mounted) return;
+
+        if (foundDataset) {
+          setDataset({
+            datasetId: foundDataset.dataset_id,
+            fileName: foundDataset.logical_name,
+            rowCount: foundDataset.row_count,
+            columnCount: foundDataset.column_count,
+          });
+        }
+        
+        const conversation = await restoreConversation(dash.id);
+        await applyLoadedCanvas(
+          dash,
+          conversation.messages.length > 0 ? conversation.messages : undefined,
+          conversation.threadId,
+        );
+        if (foundDataset) setHydratedDatasetId(foundDataset.dataset_id);
+      } catch (err) {
+        console.error("Failed to load dashboard from URL", err);
+      }
+    }
+    loadFromRoute();
+    return () => { mounted = false; };
+  }, [routeDashboardId, dashboard.dashboardId]);
 
   /**
    * Autosave failures, said out loud.
@@ -314,6 +369,9 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
 
       setHydratedDatasetId(nextDatasetId);
       openAiChat(setActiveItem, setChatOpen);
+      if (activeDashboard.id !== routeDashboardId) {
+        navigate(`/dashboard/${activeDashboard.id}`, { replace: true });
+      }
     } catch (err) {
       notifyError(err, 'Could not open that dashboard.', {
         key: 'load-dashboard',
@@ -514,6 +572,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       const newDash = await createDashboard(dataset.fileName);
       loadDashboardState(newDash.id, newDash.name, [], [], null);
       openAiChat(setActiveItem, setChatOpen);
+      navigate(`/dashboard/${newDash.id}`);
     } catch (err) {
       notifyError(err, 'Could not create a new dashboard.', {
         key: 'new-dashboard',
@@ -542,6 +601,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         onSave={() => saveNow()}
         saveStatus={saveStatus}
         saveError={saveError}
+        shareDashboardId={dashboard.dashboardId}
         onNewDashboard={handleNewDashboard}
         onSetPassword={!hasPassword ? () => setPasswordOpen(true) : undefined}
         onLogout={onLogout}

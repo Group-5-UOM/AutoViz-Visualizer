@@ -79,6 +79,18 @@
   color: var(--text-secondary);
 }
 
+.dropzone {
+  transition: all 0.2s ease;
+  border-radius: var(--radius-md);
+}
+
+.dropzone.active .tool-action-btn {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+  border-style: dashed;
+  border-width: 2px;
+}
+
 .tool-field {
   display: flex;
   flex-direction: column;

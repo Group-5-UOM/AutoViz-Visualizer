@@ -13,6 +13,7 @@ import {
   FilePlus2,
 } from 'lucide-react';
 import type { ExportFormat } from '../../lib/exportDashboard';
+import { ShareDropdownPanel } from './ShareDropdownPanel';
 import './TopBar.css';
 
 interface TopBarProps {
@@ -23,8 +24,8 @@ interface TopBarProps {
   onToggleSidebar: () => void;
   onRename: () => void;
   onExport: (format: ExportFormat) => void;
-  /** The format currently being written, if any — drives the button's busy state. */
   exporting?: ExportFormat | null;
+  shareDashboardId?: string | null;
   onSave?: () => void;
   saveStatus?: 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
   /**
@@ -48,6 +49,7 @@ export function TopBar({
   onRename,
   onExport,
   exporting = null,
+  shareDashboardId,
   onSave,
   saveStatus,
   saveError,
@@ -58,18 +60,26 @@ export function TopBar({
 }: TopBarProps) {
   const displayName = username || userEmail?.split('@')[0] || userEmail;
   const [exportOpen, setExportOpen] = useState(false);
+  const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
+  const shareRef = useRef<HTMLDivElement>(null);
 
-  // Close on anything that is not a click inside the menu — Escape, or a click
-  // anywhere else. Without the pointer half, the menu survives a click on the
-  // canvas and hangs over the chart the user just went to look at.
   useEffect(() => {
-    if (!exportOpen) return;
+    if (!exportOpen && !shareMenuOpen) return;
     const onPointerDown = (e: PointerEvent) => {
-      if (!exportRef.current?.contains(e.target as Node)) setExportOpen(false);
+      const target = e.target as Node;
+      if (exportOpen && !exportRef.current?.contains(target)) {
+        setExportOpen(false);
+      }
+      if (shareMenuOpen && !shareRef.current?.contains(target)) {
+        setShareMenuOpen(false);
+      }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setExportOpen(false);
+      if (e.key === 'Escape') {
+        setExportOpen(false);
+        setShareMenuOpen(false);
+      }
     };
     window.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('keydown', onKeyDown);
@@ -77,7 +87,7 @@ export function TopBar({
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [exportOpen]);
+  }, [exportOpen, shareMenuOpen]);
 
   const runExport = (format: ExportFormat) => {
     setExportOpen(false);
@@ -115,10 +125,24 @@ export function TopBar({
       </div>
 
       <div className="topbar-right">
-        <button type="button" className="topbar-text-btn" disabled title="Coming soon">
-          <Share2 size={15} />
-          Share
-        </button>
+        {shareDashboardId && (
+          <div className="topbar-export-dropdown" ref={shareRef}>
+            <button 
+              type="button" 
+              className="topbar-text-btn" 
+              onClick={() => setShareMenuOpen(!shareMenuOpen)} 
+              title="Share dashboard"
+            >
+              <Share2 size={15} />
+              Share
+              <ChevronDown size={14} style={{ marginLeft: '-2px', opacity: 0.8 }} />
+            </button>
+            
+            {shareMenuOpen && (
+              <ShareDropdownPanel dashboardId={shareDashboardId} />
+            )}
+          </div>
+        )}
         {onNewDashboard && (
           <button
             type="button"
@@ -153,7 +177,6 @@ export function TopBar({
             {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Retry save' : 'Save'}
           </button>
         )}
-
         <div className="topbar-export" ref={exportRef}>
           <button
             type="button"

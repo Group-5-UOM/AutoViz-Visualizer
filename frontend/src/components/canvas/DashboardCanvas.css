@@ -50,6 +50,12 @@
   backdrop-filter: blur(6px);
   overflow-wrap: anywhere;
   word-break: break-word;
+  transition: all 0.2s ease;
+}
+
+.dashboard-canvas.is-dragging .canvas-empty-card {
+  border: 2px dashed var(--accent);
+  background: var(--bg-hover);
 }
 
 .canvas-upload-icon {

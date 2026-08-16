@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Boolean
 from sqlalchemy.orm import relationship
 
 from autoviz.core.database import Base
@@ -17,6 +17,7 @@ class Dashboard(Base):
         String, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
     name = Column(String, nullable=False)
+    is_public = Column(Boolean, default=False, nullable=False)
     created_at = Column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

@@ -1,4 +1,4 @@
-import { useRef, type ChangeEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { Upload } from 'lucide-react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import './ToolSidePanel.css';
@@ -30,6 +30,30 @@ export function AddPanel({
     e.target.value = '';
   };
 
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!uploading) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (uploading) return;
+    
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')) {
+      void onCsvSelected(file);
+    }
+  };
+
   return (
     <section className="tool-panel" aria-label="Add dataset">
       <div className="tool-panel-body">
@@ -37,7 +61,12 @@ export function AddPanel({
           Upload a new CSV dataset to start building charts on the canvas.
         </p>
 
-        <div className="tool-panel-section">
+        <div 
+          className={`tool-panel-section dropzone ${isDragging ? 'active' : ''}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           <h3>New dataset</h3>
           <button
             type="button"
@@ -48,7 +77,9 @@ export function AddPanel({
             <Upload size={16} />
             <span>
               {uploading ? 'Uploading…' : 'Upload CSV'}
-              <span className="tool-action-meta">Add a new dataset to AutoViz</span>
+              <span className="tool-action-meta">
+                {isDragging ? 'Drop file here' : 'Drag and drop or click to add'}
+              </span>
             </span>
           </button>
           {uploadError && (
