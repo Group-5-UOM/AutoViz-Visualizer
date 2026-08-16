@@ -1,8 +1,45 @@
 # 21 — Project Status
 
-**Originally 14 August 2026; criteria 7 and 8 updated 15 August.** Every figure below was read out
-of the working tree, the test suite, or `git`/`gh` on those dates — none is carried over from an
-earlier document. Where a claim could not be verified from the repository, it says so.
+**Originally 14 August 2026; criteria 7 and 8 updated 15 August; measurement added 16 August.**
+Every figure below was read out of the working tree, the test suite, or `git`/`gh` on those
+dates — none is carried over from an earlier document. Where a claim could not be verified from
+the repository, it says so.
+
+> ## Update — 16 August 2026: the project now has numbers
+>
+> Until today, every figure in this document described *delivery* (commits, tests, endpoints) and
+> none described *behaviour* (speed, accuracy, quality). A measurement harness now exists at
+> [`backend/bench/`](../backend/bench/), and the full account is
+> [`Docs/24`](24-Performance-and-Evaluation.md).
+>
+> | | |
+> |---|---|
+> | Question → validated result → chart, 1M rows, no LLM | **68–78 ms** |
+> | Cost of 1000× more data on the commonest query shape | **2.3×** (21.9 → 50.0 ms) |
+> | Largest upload, 11-column table | **~526,000 rows** (50 MiB ceiling binds first) |
+> | Frozen NL benchmark | **39 prompts** — closes the outstanding Week-3 deliverable |
+> | Chart quality | 14/14 type accuracy · **10/10** specs valid against the real Vega-Lite v6 schema · 3/3 legibility guards |
+> | Backend tests | **759 → 789** |
+>
+> **Building it found seven defects the suite did not. All seven are now fixed**, each with
+> regression tests. The most severe: `is_null` and `is_not_null` were in `FILTER_OPS` and
+> accepted by validation from the beginning, but `build_sql` had no rule for either — so a plan
+> that validated cleanly crashed inside the engine, and did so as a *retryable* error, which put
+> the agent in a backoff loop re-running a plan that could never succeed.
+>
+> The last one closed was the one that mattered most for a data tool's credibility: asked to
+> *"Forecast next year's rainfall"*, the system produced a valid **historical** trend and
+> presented it as the answer. A deterministic capability check now declines and offers the
+> nearest supported thing, so the substitution is the user's choice rather than a silent one.
+>
+> One performance change was made off the back of the measurement: DuckDB was re-crossing the
+> pandas boundary on every query, which was **26× more expensive than necessary** at 1M rows.
+> Caching one Arrow view per dataset fixed it for 0.2 MiB. See [`Docs/24 §3.2`](24-Performance-and-Evaluation.md).
+>
+> **Two items on §7's list are now closed:** the ≥30 NL benchmark prompts (item 6) and the
+> evaluation harness §5 says the fine-tune track is blocked on. **`Docs/` is no longer
+> gitignored** (item 1) — the rule now excludes only the 46 MB of research PDFs, so all 25
+> numbered documents are tracked. Presentation plan: [`Docs/25`](25-Mid-Evaluation-Presentation.md).
 
 **The milestone is 3 days away.** [`Docs/project-roadmap.md`](project-roadmap.md) commits to *~85%
 of the core product demonstrable by 18 August 2026*, against ten named acceptance criteria.
@@ -67,8 +104,8 @@ All measured on `feat/preprocessing-hardening`, which is `origin/main` minus one
 
 | | Value |
 |---|---|
-| Backend tests | **759 passing**, 0 failing, 69 s (`uv run pytest tests/ -q`) |
-| Backend test modules | 54 |
+| Backend tests | **789 passing** (16 Aug; 759 on 14 Aug), 0 failing, ~55 s (`uv run pytest tests/ -q`) |
+| Backend test modules | 55 |
 | Frontend typecheck | `tsc -b` clean (exit 0) |
 | **Frontend tests** | **25 passing** (`npm test`) as of 15 Aug — was 0 with no runner installed. Pure-logic only; component and e2e tests are still absent |
 | CI | CodeBuild only. There is no `.github/` directory; the sole automated test run is the `pre_build` phase of `buildspec.yml`. Whether it gates pull requests is a CodePipeline setting not visible in the repo |
@@ -79,7 +116,7 @@ All measured on `feat/preprocessing-hardening`, which is `origin/main` minus one
 |---|---|
 | MCP tools | **18** — 7 in the `default` profile, 11 more under `advanced` (the shipped default) |
 | MCP resources / prompts | 4 / 1 |
-| HTTP endpoints | **45** across 7 routers — auth 12, charts 9, datasets 9, analysis 5, dashboards 5, conversations 3, agent 2 |
+| HTTP endpoints | **46** across 7 routers (+ `/health`) — auth 12, datasets 9, charts 9, dashboards 6, analysis 5, conversations 3, agent 2. Counted from the generated OpenAPI document, which is the only count that cannot drift from the app |
 | Chart types | 10 |
 | Filter ops / aggregations / derive fns | 11 / 7 / 15 |
 | Preprocessing operations | 14, each declaring its own risk tier |
@@ -177,13 +214,20 @@ The companion repo `Group-5-UOM/AutoViz-Planner-Model` holds the QLoRA work aimi
 hosted Gemini planner (`google_genai:gemini-3.5-flash`) with a locally served Qwen3.5.
 
 Its training notebook, frozen 4B/9B configs and 80-paper research review are all complete. **Every
-downstream phase is blocked on one thing that lives in *this* repo and does not exist: a frozen
+downstream phase was blocked on one thing that lives in *this* repo and did not exist: a frozen
 golden set and an evaluation runner.** Without a held-out set and a baseline number, no claim about
 the fine-tune is falsifiable.
 
-Estimated cost: days, not weeks — `test-data/` already supplies the tables and `execute_analysis`
-already supplies most of the runner. It is not on the critical path for 18 August, and it is on the
-critical path for everything after it.
+**Unblocked on 16 August.** [`backend/bench/nl_suite.py`](../backend/bench/nl_suite.py) is the
+frozen set — 39 prompts over four `test-data/` files, with paraphrase-tolerant assertions —
+and [`nl_run.py`](../backend/bench/nl_run.py) is the runner that scores any `PlannerLLM` against
+it. The Gemini baseline is recorded in [`Docs/24 §4.1`](24-Performance-and-Evaluation.md), so a
+Qwen run is now a comparison rather than an assertion.
+
+Two properties of that set matter more to this track than its size: it is **held out** (cases are
+added, never removed or weakened because a model fails one), and it scores **five outcomes rather
+than one accuracy** — so a fine-tune that trades correct answers for confident wrong ones cannot
+show up as an improvement.
 
 ---
 
@@ -207,20 +251,23 @@ tested and invisible to every user of the web client.
 
 ## 7. What the three days to 18 August should hold
 
-Ordered by what an evaluator will actually check. Struck items were done on 15 August.
+Ordered by what an evaluator will actually check. Struck items are done — 15 August unless
+marked otherwise.
 
 | # | Action | Owner | Why now |
 |---|---|---|---|
-| 1 | **Commit `Docs/`** — remove line 1 of `.gitignore` | Anyone, 5 minutes | Nothing else on this list matters if the evidence is on one laptop |
+| 1 | ~~Un-ignore `Docs/`~~ | — | **Done 16 Aug.** The rule now excludes only the 46 MB of research PDFs; all 25 numbered documents are tracked (648 KB of Markdown) |
 | 2 | ~~PDF export~~ | — | **Done** — [`Docs/22 §1`](22-Export-and-UI-States.md) |
 | 3 | **Book five participants and run the sessions** | Chandrasiri | The last unmet criterion. Everything except the people is written and waiting in [`Docs/23`](23-Usability-Evaluation.md) — booking is the long pole, so it has to happen today |
 | 4 | **Component tests on top of the new runner** | Chandrasiri | `npm test` and 25 pure-logic tests exist now; components and e2e do not, and that is what NFR-09 asks for |
 | 5 | **Surface the ingest report and the four new operations in the UI** | Daishika | Six phases of merged backend work are currently undemonstrable in the demo |
-| 6 | **Freeze ~30 NL benchmark prompts** | Daishika | Week 3 deliverable; also the first half of the eval harness in §5 |
+| 6 | ~~Freeze ~30 NL benchmark prompts~~ | — | **Done 16 Aug** — 39 prompts, [`backend/bench/nl_suite.py`](../backend/bench/nl_suite.py). Also unblocks §5 |
 | 7 | **Confirm the deployed build is live and rehearse the demo against it** | Bulagala | Criterion 10 is the only met criterion that cannot be verified from the tree |
 | 8 | **Add a `.mailmap`** | Anyone, 5 minutes | So per-member contribution counts are correct in the final report |
+| 9 | **Rehearse the presentation** | All | [`Docs/25`](25-Mid-Evaluation-Presentation.md) has the slide plan, demo script and Q&A; the demo needs recording as a fallback |
 
-Items 1 and 8 cost minutes. Item 3 is the difference between nine criteria met and ten.
+Item 8 costs minutes. **Item 3 is the difference between nine criteria met and ten**, and it is
+the only one on this list that cannot be done from a keyboard.
 
 ---
 

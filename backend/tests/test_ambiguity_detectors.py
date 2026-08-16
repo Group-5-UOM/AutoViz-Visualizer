@@ -1,6 +1,6 @@
 """Day 2: ambiguous-time-column and superlative-without-metric detectors."""
 
-from autoviz.agent.ambiguity import detect_ambiguities
+from autoviz.agent.ambiguity import apply_resolutions, detect_ambiguities
 from autoviz.services import dataset as dataset_service
 
 TWO_DATES = [
@@ -156,3 +156,90 @@ def test_missing_metric_on_real_titanic_schema(registry, titanic_id):
     # of the low-cardinality codes (survived 0/1, pclass 1-3) despite the 5-cap.
     cols = [o.resolves_to.get("column") for o in amb.options]
     assert "fare" in cols and "age" in cols
+
+
+# --- unsupported capability (bench/nl_suite X02) ------------------------------
+#
+# "Forecast next year's rainfall" produced a valid *historical* trend and
+# presented it as the answer. The chart was not wrong; substituting a different
+# question without saying so was. The detector declines and offers the nearest
+# supported thing, so the substitution becomes the user's choice.
+
+WEATHER_FC = [
+    {"name": "date", "type": "datetime"},
+    {"name": "precipitation", "type": "number"},
+    {"name": "temp_max", "type": "number"},
+    {"name": "weather", "type": "string"},
+]
+
+
+def _capability(request, schema=WEATHER_FC, **kw):
+    return [
+        a for a in _detect(request, schema, **kw) if a.type == "unsupported_capability"
+    ]
+
+
+def test_forecast_is_declined_with_an_alternative():
+    amb = _capability("Forecast next year's rainfall.")[0]
+    assert amb.slot == "capability"
+    assert "cannot forecast" in amb.question
+    assert amb.detail["capability"] == "forecast"
+    # Declining is only half of it — the nearest supported thing is offered too.
+    assert amb.options[0].resolves_to == {"fallback": "forecast"}
+    assert amb.options[-1].resolves_to == {"fallback": "cancel"}
+
+
+def test_statistical_modelling_is_declined():
+    amb = _capability("Run a regression of precipitation on temp_max")[0]
+    assert amb.detail["capability"] == "statistical_model"
+
+
+def test_join_is_declined():
+    amb = _capability("Join this with the station metadata")[0]
+    assert amb.detail["capability"] == "join"
+
+
+def test_capability_check_preempts_every_other_question():
+    """Asking which date column to use for a forecast walks the user further in."""
+    ambs = _detect("Forecast revenue over time", TWO_DATES)
+    assert [a.type for a in ambs] == ["unsupported_capability"]
+
+
+def test_ordinary_detectors_resume_once_the_capability_is_resolved():
+    ambs = _detect("Forecast revenue over time", TWO_DATES,
+                   resolved={"capability": {"fallback": "forecast"}})
+    assert [a.type for a in ambs] == ["time_column"]
+
+
+def test_a_relationship_question_is_not_a_modelling_request():
+    """A scatter plot is a legitimate, supported answer — this must not fire."""
+    assert _capability("Is wind related to precipitation?") == []
+    assert _capability("Is there a correlation worth plotting here?") == []
+
+
+def test_supported_words_near_the_vocabulary_do_not_fire():
+    for request in (
+        "Show total precipitation per month over time.",
+        "Show the trend of temp_max over the years",
+        "What is the average precipitation by weather type?",
+    ):
+        assert _capability(request) == [], request
+
+
+def test_a_column_named_after_the_capability_wins_over_the_vocabulary():
+    """`join_date` is the user naming their own column, not asking for a join."""
+    schema = [
+        {"name": "join_date", "type": "datetime"},
+        {"name": "revenue", "type": "number"},
+    ]
+    assert _capability("total revenue by join date", schema) == []
+
+
+def test_accepting_the_alternative_forbids_the_thing_that_cannot_be_done():
+    """The planner already showed it will answer a forecast with a trend."""
+    folded = apply_resolutions("Forecast rainfall", {"capability": {"fallback": "forecast"}})
+    assert "do NOT forecast" in folded
+
+
+def test_cancelling_folds_nothing_into_the_task():
+    assert apply_resolutions("Forecast rainfall", {"capability": {}}) == "Forecast rainfall"

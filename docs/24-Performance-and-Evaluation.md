@@ -50,9 +50,9 @@ this document cannot drift from the run that produced it.
 | How fast is a typical question on a big file? | **A 1M-row group-by, charted end to end, in 68–78 ms** (no LLM) | §7 "End to end" |
 | How much does it slow down as the CSV grows? | **1000× more rows costs 2.3× more time** on the commonest shape (21.9 → 50.0 ms) | §3.1 |
 | How big a file can it take? | **~526,000 rows** for an 11-column table — the 50 MiB upload ceiling binds first | §5 |
-| What does the whole round trip cost a user? | **7.4 s median**, and ~99% of that is the planner LLM | §4.3 |
+| What does the whole round trip cost a user? | **7–12 s median across runs**, and ~99% of it is the planner LLM | §4.3 |
 | Does it pick the right chart? | **14/14** type accuracy, **10/10** specs valid against the real Vega-Lite v6 schema | §4.2 |
-| Does it understand the question? | **35/39 correct, 0 over-asked, 1 wrong** on a frozen benchmark | §4.1 |
+| Does it understand the question? | **39/39 acceptable** on a frozen benchmark — 32 correct, 7 clarified, **0 over-asked, 0 wrong** | §4.1 |
 | Joins? | **Not supported.** The engine would do 1M × 125k in 154 ms; the limit is the plan grammar | §5.3 |
 
 ---
@@ -182,8 +182,29 @@ not equally bad:
 | **over_asked** | Paused on a request it could have answered | Friction |
 | **wrong** | Answered confidently, and answered a different question | **The expensive one** |
 
-Results are in §7. The one remaining `wrong` — *"Forecast next year's rainfall"* returns a
-historical trend rather than declining — is a real open defect and is listed in §6.
+Results are in §7. As of the 16 August run the suite is **39/39 acceptable: 32 answered
+correctly, 7 clarified or declined, none over-asked and none wrong.** All seven cases that
+paused are ones where pausing is the right behaviour — two underspecified requests, one with two
+plausible temperature columns, three out of scope, and one prompt injection.
+
+That is a floor, not a victory: 39 prompts is a small set, and the last `wrong` was only closed
+by defect 7 below. Read it as "nothing in this set produces a confident wrong answer today", and
+keep adding cases.
+
+**Two caveats on reading this score.**
+
+*The planner is not deterministic.* It runs at `temperature=0` against a hosted model, and
+successive runs of the identical suite still differ by a case or two — a prompt that answers on
+one run may ask a clarifying question on the next. Quote the outcome *counts* and the shape of
+the failures, not a percentage to one decimal place, and re-run before presenting.
+
+*The scorer is part of the experiment and can itself be wrong.* One case scored `wrong` on an
+earlier run because `_columns_touched` did not look inside `preprocessing`. The plan under test
+was in fact the best available answer — "Chart the temperature" resolved by folding `temp_max`
+and `temp_min` into one series with `pivot_longer` — but after that fold neither column name
+appears anywhere else in the plan, so the assertion saw no temperature column. The extractor was
+fixed; the case was not weakened. **A benchmark that is only ever debugged when the system looks
+bad will quietly drift into flattering it**, so corrections in that direction are recorded here.
 
 ### 4.2 Chart quality, measured three ways
 
@@ -203,7 +224,9 @@ the actual Vega-Lite compiler and Vega runtime and asserts what was drawn. All 1
 ### 4.3 End-to-end latency, with the LLM in the loop
 
 The deterministic pipeline answers a 1M-row question in **68–78 ms**. The full agent round trip
-measured across the 39 benchmark prompts is a **7.4 s median** (p90 10.2 s).
+measured across the 39 benchmark prompts had a median of **7.2 s, 8.6 s, 9.7 s and 11.6 s** on
+four successive runs of the identical suite. That spread is the hosted planner API, not AutoViz —
+which is the point of the next paragraph, and the reason to quote a range rather than a figure.
 
 **Over 99% of what a user waits for is the planner LLM**, not AutoViz. That single ratio is the
 strongest argument in the project for the local Qwen fine-tune in `AutoViz-Planner-Model`:
@@ -267,8 +290,9 @@ performance. That converts a roadmap argument from opinion into arithmetic.
 
 ## 6. What the measurement exposed
 
-**Six defects were found by building this harness, not by the 773-test suite** that was passing
-before it existed. All six are real; five are fixed, each with regression tests.
+**Seven defects were found by building this harness, not by the 759-test suite** that was passing
+before it existed. **All seven are real and all seven are now fixed**, each with regression
+tests — the suite is **789**.
 
 | # | Defect | Status |
 |---|---|---|
@@ -278,7 +302,7 @@ before it existed. All six are real; five are fixed, each with regression tests.
 | 4 | **Every boxplot spec was invalid.** `tooltip: true` sat on the composite mark, but `BoxPlotDef` sets `additionalProperties: false` and has no `tooltip` — so the spec failed the Vega-Lite v6 schema *and* produced no tooltip. Moved to the `box` and `outliers` sub-parts | ✅ Fixed, spec validity 9/10 → 10/10 |
 | 5 | **An empty result rendered as a normal chart.** A query matching zero rows produced a valid spec, drew empty axes, and said nothing. Now carries an `empty_result` advisory notice, on the spec's own subtitle so a saved dashboard keeps the explanation | ✅ Fixed, 4 regression tests |
 | 6 | **Over-asking on trivial defects.** "Compare average fare across embarkation towns" paused the whole analysis to ask about **2 missing values in 891 rows (0.2%)** | ✅ Fixed — missing-value questions now need `ROW_DROP_NOTICE_FRACTION` (5%) before they interrupt; below that the finding is disclosed through the notice channel instead. Judgement call; threshold named and shared with row-removal |
-| 7 | **Out-of-scope requests answered instead of declined.** "Forecast next year's rainfall" returns a historical trend | ❌ **Open.** The system has no forecasting capability and should say so; silently substituting a different question is the failure mode this project exists to avoid |
+| 7 | **Out-of-scope requests answered instead of declined.** "Forecast next year's rainfall" returned a historical trend and presented it as the answer | ✅ Fixed — a deterministic capability check now declines *and offers the nearest supported thing*, so the substitution is the user's choice rather than a silent one. 10 regression tests. See below |
 
 Defects 1 and 6 are worth reading together, because they show why a benchmark finds things a
 test suite does not. The over-ask in #6 had been *masking* #1: the cleaning gate paused before
@@ -286,6 +310,47 @@ execution was ever reached, so the unimplemented operator never ran. Fixing the 
 the correctness bug underneath it. No unit test would have found either, because both required
 the planner to choose `is_not_null` on a real dataset with a small number of nulls in a
 grouped column — a combination nobody thought to write down.
+
+### Defect 7 in full: declining without dead-ending
+
+This was the only one where the *chart* was fine. Asked to "Forecast next year's rainfall", the
+planner emitted a valid historical trend — a good chart, correctly computed, answering a
+question the user did not ask. **Silently substituting a different question is precisely the
+failure this project's whole architecture exists to prevent**, and it had survived to the
+benchmark because no test asks for something the product cannot do.
+
+Three decisions shaped the fix.
+
+**It is deterministic, and it runs before the planner.** Wording the system prompt more firmly
+is what was already being relied on, and it is what failed. `agent/ambiguity.py` gained a
+`_detect_unsupported_capability` detector alongside the four existing ones, so "can this even be
+asked?" is a computed signal rather than a prompt guess — the same principle as every other
+gate in the system.
+
+**It declines *and* offers, rather than dead-ending.** A flat refusal is true but rarely the
+most useful true answer. The detector returns an `Ambiguity` whose question states plainly what
+cannot be done and whose options offer the nearest supported thing:
+
+> *"AutoViz describes data that already exists — it cannot forecast or predict. What would you
+> like instead?"* → **[ Show what the data does say, over time ] [ Nothing — cancel this request ]**
+
+The user who accepts gets the same historical trend as before. The difference is consent: they
+were told what the system cannot do, and chose the substitute. The defect was never the chart.
+
+Accepting also folds a *prohibition* into the task, not just a substitution — `apply_resolutions`
+appends "do NOT forecast, predict or extend beyond the last observation", because the planner has
+already demonstrated it will extrapolate if left to infer.
+
+**The vocabulary is short on purpose, and schema beats vocabulary.** A false positive blocks
+legitimate work, so a term earns its place only when no supported reading exists. `relationship`,
+`related` and `correlation` are deliberately absent — a scatter plot is a legitimate answer to
+"is X related to Y", and `bench/nl_suite.py` has two such prompts that must keep working.
+`trend`, `growth` and `over time` are all supported and absent too. And when a term matches a
+real column name (`join_date`, `cluster_id`) the schema wins: the user naming their own column
+is not a request for a feature.
+
+Three capability families are covered — forecasting, statistical modelling, and joins. The join
+case also makes the product's largest known gap (§5.3) fail *honestly* rather than by luck.
 
 ### Optimisations this measurement makes obvious, none yet done
 
@@ -313,7 +378,157 @@ governor and a 512 MiB registry budget. That is the first thing to add to this h
 *The tables below are written by `uv run python -m bench.report`. Regenerate rather than edit.*
 
 <!-- BEGIN GENERATED TABLES -->
-<!-- Paste the contents of backend/bench/results/tables.md here after a run. -->
+### Performance
+
+*Measured 2026-08-16T11:02:24 on Windows-11-10.0.26200-SP0, 16 logical cores, Python 3.12.13, DuckDB 1.5.5, pandas 3.0.3. Peak resident set for the whole run: 897.2 MiB.*
+
+#### Ingest — file on disk to queryable dataset
+
+| Rows | CSV MiB | In RAM MiB | Read ms | Profile ms | Total ms |
+|---|---|---|---|---|---|
+| 1,000 | 0.10 | 0.13 | 7.72 | 18.01 | 25.73 |
+| 10,000 | 0.95 | 1.33 | 26.50 | 53.80 | 80.30 |
+| 100,000 | 9.50 | 13.34 | 213.1 | 424.0 | 637.0 |
+| 500,000 | 47.50 | 66.68 | 1,134.4 | 2,137.6 | 3,272.0 |
+| 1,000,000 | 94.99 | — | — | — | **refused** (RESOURCE_LIMIT) |
+
+#### Query latency by plan shape (median ms, `execute_analysis`)
+
+| Plan shape | 1,000 | 10,000 | 100,000 | 500,000 | 1,000,000 | Rows out (max scale) |
+|---|---|---|---|---|---|---|
+| Projection + limit (1k rows out) | 28.99 | 27.69 | 33.02 | 31.49 | 36.32 | 1,000 |
+| Filter + projection (1k rows out) | 21.90 | 25.67 | 33.70 | 54.04 | 79.53 | 1,000 |
+| Group by 1 key, sum (5 groups) | 21.86 | 19.18 | 24.97 | 34.87 | 50.04 | 5 |
+| Group by 2 keys, 2 aggregates (60 groups) | 20.89 | 21.68 | 27.72 | 50.15 | 76.13 | 60 |
+| Group by high-cardinality key (n/8 groups) | 20.92 | 26.97 | 91.91 | 347.6 | 570.6 | 100,000 |
+| Group by 1 key, median | 20.66 | 21.31 | 27.02 | 43.63 | 73.33 | 5 |
+| Group by 1 key, count_distinct | 21.36 | 29.42 | 37.09 | 76.59 | 134.3 | 5 |
+| Derive month_start + group + sum (36 points) | 21.17 | 25.94 | 25.70 | 43.69 | 68.77 | 36 |
+| Filter + group + sort + limit 10 (“top 10”) | 19.93 | 21.71 | 27.00 | 54.21 | 89.35 | 10 |
+| Cleaning block (3 ops) + group + sum | 51.84 | 86.07 | 197.8 | 856.9 | 1,830.2 | 5 |
+
+#### The scan-source change, on `execute_analysis` itself
+
+| Rows | Shape | pandas scan ms | Arrow scan ms | Speed-up |
+|---|---|---|---|---|
+| 1,000 | agg_2key | 25.24 | 23.21 | 1.09x |
+| 1,000 | derive_trend | 23.47 | 21.02 | 1.12x |
+| 1,000 | top_n | 24.04 | 20.83 | 1.15x |
+| 10,000 | agg_2key | 37.74 | 21.77 | 1.73x |
+| 10,000 | derive_trend | 39.03 | 20.55 | 1.9x |
+| 10,000 | top_n | 36.34 | 22.16 | 1.64x |
+| 100,000 | agg_2key | 237.0 | 33.99 | 6.97x |
+| 100,000 | derive_trend | 187.9 | 24.74 | 7.6x |
+| 100,000 | top_n | 188.4 | 27.38 | 6.88x |
+| 500,000 | agg_2key | 1,100.0 | 50.10 | 21.96x |
+| 500,000 | derive_trend | 1,142.3 | 58.59 | 19.5x |
+| 500,000 | top_n | 900.3 | 60.32 | 14.93x |
+| 1,000,000 | agg_2key | 2,099.2 | 80.53 | 26.07x |
+| 1,000,000 | derive_trend | 2,148.4 | 65.78 | 32.66x |
+| 1,000,000 | top_n | 1,909.8 | 83.03 | 23.0x |
+
+#### Where a query's time goes
+
+| Rows | New connection ms | Expose frame (pandas) ms | Expose frame (Arrow) ms | Query ms | One-off conversion ms |
+|---|---|---|---|---|---|
+| 1,000 | 12.95 | 3.75 | 0.70 | 2.51 | 0.69 |
+| 10,000 | 12.63 | 10.30 | 0.72 | 2.77 | 2.15 |
+| 100,000 | 12.17 | 83.58 | 0.72 | 6.78 | 2.60 |
+| 500,000 | 11.79 | 459.6 | 0.70 | 24.73 | 3.47 |
+| 1,000,000 | 14.69 | 995.7 | 0.73 | 50.95 | 5.04 |
+
+#### Memory
+
+| Rows | Frame MiB | Added RSS for the Arrow view MiB | Its logical size MiB |
+|---|---|---|---|
+| 1,000 | 0.13 | 0.00 | 0.10 |
+| 10,000 | 1.33 | -1.00 | 1.30 |
+| 100,000 | 13.34 | 0.00 | 13.30 |
+| 500,000 | 66.68 | 0.00 | 66.70 |
+| 1,000,000 | 133.4 | 0.20 | 133.5 |
+
+#### Delivering the result (`sanitize_records` + JSON)
+
+| Rows out | Cols | Cells | Serialize ms | µs/cell | Payload MiB |
+|---|---|---|---|---|---|
+| 100 | 11 | 1,100 | 3.61 | 3.28 | 0.03 |
+| 100 | 2 | 200 | 0.77 | 3.85 | 0.00 |
+| 1,000 | 11 | 11,000 | 24.02 | 2.18 | 0.25 |
+| 1,000 | 2 | 2,000 | 4.43 | 2.21 | 0.05 |
+| 10,000 | 11 | 110,000 | 257.9 | 2.35 | 2.52 |
+| 10,000 | 2 | 20,000 | 49.00 | 2.45 | 0.50 |
+| 50,000 | 11 | 550,000 | 1,435.9 | 2.61 | 12.59 |
+| 50,000 | 2 | 100,000 | 276.5 | 2.77 | 2.49 |
+| 100,000 | 11 | 1,100,000 | 2,718.8 | 2.47 | 25.17 |
+| 100,000 | 2 | 200,000 | 512.5 | 2.56 | 4.97 |
+
+#### Chart construction
+
+| Rows plotted | Recommend ms | Build spec ms | Spec size | Valid |
+|---|---|---|---|---|
+| 12 | 0.01 | 0.11 | 3 KiB | yes |
+| 100 | 0.01 | 0.18 | 6 KiB | yes |
+| 1,000 | 0.01 | 1.03 | 41 KiB | yes |
+| 10,000 | 0.01 | 7.56 | 393 KiB | yes |
+| 100,000 | 0.01 | 87.26 | 3,920 KiB | yes |
+
+#### End to end, no LLM (`run_pipeline`)
+
+| Rows | Shape | Chart | Total ms | Status |
+|---|---|---|---|---|
+| 10,000 | agg_2key | grouped_bar | 20.41 | ok |
+| 10,000 | derive_trend | line | 19.01 | ok |
+| 10,000 | top_n | bar | 19.68 | ok |
+| 100,000 | agg_2key | grouped_bar | 25.10 | ok |
+| 100,000 | derive_trend | line | 24.16 | ok |
+| 100,000 | top_n | bar | 25.81 | ok |
+| 1,000,000 | agg_2key | grouped_bar | 78.09 | ok |
+| 1,000,000 | derive_trend | line | 68.33 | ok |
+| 1,000,000 | top_n | bar | 76.68 | ok |
+
+#### Join headroom — engine only, **not a shipped capability**
+
+| Fact rows | Dim rows | Case | DuckDB ms |
+|---|---|---|---|
+| 100,000 | 200 | small_dim | 33.10 |
+| 100,000 | 125,000 | large_dim | 42.24 |
+| 500,000 | 200 | small_dim | 68.52 |
+| 500,000 | 125,000 | large_dim | 77.48 |
+| 1,000,000 | 200 | small_dim | 141.6 |
+| 1,000,000 | 125,000 | large_dim | 153.5 |
+
+#### Shipped ceilings
+
+| Ceiling | Value | Where it bites on this 11-column table |
+|---|---|---|
+| Upload size | 50.0 MiB | ~526,450 rows (99.6 B/row) |
+| Rows per dataset | 1,000,000 | after the byte ceiling, so rarely first |
+| Columns | 512 | — |
+| Rows returned | 100,000 | caps any single result |
+| Query time | 30 s | watchdog interrupts the query |
+| Engine memory | 1GB | threads=2 |
+
+### Natural-language accuracy
+
+*39 frozen prompts, planner `AUTOVIZ_PLANNER_MODEL default`, run 2026-08-16T13:02:31.*
+
+| Outcome | Cases | Share | Meaning |
+|---|---|---|---|
+| Answered correctly | 32 | 82.1% | met every assertion for that prompt |
+| Asked a clarifying question | 7 | 17.9% | paused where asking was the right move |
+| Declined | 0 | 0.0% | refused an out-of-scope request |
+| **Over-asked** | 0 | 0.0% | paused on a request it could have answered |
+| **Wrong** | 0 | 0.0% | answered, and the answer was not the question asked |
+
+End-to-end latency including the planner LLM: median **11.5 s**, p90 28.0 s, max 39.0 s.
+
+### Chart quality
+
+| Measure | Result | What it checks |
+|---|---|---|
+| Chart-type accuracy | 14/14 (100.0%) | recommender picks a chart from the family the question calls for |
+| Spec validity | 10/10 (100.0%) | every chart type validates against the real Vega-Lite v6 JSON schema |
+| Legibility guards | 3/3 | series ceilings, pie category ceiling, empty-result disclosure |
 <!-- END GENERATED TABLES -->
 
 ---

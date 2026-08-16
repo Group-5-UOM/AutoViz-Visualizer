@@ -50,6 +50,50 @@ _SUPERLATIVES = _RANKING_WORDS + _MEASURE_ADJECTIVES
 # Explicit aggregation words: if one appears the metric is likely already stated.
 _AGG_WORDS = ("average", "avg", "mean", "median", "sum", "total", "count", "number of")
 
+# Things the closed grammar cannot express at all, grouped by what to say instead.
+#
+# This exists because the alternative is worse than a refusal: asked to "forecast
+# next year's rainfall", the planner produced a perfectly valid *historical* trend
+# and presented it as the answer. Silently substituting a different question is
+# the exact failure mode this project is built to prevent, and no amount of
+# prompt wording reliably stops it — so the check is deterministic and runs
+# before the planner, like every other detector here.
+#
+# The lists are deliberately short. A false positive blocks legitimate work, so a
+# term earns its place only when no supported reading of it exists:
+#
+#   * "relationship"/"related"/"correlation" are NOT here — a scatter plot is a
+#     legitimate, supported answer to "is X related to Y".
+#   * "trend", "growth", "over time" are NOT here — all are supported.
+#   * "model", "project", "significant" are NOT here — far too common in ordinary
+#     English to read as a request for statistical modelling.
+_UNSUPPORTED: tuple[tuple[str, tuple[str, ...], str, str], ...] = (
+    (
+        "forecast",
+        ("forecast", "forecasts", "forecasting", "forecasted",
+         "predict", "predicts", "predicted", "prediction", "predictions",
+         "predictive", "extrapolate", "extrapolation"),
+        "AutoViz describes data that already exists — it cannot forecast or predict.",
+        "Show what the data does say, over time",
+    ),
+    (
+        "statistical_model",
+        ("regression", "p-value", "p value", "confidence interval",
+         "hypothesis test", "t-test", "chi-square", "chi square",
+         "r-squared", "r squared", "statistical significance",
+         "cluster", "clustering", "k-means", "kmeans"),
+        "AutoViz computes descriptive statistics only — it does not fit models "
+        "or run significance tests.",
+        "Show the underlying values instead",
+    ),
+    (
+        "join",
+        ("join", "joins", "joined", "joining"),
+        "AutoViz analyses one table at a time — it cannot join datasets.",
+        "Analyse this dataset on its own",
+    ),
+)
+
 # Cap options so a wide table doesn't produce an unusable wall of buttons.
 _MAX_METRIC_OPTIONS = 5
 
@@ -74,6 +118,18 @@ def detect_ambiguities(
     `resolved` is the map of slots already answered this run; their ambiguities are
     suppressed so a bounded loop never re-asks the same slot.
     """
+    resolved = resolved or {}
+
+    # Checked first and on its own. If the request asks for something that does
+    # not exist, "which date column did you mean?" is not the question worth
+    # asking — and answering it would walk the user further into a request that
+    # cannot be honoured. Once the slot is resolved this falls through and the
+    # ordinary detectors run against whatever the user agreed to instead.
+    if "capability" not in resolved:
+        unsupported = _detect_unsupported_capability(request, schema)
+        if unsupported is not None:
+            return [unsupported]
+
     found: list[Ambiguity] = []
     for detector in (
         _detect_time_column(request, schema),
@@ -84,9 +140,26 @@ def detect_ambiguities(
         if detector is not None:
             found.append(detector)
 
-    if resolved:
-        found = [a for a in found if a.slot not in resolved]
-    return found
+    return [a for a in found if a.slot not in resolved]
+
+
+# What the planner is told once the user has accepted the supported alternative.
+# Keyed by the `fallback` recorded on the chosen option.
+_CAPABILITY_CLAUSE = {
+    "forecast": (
+        "describe only the values present in the dataset — do NOT forecast, "
+        "predict or extend beyond the last observation"
+    ),
+    "statistical_model": (
+        "report the observed values only — do NOT fit a model, estimate a "
+        "coefficient, or report a significance test"
+    ),
+    "join": (
+        "use only the columns of this one dataset — there is no second table to "
+        "join to"
+    ),
+    "cancel": "",
+}
 
 
 def apply_resolutions(task: str, resolved: dict[str, Any]) -> str:
@@ -99,6 +172,8 @@ def apply_resolutions(task: str, resolved: dict[str, Any]) -> str:
     clauses: list[str] = []
     for slot, val in resolved.items():
         if not isinstance(val, dict):
+            continue
+        if not val:  # a cancelled capability leaves nothing to fold in
             continue
         if "text" in val:  # free-text answer, no structured binding
             clauses.append(f"{slot.replace('_', ' ')}: {val['text']}")
@@ -113,9 +188,61 @@ def apply_resolutions(task: str, resolved: dict[str, Any]) -> str:
             clauses.append(f"group by `{val['column']}`")
         elif slot == "filter_value" and val.get("column"):
             clauses.append(f"filter where `{val['column']}` = '{val.get('value')}'")
+        elif slot == "capability":
+            # Spelled out as a prohibition, not just a substitution. The planner
+            # has already shown it will answer a forecast with a trend if left to
+            # infer; saying what must NOT happen is the half that was missing.
+            clauses.append(_CAPABILITY_CLAUSE.get(val.get("fallback", ""), ""))
     if not clauses:
         return task
     return f"{task}  [Resolved constraints: {'; '.join(clauses)}]"
+
+
+# --- capability detector ------------------------------------------------------
+
+
+def _detect_unsupported_capability(
+    request: str, schema: list[dict[str, str]]
+) -> Ambiguity | None:
+    """The request asks for a capability the closed grammar does not have.
+
+    Returns an ``Ambiguity`` rather than a hard failure, because a dead end is
+    rarely the most useful true answer. Declining *and* offering the nearest
+    supported thing lets the user get value from the same turn — and, crucially,
+    makes the substitution **their** choice rather than a silent one. The defect
+    this fixes was never that a historical trend is a bad chart; it was that the
+    user asked for a forecast and was handed a trend without being told.
+    """
+    for kind, terms, refusal, alternative in _UNSUPPORTED:
+        term = _first_match(request, terms)
+        if term is None:
+            continue
+        # A dataset with a column like `join_date` or `cluster_id` will have the
+        # word in ordinary circulation, and the user naming their own column is
+        # not a request for a capability. Schema beats vocabulary.
+        if _names_a_column(term, schema):
+            continue
+        return Ambiguity(
+            type="unsupported_capability",
+            slot="capability",
+            question=f"{refusal} What would you like instead?",
+            options=[
+                ClarificationOption(
+                    label=alternative, resolves_to={"fallback": kind}
+                ),
+                ClarificationOption(
+                    label="Nothing — cancel this request",
+                    resolves_to={"fallback": "cancel"},
+                ),
+            ],
+            detail={"capability": kind, "matched": term},
+        )
+    return None
+
+
+def _names_a_column(term: str, schema: list[dict[str, str]]) -> bool:
+    """Is `term` part of a real column name, rather than a request for a feature?"""
+    return any(term in _norm(c.get("name", "")) for c in schema)
 
 
 # --- Day 2 detectors ----------------------------------------------------------

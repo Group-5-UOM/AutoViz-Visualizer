@@ -58,8 +58,18 @@ def _columns_touched(plan: dict[str, Any]) -> set[str]:
     cols |= {d.get("from") for d in plan.get("derive") or []}
     chart = plan.get("chart") or {}
     cols |= {chart.get(k) for k in ("x", "y", "color")}
-    # A derived column stands for the column it came from, which is already
-    # added above; the derived *name* is not a dataset column and must not be
+    # Preprocessing names real dataset columns too, and a plan can reach its
+    # answer entirely through them: "Chart the temperature" is best served by
+    # pivot_longer folding temp_max and temp_min into one series, after which
+    # neither name appears anywhere else in the plan. Omitting these scored that
+    # answer — the best one available — as having touched no temperature column.
+    for op in plan.get("preprocessing") or []:
+        cols |= set(op.get("columns") or [])
+        cols |= set(op.get("by") or [])
+        cols.add(op.get("column"))
+        cols.add((op.get("rank_by") or {}).get("column"))
+    # A derived or pivoted column stands for the columns it came from, which are
+    # already added above; the *new* name is not a dataset column and must not be
     # matched against one.
     return {c for c in cols if isinstance(c, str) and c}
 

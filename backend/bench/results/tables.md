@@ -1,9 +1,9 @@
 
-## Performance
+### Performance
 
 *Measured 2026-08-16T11:02:24 on Windows-11-10.0.26200-SP0, 16 logical cores, Python 3.12.13, DuckDB 1.5.5, pandas 3.0.3. Peak resident set for the whole run: 897.2 MiB.*
 
-### Ingest — file on disk to queryable dataset
+#### Ingest — file on disk to queryable dataset
 
 | Rows | CSV MiB | In RAM MiB | Read ms | Profile ms | Total ms |
 |---|---|---|---|---|---|
@@ -13,7 +13,7 @@
 | 500,000 | 47.50 | 66.68 | 1,134.4 | 2,137.6 | 3,272.0 |
 | 1,000,000 | 94.99 | — | — | — | **refused** (RESOURCE_LIMIT) |
 
-### Query latency by plan shape (median ms, `execute_analysis`)
+#### Query latency by plan shape (median ms, `execute_analysis`)
 
 | Plan shape | 1,000 | 10,000 | 100,000 | 500,000 | 1,000,000 | Rows out (max scale) |
 |---|---|---|---|---|---|---|
@@ -28,7 +28,7 @@
 | Filter + group + sort + limit 10 (“top 10”) | 19.93 | 21.71 | 27.00 | 54.21 | 89.35 | 10 |
 | Cleaning block (3 ops) + group + sum | 51.84 | 86.07 | 197.8 | 856.9 | 1,830.2 | 5 |
 
-### The scan-source change, on `execute_analysis` itself
+#### The scan-source change, on `execute_analysis` itself
 
 | Rows | Shape | pandas scan ms | Arrow scan ms | Speed-up |
 |---|---|---|---|---|
@@ -48,7 +48,7 @@
 | 1,000,000 | derive_trend | 2,148.4 | 65.78 | 32.66x |
 | 1,000,000 | top_n | 1,909.8 | 83.03 | 23.0x |
 
-### Where a query's time goes
+#### Where a query's time goes
 
 | Rows | New connection ms | Expose frame (pandas) ms | Expose frame (Arrow) ms | Query ms | One-off conversion ms |
 |---|---|---|---|---|---|
@@ -58,7 +58,7 @@
 | 500,000 | 11.79 | 459.6 | 0.70 | 24.73 | 3.47 |
 | 1,000,000 | 14.69 | 995.7 | 0.73 | 50.95 | 5.04 |
 
-### Memory
+#### Memory
 
 | Rows | Frame MiB | Added RSS for the Arrow view MiB | Its logical size MiB |
 |---|---|---|---|
@@ -68,7 +68,7 @@
 | 500,000 | 66.68 | 0.00 | 66.70 |
 | 1,000,000 | 133.4 | 0.20 | 133.5 |
 
-### Delivering the result (`sanitize_records` + JSON)
+#### Delivering the result (`sanitize_records` + JSON)
 
 | Rows out | Cols | Cells | Serialize ms | µs/cell | Payload MiB |
 |---|---|---|---|---|---|
@@ -83,7 +83,7 @@
 | 100,000 | 11 | 1,100,000 | 2,718.8 | 2.47 | 25.17 |
 | 100,000 | 2 | 200,000 | 512.5 | 2.56 | 4.97 |
 
-### Chart construction
+#### Chart construction
 
 | Rows plotted | Recommend ms | Build spec ms | Spec size | Valid |
 |---|---|---|---|---|
@@ -93,7 +93,7 @@
 | 10,000 | 0.01 | 7.56 | 393 KiB | yes |
 | 100,000 | 0.01 | 87.26 | 3,920 KiB | yes |
 
-### End to end, no LLM (`run_pipeline`)
+#### End to end, no LLM (`run_pipeline`)
 
 | Rows | Shape | Chart | Total ms | Status |
 |---|---|---|---|---|
@@ -107,7 +107,7 @@
 | 1,000,000 | derive_trend | line | 68.33 | ok |
 | 1,000,000 | top_n | bar | 76.68 | ok |
 
-### Join headroom — engine only, **not a shipped capability**
+#### Join headroom — engine only, **not a shipped capability**
 
 | Fact rows | Dim rows | Case | DuckDB ms |
 |---|---|---|---|
@@ -118,7 +118,7 @@
 | 1,000,000 | 200 | small_dim | 141.6 |
 | 1,000,000 | 125,000 | large_dim | 153.5 |
 
-### Shipped ceilings
+#### Shipped ceilings
 
 | Ceiling | Value | Where it bites on this 11-column table |
 |---|---|---|
@@ -129,27 +129,21 @@
 | Query time | 30 s | watchdog interrupts the query |
 | Engine memory | 1GB | threads=2 |
 
-## Natural-language accuracy
+### Natural-language accuracy
 
-*39 frozen prompts, planner `AUTOVIZ_PLANNER_MODEL default`, run 2026-08-16T10:52:27.*
+*39 frozen prompts, planner `AUTOVIZ_PLANNER_MODEL default`, run 2026-08-16T13:02:31.*
 
 | Outcome | Cases | Share | Meaning |
 |---|---|---|---|
-| Answered correctly | 29 | 74.4% | met every assertion for that prompt |
-| Asked a clarifying question | 6 | 15.4% | paused where asking was the right move |
+| Answered correctly | 32 | 82.1% | met every assertion for that prompt |
+| Asked a clarifying question | 7 | 17.9% | paused where asking was the right move |
 | Declined | 0 | 0.0% | refused an out-of-scope request |
-| **Over-asked** | 0 | 0% | paused on a request it could have answered |
-| **Wrong** | 1 | 2.6% | answered, and the answer was not the question asked |
+| **Over-asked** | 0 | 0.0% | paused on a request it could have answered |
+| **Wrong** | 0 | 0.0% | answered, and the answer was not the question asked |
 
-End-to-end latency including the planner LLM: median **7.2 s**, p90 10.2 s, max 21.2 s.
+End-to-end latency including the planner LLM: median **11.5 s**, p90 28.0 s, max 39.0 s.
 
-**Every case that did not pass:**
-
-| Case | Prompt | Outcome | What happened |
-|---|---|---|---|
-| X02 | Forecast next year's rainfall. | wrong | produced a chart for an out-of-scope request |
-
-## Chart quality
+### Chart quality
 
 | Measure | Result | What it checks |
 |---|---|---|

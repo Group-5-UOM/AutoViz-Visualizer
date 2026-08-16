@@ -22,10 +22,15 @@ AmbiguityType = Literal[
     "missing_metric",   # a superlative/ranking ("best", "top") names no measure
     "column_reference", # a concept in the request maps to >1 real column
     "value_reference",  # a literal in the request matches values in >1 column
+    # The request asks for something the closed grammar cannot express at all —
+    # forecasting, statistical modelling, a join. Unlike the others this is not a
+    # question about *which* of several readings was meant; it is a statement
+    # that none of them exist, paired with the nearest thing that does.
+    "unsupported_capability",
 ]
 
 # The plan slot a resolution fills. Kept small and explicit so binding is total.
-Slot = Literal["time_column", "metric", "dimension", "filter_value"]
+Slot = Literal["time_column", "metric", "dimension", "filter_value", "capability"]
 
 
 class _Strict(BaseModel):

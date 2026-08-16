@@ -11,8 +11,8 @@ Written 16 August 2026 against the working tree of that day. Every figure here i
 
 > **The product works end to end and is measured. Nine of ten milestone criteria are met, the
 > tenth needs five people in a room rather than more code, and as of today we can put numbers
-> on speed, accuracy and chart quality — which found four real bugs that 773 passing tests had
-> not.**
+> on speed, accuracy and chart quality — which found seven real defects that 759 passing tests
+> had not, all now fixed.**
 
 Do not open with a percentage. Open with the demo, then justify the percentage in §7 with the
 table. A number asserted before evidence invites "how did you get that?"; a number offered after
@@ -34,13 +34,13 @@ slides 6, 11, 14 and 16 — they are the "depth on request" ones.
 | 5 | **The invariant: the LLM never computes** | Daishika | 1.5 | The single most defensible design decision in the project |
 | 6 | The closed grammar, concretely | Daishika | 1 | *(droppable)* Why "injection is structurally impossible" is a claim, not a hope |
 | 7 | What's built — the 10 criteria | Bulagala | 1.5 | 9/10, and why the 10th is honest |
-| 8 | How we test | Bulagala | 1.5 | 773 backend + 25 frontend + 14 rendered specs + 39 NL prompts |
+| 8 | How we test | Bulagala | 1.5 | 789 backend + 25 frontend + 14 rendered specs + 39 NL prompts |
 | 9 | **Performance: how it scales** | Bulagala | 1.5 | 1000× the data costs 2.3× the time |
 | 10 | **Performance: the bottleneck we found and fixed** | Daishika | 2 | 26× faster for 0.2 MiB — the star slide |
 | 11 | Where the time actually goes | Bulagala | 1 | *(droppable)* Connection > query below 100k rows |
 | 12 | **NL accuracy on a frozen benchmark** | Daishika | 1.5 | And that "asked a question" is a *good* outcome |
 | 13 | Chart quality, three ways | Chandrasiri | 1 | Type / spec / legibility scored separately |
-| 14 | Bugs the measurement found | Daishika | 1.5 | *(droppable)* Four real defects tests missed |
+| 14 | Bugs the measurement found | Daishika | 1.5 | *(droppable)* Seven real defects the tests missed |
 | 15 | **Known limits, stated plainly** | Bulagala | 1 | Joins, scale ceiling, concurrency |
 | 16 | Deployment | Bulagala | 1 | *(droppable)* CodeBuild → ECR → CodeDeploy → EC2 |
 | 17 | **Where we are: ~80%** | Daishika | 1.5 | The table in §7, not a bare number |
@@ -106,8 +106,8 @@ Present it as a pyramid with real counts, and be explicit about the hole.
 
 | Layer | What | Count | Command |
 |---|---|---|---|
-| Unit + integration | Backend services, agent, API, MCP | **773 passing**, ~49 s | `uv run pytest tests/ -q` |
-| Contract | MCP typed envelopes, HTTP error taxonomy | in the 773 | `pytest tests/test_mcp_envelope.py` |
+| Unit + integration | Backend services, agent, API, MCP | **789 passing**, ~55 s | `uv run pytest tests/ -q` |
+| Contract | MCP typed envelopes, HTTP error taxonomy | in the 789 | `pytest tests/test_mcp_envelope.py` |
 | Render | 14 reference specs compiled and drawn through the **real Vega-Lite compiler and Vega runtime**, asserting the geometry actually produced | **14/14** | `npm run verify:specs` |
 | Frontend logic | Pure-logic tests, no new dependency (`node --test`) | **25 passing** | `npm test` |
 | Types | TypeScript strict, Python hints | clean | `tsc -b` |
@@ -172,8 +172,8 @@ Tell it as a story in four beats:
 | 500,000 | 1,100 ms | 50 ms | 22.0× |
 | 1,000,000 | 2,099 ms | 81 ms | **26.1×** |
 
-> **"26 times faster, for 0.2 MiB of extra memory, with no behaviour change — 773 tests pass
-> either way, and a test asserts both paths return identical results."**
+> **"26 times faster, for 0.2 MiB of extra memory, with no behaviour change — the whole suite
+> passes either way, and a test asserts both paths return identical results."**
 
 Expect: *"why 0.2 MiB and not 133?"* → *"Arrow-backed pandas shares the buffers, so the
 conversion is near-zero-copy. We measured real working set rather than trusting the logical
@@ -219,10 +219,32 @@ Then the outcome table, and make the point that **the categories are not equally
 > **"We report `wrong` separately and never average it away, because for a data tool a confident
 > wrong answer is far worse than a question."**
 
-Be ready to name the one remaining `wrong` yourself: *"'Forecast next year's rainfall' returns a
-historical trend instead of saying we don't forecast. It's on the board as an open defect."*
-Volunteering your worst case is the single most credibility-positive move available in a
-mid-evaluation.
+Then the result, from the run on 16 August:
+
+| Outcome | Cases | |
+|---|---|---|
+| Answered correctly | **32 / 39** | 82.1% |
+| Asked a clarifying question | 7 | 17.9% — every one on a prompt where asking is correct |
+| Over-asked | **0** | |
+| **Wrong** | **0** | |
+
+**Re-run this the morning of the presentation and use that run's numbers.** The planner is a
+hosted model; successive runs of the identical suite gave 29, 31, 32, 33 and 32 correct as the
+fixes landed, and the median latency moved between 7.2 s and 11.6 s on API variance alone. If
+asked: *"it is not deterministic, so we quote the counts and the shape of the failures rather
+than a percentage to one decimal place — and we re-run before we present."*
+
+**Do not claim the planner is 100% accurate.** The honest claim is narrower and stronger:
+*"nothing in this set produces a confident wrong answer today, and the set is small enough that
+we keep adding to it."*
+
+The last `wrong` was closed on 16 August, and the story is worth telling because it is the one
+an evaluator will find persuasive: *"asked to forecast next year's rainfall, we produced a
+perfectly good **historical** trend and called it the answer. The chart was right; the question
+was not the one asked. We now decline and offer the historical view as a choice."*
+
+Volunteering how you failed, and what you changed, is the single most credibility-positive move
+available in a mid-evaluation.
 
 Also say what the benchmark unblocks: it is the **Week-3 shared deliverable** the roadmap has
 been carrying, and the **held-out set the planner fine-tune track was blocked on**.
@@ -237,6 +259,40 @@ been carrying, and the **held-out set the planner fine-tune track was blocked on
 | Spec validity | **10/10** | Against the **real Vega-Lite v6 JSON schema**, not our own checks |
 | Legibility guards | **3/3** | Series ceilings, 40-slice pie, empty-result disclosure |
 | Render | **14/14** | Compiled and drawn through the actual Vega-Lite + Vega runtime |
+
+### Slide 14 — what measuring found *(droppable, but your best slide if there is time)*
+
+> *"We had 759 passing tests. Building the harness found seven defects. All seven are fixed, and
+> the suite is now 789."*
+
+Put the table up, then tell **one** of them properly:
+
+| Defect | Now |
+|---|---|
+| `is_null` / `is_not_null` were advertised and never implemented | ✅ Fixed |
+| Every query re-crossed the pandas→DuckDB boundary | ✅ Fixed, 26× |
+| "maximum" read as a ranking superlative, blocking ordinary questions | ✅ Fixed |
+| Every boxplot spec was invalid against the Vega-Lite schema | ✅ Fixed |
+| Empty results drew a normal-looking chart and said nothing | ✅ Fixed |
+| The system stopped to ask about 2 missing rows in 891 | ✅ Fixed |
+| Out-of-scope requests answered instead of declined | ✅ Fixed |
+
+**Tell the first one**, because it shows what a benchmark does that a test suite cannot:
+
+> *"`is_null` and `is_not_null` were in our allow-list from the beginning, and validation accepted
+> them — but the SQL builder had no rule for either. So a plan that validated perfectly crashed
+> inside the engine, and it crashed as a* retryable *error, which put the agent in a loop
+> re-running a plan that could never work. No unit test found it, because nobody thought to write
+> it down. The benchmark found it because the planner chose that operator on a real question
+> about a real dataset."*
+
+Worth adding, if the room is engaged: *"the over-asking bug was **hiding** it — the system paused
+to ask about two missing rows before execution was ever reached. Fixing the friction exposed the
+correctness bug underneath."*
+
+If asked why the tests missed it: *"tests check what you thought to check. That is an argument for
+adding measurement, not against the suite — and every fix shipped with regression tests, which is
+why the suite is now 779."*
 
 ---
 
@@ -259,7 +315,7 @@ in this order.
 | Preprocessing / cleaning | 8 | 70% | 5.6 | 14 risk-tiered ops, **not surfaced in the UI** |
 | Backend API + persistence | 8 | 100% | 8.0 | 46 endpoints, PostgreSQL, Alembic |
 | Deployment | 6 | 90% | 5.4 | CodeBuild → ECR → CodeDeploy → EC2; local fallback |
-| Automated testing | 8 | 65% | 5.2 | 779 backend + 25 frontend + 14 render; **no component/e2e** |
+| Automated testing | 8 | 65% | 5.2 | 789 backend + 25 frontend + 14 render; **no component/e2e** |
 | **Subtotal** | **80** | | **73.7** | **92% of the product scope** |
 
 ### Everything the remaining six weeks are for (weight 20 of 100)
@@ -292,7 +348,8 @@ Three things to say alongside it:
 
 | Limit | Honest framing |
 |---|---|
-| **One table at a time — no joins** | *"Our biggest capability gap. We measured what it would cost: a million-row join is 154 ms — about the same as a group-by we already ship. The barrier is the plan grammar, not performance, so it is a scoped piece of work rather than an open question."* |
+| **One table at a time — no joins** | *"Our biggest capability gap. We measured what it would cost: a million-row join is 154 ms — about the same as a group-by we already ship. The barrier is the plan grammar, not performance, so it is a scoped piece of work rather than an open question. And in the meantime the product **says so**: ask it to join and it declines, rather than quietly answering a narrower question."* |
+| **No forecasting or statistical modelling** | *"Descriptive only. We added a deterministic capability check for this after the benchmark caught us answering 'forecast next year's rainfall' with a historical trend — a correct chart for a question nobody asked. It now declines and offers the historical view as a choice."* |
 | **~526,000 rows / 50 MiB per upload** | *"A deliberate ceiling, not a bug — and the benchmark demonstrates it firing rather than describing it. Beyond that we would need streaming or pushdown to a real warehouse."* |
 | **Files only, no live database connections** | Architectural, and in the proposal's non-requirements |
 | **Concurrency is unmeasured** | *"Everything we have measured is single-request. It is the first thing we are adding to the harness."* |
@@ -313,7 +370,7 @@ is a gap.** Every row above has a number or a plan next to it.
 | "Why not just use ChatGPT's data analysis?" | It runs arbitrary generated Python. Ours cannot — that is the whole design. Also: MCP-first, so the same tools serve our web app *and* an external host. |
 | "Why is it 7 seconds if the query is 80 ms?" | Over 99% of the wait is the planner LLM. That ratio is exactly why the fine-tune track exists. |
 | "Is 39 prompts enough?" | No, and we say so — it is a floor and a frozen baseline, not a sufficiency claim. It is the first version of a set that grows *with new cases only*, never by removing ones that fail. |
-| "Your tests passed but you found bugs — what does that say about the tests?" | That tests check what you thought to check. Measurement found four defects in one day, three now fixed with regression tests. That is the argument for the harness, not against the suite. |
+| "Your tests passed but you found bugs — what does that say about the tests?" | That tests check what you thought to check. Measurement found seven defects, all now fixed with regression tests — including an operator we advertised and never implemented. That is the argument for adding measurement, not against the suite: it is why the suite is 789 and not 759. |
 | "What's your biggest risk?" | The usability cycle. It needs five people and three hours, and no amount of code closes it. |
 | "Who did what?" | §1 owner column. Also mention the `.mailmap` fix — one member commits under two git identities, so naive `git shortlog` undercounts them. |
 

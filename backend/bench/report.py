@@ -248,16 +248,23 @@ def main() -> None:
 
     chunks = []
     for title, path, fn in (
-        ("## Performance", args.perf, perf_tables),
-        ("## Natural-language accuracy", args.nl, nl_tables),
-        ("## Chart quality", args.chart, chart_tables),
+        ("Performance", args.perf, perf_tables),
+        ("Natural-language accuracy", args.nl, nl_tables),
+        ("Chart quality", args.chart, chart_tables),
     ):
         data = _load(path)
-        chunks.append(f"\n{title}\n")
+        chunks.append(f"\n## {title}\n")
         chunks.append(
             fn(data) if data else f"*(no results at `{path}` — run the benchmark first)*"
         )
     text = "\n".join(chunks)
+    # Everything here is published *inside* a numbered section of Docs/24, so the
+    # whole block is demoted one level. Written at natural depth above and shifted
+    # once here, rather than hard-coding `####` at ten call sites where one would
+    # eventually be missed.
+    text = "\n".join(
+        ("#" + line) if line.startswith("#") else line for line in text.split("\n")
+    )
     if args.out:
         # Always UTF-8: the tables carry em dashes and ×, and a Windows console
         # writing cp1252 mangles them into the document.
