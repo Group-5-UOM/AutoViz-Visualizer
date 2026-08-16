@@ -220,11 +220,22 @@ def main() -> None:
             raise SystemExit(f"cannot register {rel}: {registered['error']}")
         ids[name] = registered["dataset_id"]
 
-    planner = None
-    if args.model:
-        from autoviz.llm.client import GeminiPlanner
+    from autoviz.llm.client import GeminiPlanner
+    from autoviz.services import grounding
 
-        planner = GeminiPlanner(args.model)
+    # Wrapped, not replaced: the agent discards an ungrounded answer in favour of
+    # the template, so by the time a response comes back the evidence is gone.
+    # Measuring how often the composer had to be overruled needs the raw prose.
+    planner = GeminiPlanner(args.model) if args.model else GeminiPlanner()
+    raw_answers: dict[str, tuple[str, list[dict[str, Any]]]] = {}
+    _compose = planner.compose
+
+    def compose_spy(request: str, results: list[dict[str, Any]]) -> str:
+        written = _compose(request, results)
+        raw_answers[request] = (written, list(results))
+        return written
+
+    planner.compose = compose_spy  # type: ignore[method-assign]
     agent = AgentService(planner=planner, registry=registry)
 
     rows: list[dict[str, Any]] = []
@@ -236,6 +247,9 @@ def main() -> None:
             response = {"status": "failed", "errors": [f"exception: {exc}"]}
         elapsed = (time.perf_counter() - started) * 1000
         verdict = score(case, response)
+        written, seen = raw_answers.get(case["prompt"], ("", []))
+        offenders = grounding.ungrounded_numbers(written, seen) if written else []
+        checkable = bool(written) and grounding.is_checkable(seen)
         rows.append(
             {
                 "id": case["id"],
@@ -246,6 +260,13 @@ def main() -> None:
                 "latency_ms": round(elapsed, 1),
                 "outcome": verdict["outcome"],
                 "failures": verdict["failures"],
+                # What the composer wrote, and whether every figure in it could be
+                # traced back to the results. `answer` is what the user was served
+                # after the guard ran, so the two differ exactly when it fired.
+                "composed": written,
+                "answer": response.get("answer"),
+                "ungrounded": offenders,
+                "grounding_checkable": checkable,
                 "plans": _plans_of(response),
                 "chart_types": sorted(_chart_types(response)),
                 "question": response.get("question"),
@@ -273,9 +294,23 @@ def main() -> None:
     def pct(n: int) -> float:
         return round(100 * n / len(rows), 1) if rows else 0.0
 
+    composed = [r for r in rows if r["composed"]]
+    checked = [r for r in composed if r["grounding_checkable"]]
+    flagged = [r for r in checked if r["ungrounded"]]
     summary = {
         "cases": len(rows),
         "outcomes": counts,
+        # Answers whose prose asserted a figure with no source in the results.
+        # These never reached the user — the agent served the template instead —
+        # so this counts how often the guard was needed, not how often it failed.
+        "answers_composed": len(composed),
+        # Only results small enough for grounding to mean anything are counted;
+        # reporting coverage beats implying every answer was verified.
+        "answers_checked": len(checked),
+        "answers_ungrounded": len(flagged),
+        "ungrounded_pct": (
+            round(100 * len(flagged) / len(checked), 1) if checked else 0.0
+        ),
         "acceptable": ok,
         "acceptable_pct": pct(ok),
         "over_asked": counts.get("over_asked", 0),

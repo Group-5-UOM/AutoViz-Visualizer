@@ -11,7 +11,7 @@ Written 16 August 2026 against the working tree of that day. Every figure here i
 
 > **The product works end to end and is measured. Nine of ten milestone criteria are met, the
 > tenth needs five people in a room rather than more code, and as of today we can put numbers
-> on speed, accuracy and chart quality — which found seven real defects that 759 passing tests
+> on speed, accuracy and chart quality — which found eight real defects that 759 passing tests
 > had not, all now fixed.**
 
 Do not open with a percentage. Open with the demo, then justify the percentage in §7 with the
@@ -34,13 +34,13 @@ slides 6, 11, 14 and 16 — they are the "depth on request" ones.
 | 5 | **The invariant: the LLM never computes** | Daishika | 1.5 | The single most defensible design decision in the project |
 | 6 | The closed grammar, concretely | Daishika | 1 | *(droppable)* Why "injection is structurally impossible" is a claim, not a hope |
 | 7 | What's built — the 10 criteria | Bulagala | 1.5 | 9/10, and why the 10th is honest |
-| 8 | How we test | Bulagala | 1.5 | 789 backend + 25 frontend + 14 rendered specs + 39 NL prompts |
+| 8 | How we test | Bulagala | 1.5 | 820 backend + 25 frontend + 14 rendered specs + 39 NL prompts |
 | 9 | **Performance: how it scales** | Bulagala | 1.5 | 1000× the data costs 2.3× the time |
 | 10 | **Performance: the bottleneck we found and fixed** | Daishika | 2 | 26× faster for 0.2 MiB — the star slide |
 | 11 | Where the time actually goes | Bulagala | 1 | *(droppable)* Connection > query below 100k rows |
 | 12 | **NL accuracy on a frozen benchmark** | Daishika | 1.5 | And that "asked a question" is a *good* outcome |
 | 13 | Chart quality, three ways | Chandrasiri | 1 | Type / spec / legibility scored separately |
-| 14 | Bugs the measurement found | Daishika | 1.5 | *(droppable)* Seven real defects the tests missed |
+| 14 | Bugs the measurement found | Daishika | 1.5 | *(droppable)* Eight real defects the tests missed |
 | 15 | **Known limits, stated plainly** | Bulagala | 1 | Joins, scale ceiling, concurrency |
 | 16 | Deployment | Bulagala | 1 | *(droppable)* CodeBuild → ECR → CodeDeploy → EC2 |
 | 17 | **Where we are: ~80%** | Daishika | 1.5 | The table in §7, not a bare number |
@@ -95,6 +95,17 @@ Say it exactly like that, then show why it is enforceable rather than aspiration
 **This is the answer to the question every panel asks: "how do you know the AI isn't making the
 numbers up?"** It cannot. It never sees the data values, only the schema and the profile.
 
+**Then close the loop, because this is the part that is genuinely hard and we now have it.** The
+chart is computed deterministically — but an LLM still writes the *sentence* next to it, and
+until 16 August nothing checked that sentence. Our own [`Docs/16`](16-Planner-Model-Strategy.md)
+had it written down: of the four LLM jobs, three emit validated JSON and one emits free prose
+whose "failure caught by" column read **Nothing**.
+
+> *"So we made the prose checkable too. Every figure in the answer is traced back to a result
+> cell, a row count, or a caveat the system itself wrote. A number with no source means the
+> answer is thrown away and replaced by a template built straight from the results. **Every
+> number a user reads either came out of a result table or out of a sentence we wrote.**"*
+
 Have this ready as the follow-up: *"the request text is also untrusted — cell contents and column
 names are neutralised before they reach a prompt, because a CSV is an injection vector."*
 
@@ -106,8 +117,8 @@ Present it as a pyramid with real counts, and be explicit about the hole.
 
 | Layer | What | Count | Command |
 |---|---|---|---|
-| Unit + integration | Backend services, agent, API, MCP | **789 passing**, ~55 s | `uv run pytest tests/ -q` |
-| Contract | MCP typed envelopes, HTTP error taxonomy | in the 789 | `pytest tests/test_mcp_envelope.py` |
+| Unit + integration | Backend services, agent, API, MCP | **820 passing**, ~55 s | `uv run pytest tests/ -q` |
+| Contract | MCP typed envelopes, HTTP error taxonomy | in the 820 | `pytest tests/test_mcp_envelope.py` |
 | Render | 14 reference specs compiled and drawn through the **real Vega-Lite compiler and Vega runtime**, asserting the geometry actually produced | **14/14** | `npm run verify:specs` |
 | Frontend logic | Pure-logic tests, no new dependency (`node --test`) | **25 passing** | `npm test` |
 | Types | TypeScript strict, Python hints | clean | `tsc -b` |
@@ -262,8 +273,8 @@ been carrying, and the **held-out set the planner fine-tune track was blocked on
 
 ### Slide 14 — what measuring found *(droppable, but your best slide if there is time)*
 
-> *"We had 759 passing tests. Building the harness found seven defects. All seven are fixed, and
-> the suite is now 789."*
+> *"We had 759 passing tests. Measuring the system found eight defects. All eight are fixed, and
+> the suite is now 820."*
 
 Put the table up, then tell **one** of them properly:
 
@@ -276,6 +287,7 @@ Put the table up, then tell **one** of them properly:
 | Empty results drew a normal-looking chart and said nothing | ✅ Fixed |
 | The system stopped to ask about 2 missing rows in 891 | ✅ Fixed |
 | Out-of-scope requests answered instead of declined | ✅ Fixed |
+| **The prose answer was never checked against the numbers** | ✅ Fixed |
 
 **Tell the first one**, because it shows what a benchmark does that a test suite cannot:
 
@@ -315,7 +327,7 @@ in this order.
 | Preprocessing / cleaning | 8 | 70% | 5.6 | 14 risk-tiered ops, **not surfaced in the UI** |
 | Backend API + persistence | 8 | 100% | 8.0 | 46 endpoints, PostgreSQL, Alembic |
 | Deployment | 6 | 90% | 5.4 | CodeBuild → ECR → CodeDeploy → EC2; local fallback |
-| Automated testing | 8 | 65% | 5.2 | 789 backend + 25 frontend + 14 render; **no component/e2e** |
+| Automated testing | 8 | 65% | 5.2 | 820 backend + 25 frontend + 14 render; **no component/e2e** |
 | **Subtotal** | **80** | | **73.7** | **92% of the product scope** |
 
 ### Everything the remaining six weeks are for (weight 20 of 100)
@@ -370,7 +382,7 @@ is a gap.** Every row above has a number or a plan next to it.
 | "Why not just use ChatGPT's data analysis?" | It runs arbitrary generated Python. Ours cannot — that is the whole design. Also: MCP-first, so the same tools serve our web app *and* an external host. |
 | "Why is it 7 seconds if the query is 80 ms?" | Over 99% of the wait is the planner LLM. That ratio is exactly why the fine-tune track exists. |
 | "Is 39 prompts enough?" | No, and we say so — it is a floor and a frozen baseline, not a sufficiency claim. It is the first version of a set that grows *with new cases only*, never by removing ones that fail. |
-| "Your tests passed but you found bugs — what does that say about the tests?" | That tests check what you thought to check. Measurement found seven defects, all now fixed with regression tests — including an operator we advertised and never implemented. That is the argument for adding measurement, not against the suite: it is why the suite is 789 and not 759. |
+| "Your tests passed but you found bugs — what does that say about the tests?" | That tests check what you thought to check. Measurement found eight defects, all now fixed with regression tests — including an operator we advertised and never implemented, and one we had *written down in our own docs* and not acted on. That is the argument for adding measurement, not against the suite: it is why the suite is 820 and not 759. |
 | "What's your biggest risk?" | The usability cycle. It needs five people and three hours, and no amount of code closes it. |
 | "Who did what?" | §1 owner column. Also mention the `.mailmap` fix — one member commits under two git identities, so naive `git shortlog` undercounts them. |
 

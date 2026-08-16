@@ -131,7 +131,7 @@
 
 ### Natural-language accuracy
 
-*39 frozen prompts, planner `AUTOVIZ_PLANNER_MODEL default`, run 2026-08-16T13:02:31.*
+*39 frozen prompts, planner `AUTOVIZ_PLANNER_MODEL default`, run 2026-08-16T13:54:51.*
 
 | Outcome | Cases | Share | Meaning |
 |---|---|---|---|
@@ -141,7 +141,11 @@
 | **Over-asked** | 0 | 0.0% | paused on a request it could have answered |
 | **Wrong** | 0 | 0.0% | answered, and the answer was not the question asked |
 
-End-to-end latency including the planner LLM: median **11.5 s**, p90 28.0 s, max 39.0 s.
+End-to-end latency including the planner LLM: median **17.9 s**, p90 39.1 s, max 82.3 s.
+
+**Answer grounding:** 32 answers were composed by the planner, of which **29** described a result small enough to verify (the rest exceeded `MAX_GROUNDABLE_CELLS`). Of those, **0 (0.0%)** asserted a figure with no source in the results and were replaced by the deterministic summary.
+
+The false-positive side is the one to watch: a check that discards *correct* answers is worse than no check, because the damage is invisible to the user. An earlier version of this module flagged 3 of 32 — all three wrongly.
 
 ### Chart quality
 

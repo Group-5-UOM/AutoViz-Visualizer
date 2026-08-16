@@ -19,18 +19,21 @@ the repository, it says so.
 > | Largest upload, 11-column table | **~526,000 rows** (50 MiB ceiling binds first) |
 > | Frozen NL benchmark | **39 prompts** — closes the outstanding Week-3 deliverable |
 > | Chart quality | 14/14 type accuracy · **10/10** specs valid against the real Vega-Lite v6 schema · 3/3 legibility guards |
-> | Backend tests | **759 → 789** |
+> | Backend tests | **759 → 820** |
 >
-> **Building it found seven defects the suite did not. All seven are now fixed**, each with
+> **Building it found eight defects the suite did not. All eight are now fixed**, each with
 > regression tests. The most severe: `is_null` and `is_not_null` were in `FILTER_OPS` and
 > accepted by validation from the beginning, but `build_sql` had no rule for either — so a plan
 > that validated cleanly crashed inside the engine, and did so as a *retryable* error, which put
 > the agent in a backoff loop re-running a plan that could never succeed.
 >
-> The last one closed was the one that mattered most for a data tool's credibility: asked to
-> *"Forecast next year's rainfall"*, the system produced a valid **historical** trend and
-> presented it as the answer. A deterministic capability check now declines and offers the
-> nearest supported thing, so the substitution is the user's choice rather than a silent one.
+> Two mattered most for a data tool's credibility. Asked to *"Forecast next year's rainfall"*,
+> the system produced a valid **historical** trend and presented it as the answer; a deterministic
+> capability check now declines and offers the nearest supported thing, so the substitution is the
+> user's choice. And the prose answer — the part a user reads first — was the one LLM output
+> nothing validated, a hole [`Docs/16 §1.1`](16-Planner-Model-Strategy.md) had recorded and
+> nobody had acted on; `services/grounding.py` now traces every figure in it back to the results
+> and serves a deterministic summary when one has no source.
 >
 > One performance change was made off the back of the measurement: DuckDB was re-crossing the
 > pandas boundary on every query, which was **26× more expensive than necessary** at 1M rows.
@@ -104,7 +107,7 @@ All measured on `feat/preprocessing-hardening`, which is `origin/main` minus one
 
 | | Value |
 |---|---|
-| Backend tests | **789 passing** (16 Aug; 759 on 14 Aug), 0 failing, ~55 s (`uv run pytest tests/ -q`) |
+| Backend tests | **820 passing** (16 Aug; 759 on 14 Aug), 0 failing, ~55 s (`uv run pytest tests/ -q`) |
 | Backend test modules | 55 |
 | Frontend typecheck | `tsc -b` clean (exit 0) |
 | **Frontend tests** | **25 passing** (`npm test`) as of 15 Aug — was 0 with no runner installed. Pure-logic only; component and e2e tests are still absent |

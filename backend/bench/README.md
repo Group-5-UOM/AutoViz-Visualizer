@@ -33,7 +33,7 @@ repeat counts that produced it.
 | `plans.py` | Ten real `analysis_plan`s chosen to separate costs a single "query latency" would blend: scan, filter, 1-key and 2-key grouping, high-cardinality output, holistic aggregates, a computed key, a full ranking, and a cleaning block |
 | `perf.py` | Ingest, query, per-query overhead decomposition, the Arrow-vs-pandas A/B on `execute_analysis` itself, memory, result delivery, chart building, the end-to-end pipeline, join headroom, and the shipped ceilings |
 | `nl_suite.py` | **The frozen 39-prompt benchmark.** Freezing it matters more than growing it |
-| `nl_run.py` | Runs the suite against the live agent and scores it — five outcomes, never one averaged accuracy |
+| `nl_run.py` | Runs the suite against the live agent and scores it — five outcomes, never one averaged accuracy. Also wraps `planner.compose` to capture the **raw** prose before the grounding guard can replace it, which is the only way to measure how often the composer had to be overruled (`answers_ungrounded`) |
 | `chart_quality.py` | Chart-type accuracy, spec validity against the real Vega-Lite v6 schema, legibility guards |
 | `report.py` | Turns the JSON into the Markdown tables `Docs/24 §7` publishes, so the document cannot drift from the run |
 

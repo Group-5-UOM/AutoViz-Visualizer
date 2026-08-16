@@ -24,7 +24,14 @@ from autoviz.errors import PLAN_REPAIRABLE, RETRYABLE
 from autoviz.llm.client import IntentDecision, PlannerError, PlannerLLM
 from autoviz.schema.analysis_plan import AnalysisPlan
 from autoviz.schema.clarification import Ambiguity, bind_answer
-from autoviz.services import charts, dataset, fidelity, notices as notices_svc, quality
+from autoviz.services import (
+    charts,
+    dataset,
+    fidelity,
+    grounding,
+    notices as notices_svc,
+    quality,
+)
 from autoviz.services.orchestrator import run_pipeline
 from autoviz.services.registry import REGISTRY, DatasetRegistry
 
@@ -143,22 +150,50 @@ def _normalize_note(text: str) -> str:
     return " ".join(folded.split())
 
 
+def _template_answer(results: list[dict[str, Any]]) -> str:
+    """A summary built from the results themselves, with no model in the loop.
+
+    Every figure is read straight off the result, so this is grounded by
+    construction. It is the floor the composed answer has to beat, and the thing
+    served when it does not.
+    """
+    parts = []
+    for r in results:
+        if r.get("status") == "error":
+            parts.append(f"'{r.get('task')}' failed: {'; '.join(r.get('errors') or [])}")
+        else:
+            rows = (r.get("result") or {}).get("row_count")
+            chart = (r.get("chart_spec") or {}).get("type", "table")
+            parts.append(f"'{r.get('task')}': {rows} row(s), {chart} chart.")
+    return " ".join(parts) or "No results were produced."
+
+
 def compose_response(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, Any]:
     results = state.get("chart_results") or []
     usable = [r for r in results if r.get("status") in ("ok", "partial")]
     status = "completed" if usable else "failed"
     try:
         answer = planner.compose(state["user_request"], list(results))
-    except Exception:  # grounded template fallback — composing must never fail
-        parts = []
-        for r in results:
-            if r.get("status") == "error":
-                parts.append(f"'{r.get('task')}' failed: {'; '.join(r.get('errors') or [])}")
-            else:
-                rows = (r.get("result") or {}).get("row_count")
-                chart = (r.get("chart_spec") or {}).get("type", "table")
-                parts.append(f"'{r.get('task')}': {rows} row(s), {chart} chart.")
-        answer = " ".join(parts) or "No results were produced."
+    except Exception:  # composing must never fail
+        answer = _template_answer(results)
+    else:
+        # The one LLM output nothing used to check (Docs/16 §1.1). Three of the
+        # four planner jobs emit validated JSON; this one emits the prose the
+        # user actually reads, and its "never invent values" rule was only ever
+        # an instruction. A number with no source in the results is exactly the
+        # confident-but-wrong answer this product is built to not produce, so
+        # the fluent version is discarded in favour of the grounded one.
+        #
+        # Fluency lost, correctness kept — the right way round for a data tool.
+        offenders = grounding.ungrounded_numbers(answer, list(results))
+        if offenders:
+            observability.log_event(
+                "ungrounded_answer",
+                offenders=offenders[:8],
+                n_offenders=len(offenders),
+                n_results=len(results),
+            )
+            answer = _template_answer(results)
     # Disclosures are owed regardless of who wrote the sentence. The composer is
     # asked to weave them in, but "the LLM was told to" is not a guarantee — and a
     # caveat that disappears because a model was terse or the call failed is the

@@ -210,6 +210,18 @@ def nl_tables(d: dict[str, Any]) -> str:
         f"**{lat['median'] / 1000:.1f} s**, p90 {lat['p90'] / 1000:.1f} s, "
         f"max {lat['max'] / 1000:.1f} s."
     )
+    if s.get("answers_composed"):
+        checked = s.get("answers_checked", s["answers_composed"])
+        parts.append(
+            f"\n**Answer grounding:** {s['answers_composed']} answers were composed by the "
+            f"planner, of which **{checked}** described a result small enough to verify "
+            f"(the rest exceeded `MAX_GROUNDABLE_CELLS`). Of those, "
+            f"**{s['answers_ungrounded']} ({s['ungrounded_pct']}%)** asserted a figure with no "
+            "source in the results and were replaced by the deterministic summary.\n\n"
+            "The false-positive side is the one to watch: a check that discards *correct* "
+            "answers is worse than no check, because the damage is invisible to the user. "
+            "An earlier version of this module flagged 3 of 32 — all three wrongly."
+        )
     bad = [c for c in d["cases"] if c["outcome"] in ("wrong", "over_asked")]
     if bad:
         parts.append("\n**Every case that did not pass:**\n")

@@ -45,7 +45,7 @@ Mentor: Dr. Chathuranga Hettiaracchi · TA: Shaveen Silva
 | [21 — Project Status](21-Project-Status.md) | *(**start here** — whole-project status, verified against the code — not from a PDF)* |
 | [22 — PDF Export and the FR-19 State Audit](22-Export-and-UI-States.md) | *(the dependency-free PDF writer, and the loading/empty/success/validation/recoverable/retry audit that closed criteria 7 and 8 — not from a PDF)* |
 | [23 — Usability Evaluation](23-Usability-Evaluation.md) | *(heuristic evaluation — 14 findings, 6 fixed — plus the ready-to-run test protocol in [`usability/session-pack.md`](usability/session-pack.md). The sessions themselves are not run — not from a PDF)* |
-| [24 — Performance and Evaluation](24-Performance-and-Evaluation.md) | *(the project's first measured numbers — latency, scaling, memory, ceilings, NL accuracy, chart quality — and the six defects measuring them found. Harness in [`backend/bench/`](../backend/bench/) — not from a PDF)* |
+| [24 — Performance and Evaluation](24-Performance-and-Evaluation.md) | *(the project's first measured numbers — latency, scaling, memory, ceilings, NL accuracy, chart quality, answer grounding — and the eight defects measuring them found. Harness in [`backend/bench/`](../backend/bench/) — not from a PDF)* |
 | [25 — Mid-Evaluation Presentation](25-Mid-Evaluation-Presentation.md) | *(what to present and in what order: slide plan, demo script, the numbers to put on screen, rehearsed Q&A, and the completion arithmetic — not from a PDF)* |
 
 ## At a Glance
@@ -53,5 +53,5 @@ Mentor: Dr. Chathuranga Hettiaracchi · TA: Shaveen Silva
 - **Stack:** Next.js (frontend) · FastAPI (backend) · Pandas / DuckDB (data engine) · Vega-Lite (charts) · Model Context Protocol (model-independent tool access)
 - **Architecture:** Five layers — user interaction, MCP/API access, intelligence core, deterministic execution, storage — reused across a standalone web client and external MCP hosts (ChatGPT, Claude, etc.).
 - **Timeline:** 12 July 2026 → 30 October 2026 (14 weeks, traditional SDLC). MVP (~85% of scope) targeted before the Week 8 mid-evaluation.
-- **Status (16 Aug 2026):** 789 backend tests · 25 frontend tests · 18 MCP tools · 46 HTTP endpoints · 10 chart types · 14 cleaning operations · 8 input formats. **Nine of the ten** 18-August milestone criteria met; the outstanding one is a documented usability cycle — see [Doc 21](21-Project-Status.md).
+- **Status (16 Aug 2026):** 820 backend tests · 25 frontend tests · 18 MCP tools · 46 HTTP endpoints · 10 chart types · 14 cleaning operations · 8 input formats. **Nine of the ten** 18-August milestone criteria met; the outstanding one is a documented usability cycle — see [Doc 21](21-Project-Status.md).
 - **Measured (16 Aug 2026):** a 1M-row question answered and charted in **68–78 ms**; 1000× the data costs **2.3×** the time; **39** frozen NL benchmark prompts; **10/10** chart specs valid against the real Vega-Lite schema — see [Doc 24](24-Performance-and-Evaluation.md).

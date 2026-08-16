@@ -233,6 +233,98 @@ strongest argument in the project for the local Qwen fine-tune in `AutoViz-Plann
 optimising the analysis engine further would be invisible to users, and the fine-tune track is
 where the remaining latency actually lives.
 
+### 4.4 Is the prose answer grounded in the numbers?
+
+The chart and the table are computed deterministically. **The sentence next to them was not
+checked at all** until 16 August — and it is the part most users read first.
+
+[`Docs/16 §1.1`](16-Planner-Model-Strategy.md) had this documented as a known asymmetry: of the
+four `PlannerLLM` jobs, `classify`, `generate_plan` and `style_patch` all emit JSON that is
+validated before it can reach anyone, while `compose` emits free prose whose "failure caught by"
+column read **Nothing**. Its system prompt does say *"ground every number strictly in the
+provided result tables — never estimate, extrapolate, or invent values"*, but that is an
+instruction, and instruction-following is precisely what failed in defect 7.
+
+[`services/grounding.py`](../backend/src/autoviz/services/grounding.py) closes it the way the
+rest of the system closes things — deterministically, with no second model:
+
+| Treated as grounded | Why |
+|---|---|
+| Any value in a result cell, and its rounded forms | A composer rounds; rounding is not invention |
+| ×100 / ÷100 of a cell value | A rate reported as a percentage is a unit change |
+| `row_count`, `input_rows`, `output_rows`, per-op `rows_affected` | The scope figures a truthful summary quotes |
+| Literals from the plan's own filters | "fares above **100**" is in the request, never in a cell |
+| Figures inside notices | That prose is written by the system from the same counts |
+| Whole numbers ≤ the largest row count on screen | Counts and ordinals, never measurements |
+
+Anything left over is a figure with no visible source, and the fluent answer is **replaced by the
+deterministic template summary**, which is grounded by construction. The charts and the numbers
+behind them are untouched — only the prose is.
+
+**The guard has a stated blind spot, and measuring it is what put it there.** Above
+`MAX_GROUNDABLE_CELLS = 2,000` result cells the check is switched off and the answer is reported
+as grounded. Two measurements forced that:
+
+| Result size | Cost to check | Catches an invented `45.67`? |
+|---|---|---|
+| 3 rows × 3 cols | 0.09 ms | yes |
+| 660 rows × 3 cols | 9.9 ms | yes |
+| 5,000 rows × 3 cols | 248 ms | **no** |
+| 100,000 rows × 3 cols | 5,676 ms | **no** |
+
+The cost is the lesser problem. The real one is that **the check stops working long before it
+gets expensive**: by a few thousand rows the set of admissible values is dense enough that
+invented figures match it by coincidence, so it would return "grounded" regardless. A check with
+no power that also costs 5.7 seconds is worse than no check, so it is bounded to the regime where
+it bites — which is the regime composers actually quote from, since answers summarise
+*aggregates*, not raw extracts. `is_checkable()` exposes the distinction so coverage can be
+reported rather than assumed.
+
+**Two measurements make this a guard rather than a guess.**
+
+*It catches fabrication:* an answer asserting `42.99` against a result set containing no such
+value is rejected, and the user is served the template instead
+([`tests/test_grounding.py`](../backend/tests/test_grounding.py), 31 tests).
+
+*It does not cost good answers:* after the fixes below, **0 of the 29 checkable answers across
+the 39-prompt benchmark were flagged** (32 were composed; 3 described results above the cell
+budget). But that is only true of the *second* version — the benchmark proved the first one did
+cost good answers, which is the part worth reading.
+
+### The false positives, and why they are the important half
+
+The first version of this module was spot-checked against six real answers, flagged none, and
+looked finished. Run over the full 39-prompt benchmark it flagged **3 of 32 composed answers, and
+all three were correct**. Shipping on the spot-check would have silently downgraded roughly one
+answer in ten.
+
+| What was flagged | Why it was wrong |
+|---|---|
+| A survival rate written as `0.968085` | The stored value is `0.9680851063829787`. The check expanded each data value to a *fixed* set of roundings (0–3 dp) and six decimal places was not among them |
+| The years `2012`–`2015` in a trend | A `year_start` derive stores `2012-01-01T00:00:00`. The composer writes the year; nothing connected the two |
+| `2014` at the end of a sentence | The number regex swallowed the full stop, so the token was `2014.` — a different string from the `2014` in the date filter |
+
+The fix for the first is a principle, not a patch: **round the data to the precision the prose
+used, never the prose to a precision the data happens to have.** No fixed expansion of a stored
+value can anticipate how a composer chooses to print it. The other two are named rules — years
+are read out of timestamps and date-range filters, and a decimal point only counts when digits
+follow it. All three shapes are now regression tests.
+
+The number to watch is the false-positive rate, not the catch rate. **A grounding check that
+discards correct answers is worse than no check at all**, because the damage is invisible: the
+user simply gets a worse answer and never learns why. That is why the check fails open above its
+budget, why every rejection is logged as an `ungrounded_answer` event, and why `answers_ungrounded`
+in §7 is reported on every benchmark run rather than measured once.
+
+This is also the clearest argument in this document for the harness existing at all: **the guard
+against the LLM being unreliable was itself unreliable, and only running it over real output
+showed that.**
+
+The claim this earns is narrow and worth stating exactly — and the qualifier is not optional:
+**for any answer summarising an aggregate result, every number a user reads either came out of a
+result table or out of a sentence the system wrote itself.** Answers over very large raw extracts
+are not covered, and the code says so rather than implying otherwise.
+
 ---
 
 ## 5. What the ceilings are, and where they bite
@@ -290,9 +382,14 @@ performance. That converts a roadmap argument from opinion into arithmetic.
 
 ## 6. What the measurement exposed
 
-**Seven defects were found by building this harness, not by the 759-test suite** that was passing
-before it existed. **All seven are real and all seven are now fixed**, each with regression
-tests — the suite is **789**.
+**Eight defects were found by building this harness, not by the 759-test suite** that was passing
+before it existed. **All eight are real and all eight are now fixed**, each with regression
+tests — the suite is **820**.
+
+The eighth is different in kind from the other seven and worth reading first: it was not found by
+a failing case at all. It was found by *reading the project's own documentation*, where
+[`Docs/16 §1.1`](16-Planner-Model-Strategy.md) had recorded — in a table about something else
+entirely — that the LLM output the user actually reads was the one output nothing validated.
 
 | # | Defect | Status |
 |---|---|---|
@@ -303,6 +400,7 @@ tests — the suite is **789**.
 | 5 | **An empty result rendered as a normal chart.** A query matching zero rows produced a valid spec, drew empty axes, and said nothing. Now carries an `empty_result` advisory notice, on the spec's own subtitle so a saved dashboard keeps the explanation | ✅ Fixed, 4 regression tests |
 | 6 | **Over-asking on trivial defects.** "Compare average fare across embarkation towns" paused the whole analysis to ask about **2 missing values in 891 rows (0.2%)** | ✅ Fixed — missing-value questions now need `ROW_DROP_NOTICE_FRACTION` (5%) before they interrupt; below that the finding is disclosed through the notice channel instead. Judgement call; threshold named and shared with row-removal |
 | 7 | **Out-of-scope requests answered instead of declined.** "Forecast next year's rainfall" returned a historical trend and presented it as the answer | ✅ Fixed — a deterministic capability check now declines *and offers the nearest supported thing*, so the substitution is the user's choice rather than a silent one. 10 regression tests. See below |
+| 8 | **The prose answer was never checked against the numbers.** `compose` is the one `PlannerLLM` job emitting free text rather than validated JSON, so a figure it invented reached the user unopposed. Documented as a known hole in [`Docs/16 §1.1`](16-Planner-Model-Strategy.md) — "failure caught by: **Nothing**" | ✅ Fixed — `services/grounding.py` traces every figure back to the results and falls back to the deterministic summary when one has no source. 31 regression tests; 0 of 29 checkable benchmark answers flagged. [§4.4](#44-is-the-prose-answer-grounded-in-the-numbers) |
 
 Defects 1 and 6 are worth reading together, because they show why a benchmark finds things a
 test suite does not. The over-ask in #6 had been *masking* #1: the cleaning gate paused before
@@ -510,7 +608,7 @@ governor and a 512 MiB registry budget. That is the first thing to add to this h
 
 ### Natural-language accuracy
 
-*39 frozen prompts, planner `AUTOVIZ_PLANNER_MODEL default`, run 2026-08-16T13:02:31.*
+*39 frozen prompts, planner `AUTOVIZ_PLANNER_MODEL default`, run 2026-08-16T13:54:51.*
 
 | Outcome | Cases | Share | Meaning |
 |---|---|---|---|
@@ -520,7 +618,11 @@ governor and a 512 MiB registry budget. That is the first thing to add to this h
 | **Over-asked** | 0 | 0.0% | paused on a request it could have answered |
 | **Wrong** | 0 | 0.0% | answered, and the answer was not the question asked |
 
-End-to-end latency including the planner LLM: median **11.5 s**, p90 28.0 s, max 39.0 s.
+End-to-end latency including the planner LLM: median **17.9 s**, p90 39.1 s, max 82.3 s.
+
+**Answer grounding:** 32 answers were composed by the planner, of which **29** described a result small enough to verify (the rest exceeded `MAX_GROUNDABLE_CELLS`). Of those, **0 (0.0%)** asserted a figure with no source in the results and were replaced by the deterministic summary.
+
+The false-positive side is the one to watch: a check that discards *correct* answers is worse than no check, because the damage is invisible to the user. An earlier version of this module flagged 3 of 32 — all three wrongly.
 
 ### Chart quality
 

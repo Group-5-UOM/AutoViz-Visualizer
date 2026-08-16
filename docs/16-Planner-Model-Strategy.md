@@ -37,11 +37,37 @@ different tolerance for a weaker model:
 | `classify` | Route intent, split into ≤6 tasks | `IntentDecision` JSON | Pydantic validation | **No** — short output, closed label set |
 | `generate_plan` | Task → `AnalysisPlan` | Plan JSON | `services/validation.py` + repair loop | **Partly** — schema is easy to enforce, *column choice* is judgement |
 | `style_patch` | NL → style diff | Partial `ChartStyle` | `ChartStyle` validation | **No** — smallest, most constrained job |
-| `compose` | Results → prose answer | Free text | **Nothing** | **Yes** — ungrounded prose is where small models hallucinate |
+| `compose` | Results → prose answer | Free text | `services/grounding.py` *(added 16 Aug — see below)* | **Yes** — ungrounded prose is where small models hallucinate |
 
 This table is the single most important input to the decision. Three of the four jobs emit
-**validated JSON**, and every one of those is checked before it can affect the user. `compose` is
-the odd one out: it is free text, and nothing downstream verifies it.
+**validated JSON**, and every one of those is checked before it can affect the user. `compose`
+**was** the odd one out: free text, with nothing downstream verifying it — which meant the one
+output the user actually reads was the one output nobody checked.
+
+> ### Closed, 16 August 2026 — `services/grounding.py`
+>
+> The asymmetry is gone. Every figure in a composed answer is now traced back to the results
+> before the answer is served: cell values and their rounded and percent-converted forms, the
+> row-accounting integers, the literals the user's own filters named, figures inside notices the
+> system wrote itself, and small integers that can only be counts or ordinals of what is on
+> screen. **A number matching none of those has no visible source, and the fluent answer is
+> discarded in favour of the deterministic template summary** — which is grounded by
+> construction because it is read straight off the result.
+>
+> Fluency lost, correctness kept. For a data tool that is the right way round, and it is the same
+> trade the rest of the architecture already makes.
+>
+> The check is deliberately built to **under-report**: a false positive throws away a good
+> answer, so the grounded set is generous and only a figure with no traceable source is acted on.
+> Measured at **0 false positives** across the 39-prompt benchmark (`Docs/24 §4.4`), and every
+> rejection is logged as an `ungrounded_answer` event, so the rate is observable rather than
+> assumed.
+>
+> **This changes the fine-tune calculus below.** §1.1 argued against fine-tuning `compose`
+> because "nothing downstream would catch it". Something does now — so the residual risk of a
+> weaker composer is a *terser* answer, not a wrong one. That does not make fine-tuning `compose`
+> attractive, but it stops it being unsafe, and §3's Option C reasoning should be re-read with
+> that in mind.
 
 That asymmetry means the right answer is almost certainly **not** one model for all four.
 
