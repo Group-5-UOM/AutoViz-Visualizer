@@ -37,3 +37,6 @@ class User(Base):
     datasets = relationship(
         "UserDataset", back_populates="user", cascade="all, delete-orphan"
     )
+    mcp_keys = relationship(
+        "McpKey", back_populates="user", cascade="all, delete-orphan"
+    )

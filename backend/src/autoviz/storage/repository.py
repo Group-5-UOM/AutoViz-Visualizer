@@ -6,6 +6,7 @@ route goes through.
 """
 
 import datetime
+import hashlib
 import secrets
 
 from sqlalchemy import select
@@ -17,6 +18,7 @@ from autoviz.models import (
     Conversation,
     Dashboard,
     DashboardWidget,
+    McpKey,
     OAuthAccount,
     PasswordResetToken,
     SavedChart,
@@ -421,4 +423,93 @@ def set_conversation(
 
 def delete_conversation(session: Session, conversation: Conversation) -> None:
     session.delete(conversation)
+    session.commit()
+
+
+# --- MCP connection keys -----------------------------------------------------
+#
+# The plaintext key exists only in the response that creates it. Everything
+# stored and everything looked up is the SHA-256, so a dump of this table yields
+# no working links (`Docs/26 §4.1`).
+
+
+def hash_mcp_key(key: str) -> str:
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def create_mcp_key(
+    session: Session,
+    user_id: str,
+    *,
+    label: str = "",
+    profile: str = "host",
+    expires_at: datetime.datetime | None = None,
+) -> tuple[McpKey, str]:
+    """Mint a key. Returns (row, plaintext) — the plaintext is never stored.
+
+    32 bytes of CSPRNG in base64url: not guessable, and URL-safe because it goes
+    in a path segment.
+    """
+    plaintext = secrets.token_urlsafe(32)
+    row = McpKey(
+        user_id=user_id,
+        token_hash=hash_mcp_key(plaintext),
+        label=label,
+        profile=profile,
+        expires_at=expires_at,
+    )
+    session.add(row)
+    session.commit()
+    return row, plaintext
+
+
+def get_usable_mcp_key(session: Session, key: str) -> McpKey | None:
+    """The row for `key`, or None if unknown, revoked or expired.
+
+    One lookup by indexed hash — no scan, so the work does not depend on how
+    many keys exist and cannot be timed to learn anything about them.
+    """
+    row = session.scalar(select(McpKey).where(McpKey.token_hash == hash_mcp_key(key)))
+    if row is None or not row.is_usable():
+        return None
+    return row
+
+
+def list_mcp_keys(session: Session, user_id: str) -> list[McpKey]:
+    """Every key the user has minted, revoked ones included — a revoked key that
+    vanishes from the list gives no way to confirm the revocation happened."""
+    return list(
+        session.scalars(
+            select(McpKey).where(McpKey.user_id == user_id).order_by(McpKey.created_at)
+        )
+    )
+
+
+def revoke_mcp_key(session: Session, user_id: str, key_id: str) -> bool:
+    """Revoke by id, scoped to the owner. Idempotent."""
+    row = session.scalar(
+        select(McpKey).where(McpKey.id == key_id, McpKey.user_id == user_id)
+    )
+    if row is None:
+        return False
+    if row.revoked_at is None:
+        row.revoked_at = _now()
+        session.commit()
+    return True
+
+
+# How stale `last_used_at` may get. A write per tool call would turn a read-only
+# analysis into a stream of UPDATEs; a minute is precise enough for "is this old
+# link still live?", which is the only question the column answers.
+MCP_KEY_TOUCH_INTERVAL = datetime.timedelta(minutes=1)
+
+
+def touch_mcp_key(session: Session, row: McpKey) -> None:
+    now = _now()
+    last = row.last_used_at
+    if last is not None and last.tzinfo is None:
+        last = last.replace(tzinfo=datetime.timezone.utc)
+    if last is not None and now - last < MCP_KEY_TOUCH_INTERVAL:
+        return
+    row.last_used_at = now
     session.commit()

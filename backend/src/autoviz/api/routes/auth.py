@@ -6,6 +6,7 @@ Identities live in ``oauth_accounts`` (provider + provider_user_id / Google sub)
 
 from __future__ import annotations
 
+import datetime
 import logging
 from urllib.parse import urlencode
 
@@ -389,3 +390,100 @@ def oauth_google_callback(
         detail = exc.detail if isinstance(exc.detail, str) else "Google sign-in failed"
         _log.warning("google oauth failed: %s", detail)
         return _frontend_oauth_redirect(error=detail)
+
+
+# --- MCP connection keys -----------------------------------------------------
+#
+# The link a user pastes into Gemini or Claude to give it access to *their*
+# AutoViz data (`Docs/26`). These live on the auth router because they are
+# account credentials, not data — and deliberately in their own table, so
+# revoking one does not log the person out of their browser.
+
+
+class McpKeyCreate(BaseModel):
+    label: str = Field(default="", max_length=120)
+    # `host` excludes AutoViz's own agent tools: a foreign host has its own
+    # model, and calling ours from inside it is a costly passthrough.
+    profile: str = Field(default="host", pattern="^(host|default|advanced)$")
+    expires_in_days: int | None = Field(default=90, ge=1, le=3650)
+
+
+class McpKeyOut(BaseModel):
+    id: str
+    label: str
+    profile: str
+    created_at: str | None = None
+    last_used_at: str | None = None
+    expires_at: str | None = None
+    revoked: bool = False
+
+
+class McpKeyCreated(McpKeyOut):
+    """The one and only response that carries the key itself."""
+
+    key: str
+    url: str
+
+
+def _key_out(row) -> dict:
+    def iso(value):
+        return value.isoformat() if value is not None else None
+
+    return {
+        "id": row.id,
+        "label": row.label,
+        "profile": row.profile,
+        "created_at": iso(row.created_at),
+        "last_used_at": iso(row.last_used_at),
+        "expires_at": iso(row.expires_at),
+        "revoked": row.revoked_at is not None,
+    }
+
+
+def _connection_url(key: str) -> str:
+    """The URL the user pastes into their MCP host.
+
+    Ends in `/mcp` because that is what every host's placeholder shows and what
+    a client may append or normalise; the secret therefore sits in the middle.
+    """
+    base = settings.AUTOVIZ_API_PUBLIC_URL.rstrip("/")
+    # The MCP endpoint is mounted on the app root, beside /api rather than under
+    # it, so strip a trailing /api if the public URL carries one.
+    if base.endswith("/api"):
+        base = base[: -len("/api")]
+    return f"{base}/c/{key}/mcp"
+
+
+@router.post("/mcp-keys", response_model=McpKeyCreated, status_code=201)
+def create_mcp_key(
+    body: McpKeyCreate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Mint a connection link. The key is returned **once** and never again."""
+    expires_at = None
+    if body.expires_in_days is not None:
+        expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+            days=body.expires_in_days
+        )
+    row, plaintext = repository.create_mcp_key(
+        db, user.id, label=body.label, profile=body.profile, expires_at=expires_at
+    )
+    return {**_key_out(row), "key": plaintext, "url": _connection_url(plaintext)}
+
+
+@router.get("/mcp-keys", response_model=list[McpKeyOut])
+def list_mcp_keys(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Every key this user has minted. Never includes the key itself."""
+    return [_key_out(r) for r in repository.list_mcp_keys(db, user.id)]
+
+
+@router.delete("/mcp-keys/{key_id}", status_code=204)
+def revoke_mcp_key(
+    key_id: str,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Revoke a key. Scoped to the owner, and idempotent."""
+    if not repository.revoke_mcp_key(db, user.id, key_id):
+        raise HTTPException(status_code=404, detail="No such connection key")
