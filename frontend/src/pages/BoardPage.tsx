@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
 import { NoticeStack } from '../components/layout/NoticeStack';
-import { AccountPasswordModal } from '../components/layout/AccountPasswordModal';
 import { AddPanel } from '../components/layout/AddPanel';
 import { SetupPanel, buildChartPrompt } from '../components/layout/SetupPanel';
 import { FilterPanel } from '../components/layout/FilterPanel';
@@ -100,7 +99,6 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
-  const [passwordOpen, setPasswordOpen] = useState(false);
   const [hasPassword, setHasPassword] = useState(true);
   const [styleWidgetId, setStyleWidgetId] = useState<string | null>(null);
   const [styleBusy, setStyleBusy] = useState(false);
@@ -382,7 +380,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
 
   const handleSidebarSelect = (id: SidebarItemId) => {
     if (id === 'settings') {
-      setPasswordOpen(true);
+      navigate('/settings');
       return;
     }
     if (id === 'data') {
@@ -603,17 +601,9 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         saveError={saveError}
         shareDashboardId={dashboard.dashboardId}
         onNewDashboard={handleNewDashboard}
-        onSetPassword={!hasPassword ? () => setPasswordOpen(true) : undefined}
-        onOpenSettings={() => navigate('/settings#connections')}
+        onSetPassword={!hasPassword ? () => navigate('/settings#account') : undefined}
         onLogout={onLogout}
         canExport={dashboard.widgets.length > 0}
-      />
-
-      <AccountPasswordModal
-        open={passwordOpen}
-        hasPassword={hasPassword}
-        onClose={() => setPasswordOpen(false)}
-        onSaved={() => setHasPassword(true)}
       />
 
       <div className="board-body">

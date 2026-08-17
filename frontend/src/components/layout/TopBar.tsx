@@ -10,7 +10,6 @@ import {
   PanelLeft,
   Share2,
   Save,
-  Settings as SettingsIcon,
   FilePlus2,
 } from 'lucide-react';
 import type { ExportFormat } from '../../lib/exportDashboard';
@@ -36,8 +35,6 @@ interface TopBarProps {
   saveError?: string | null;
   onNewDashboard?: () => void;
   onSetPassword?: () => void;
-  /** Opens the Settings page (Connections section). */
-  onOpenSettings?: () => void;
   onLogout?: () => void | Promise<void>;
   /** Used to disable Export when the canvas has no charts. */
   canExport?: boolean;
@@ -58,7 +55,6 @@ export function TopBar({
   saveError,
   onNewDashboard,
   onSetPassword,
-  onOpenSettings,
   onLogout,
   canExport = true,
 }: TopBarProps) {
@@ -221,17 +217,6 @@ export function TopBar({
             <span className="topbar-user-name" title={userEmail || displayName}>
               {displayName}
             </span>
-            {onOpenSettings && (
-              <button
-                type="button"
-                className="topbar-icon-btn"
-                onClick={onOpenSettings}
-                title="Settings"
-                aria-label="Settings"
-              >
-                <SettingsIcon size={16} />
-              </button>
-            )}
             {onSetPassword && (
               <button
                 type="button"
