@@ -64,6 +64,27 @@ CASES: dict[str, tuple[list[dict], dict]] = {
     "donut": (_PARTS, {"type": "donut", "x": "region", "y": "revenue"}),
     "heatmap": (_GRID, {"type": "heatmap", "x": "cls", "y": "grp", "color": "n"}),
     "boxplot": (_RAW, {"type": "boxplot", "x": "cls", "y": "v"}),
+    # --- awkward data --------------------------------------------------------
+    # Every case above is well-formed: several rows, all populated, all
+    # positive. Real results are not, and three defects lived in the gap. They
+    # were all invisible to structural tests — the specs were valid, and only
+    # the scenegraph showed a blank panel or two full-height bars standing in
+    # for an empty answer. See tests/test_chart_edge_data.py.
+    "edge_line_one_point": (
+        [{"d": "2024-01-01", "v": 5.0}],
+        {"type": "line", "x": "d", "y": "v",
+         "column_types": {"d": "datetime", "v": "number"}},
+    ),
+    "edge_bar_all_null": (
+        [{"region": "north", "revenue": None}, {"region": "south", "revenue": None}],
+        {"type": "bar", "x": "region", "y": "revenue"},
+    ),
+    "edge_bar_some_null": (
+        [{"region": "north", "revenue": 300.0},
+         {"region": "south", "revenue": None},
+         {"region": "east", "revenue": 900.0}],
+        {"type": "bar", "x": "region", "y": "revenue"},
+    ),
 }
 
 

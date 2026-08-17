@@ -236,8 +236,14 @@ def primary_layer(spec: dict[str, Any]) -> dict[str, Any]:
     return layers[0] if layers else spec
 
 
-def _mark_def(chart_type: str) -> Any:
+def _mark_def(chart_type: str, row_count: int = 2) -> Any:
     """The Vega-Lite mark, as a bare name or a mark definition object."""
+    if chart_type in ("line", "area") and row_count < 2:
+        # A line through one point is a zero-length path: the panel renders with
+        # axes and nothing in it, and nothing anywhere says why. Marking the
+        # datum is the difference between "no data" and "one data point", which
+        # are very different answers to have got.
+        return {"type": chart_type, "point": True}
     if chart_type == "donut":
         # Derived from the view, not an absolute pixel count: charts size from
         # their container, so a literal innerRadius inverts at small widths.
@@ -310,6 +316,34 @@ def generate_chart(
             "warnings": [f"chart type '{chart_type}' requires channel(s): {', '.join(absent)}"],
         }
 
+    # A row missing a value in a column this chart draws cannot be plotted, and
+    # Vega-Lite drops it without a word — which is how a category disappears from
+    # a chart with nothing on screen to say it was ever there. Worse, when *every*
+    # value is missing the bars are drawn at full plot height, so an empty result
+    # looks like several large equal ones. Drop them here instead, and say so.
+    #
+    # Only the charted columns count. A result often carries extra columns, and
+    # dropping a row for a null in one the chart never touches would delete data
+    # it was perfectly able to show.
+    plotted = [
+        row for row in result_table
+        if all(row.get(col) is not None for col in channels.values())
+    ]
+    dropped = len(result_table) - len(plotted)
+    if dropped:
+        result_table = plotted
+        empty_notices.append(
+            Notice(
+                kind="unplottable_rows",
+                severity=ADVISORY,
+                note=(
+                    f"{dropped} row(s) had no value in the columns this chart draws, "
+                    "so they are not on it. The chart shows the rest."
+                ),
+                detail={"dropped_rows": dropped, "columns": sorted(channels.values())},
+            )
+        )
+
     schema_hint = chart_spec.get("column_types")  # optional {name: logical_type}
 
     def enc(col: str) -> dict[str, Any]:
@@ -328,6 +362,36 @@ def generate_chart(
             "y": {"aggregate": "count", "type": "quantitative"},
         }
     elif chart_type in _ARC_TYPES:
+        # An arc chart says "these are the parts of one whole", and the geometry
+        # takes that literally: each slice's angle is its share of the total.
+        # Two kinds of data make that meaningless, and Vega draws them anyway
+        # rather than complaining — so these are refusals, not warnings.
+        measures = [row.get(channels["y"]) for row in result_table]
+        numeric = [v for v in measures if isinstance(v, (int, float))]
+        if any(v < 0 for v in numeric):
+            # Vega sweeps a negative theta *backwards*: the slice runs the wrong
+            # way round and overlaps its neighbours. There is also no honest
+            # reading of "share of a whole" when a part is below zero.
+            return {
+                "vega_lite_spec": None,
+                "valid": False,
+                "warnings": [
+                    f"'{channels['y']}' has negative values, which a {chart_type} chart "
+                    "cannot show — a slice has no meaning below zero. Use a bar chart, "
+                    "which has a baseline to go below."
+                ],
+            }
+        if numeric and sum(numeric) == 0:
+            # Every slice is a share of the total, so a total of zero gives every
+            # slice an angle of zero and the chart renders completely blank.
+            return {
+                "vega_lite_spec": None,
+                "valid": False,
+                "warnings": [
+                    f"'{channels['y']}' adds up to zero, so a {chart_type} chart has no "
+                    "slices to draw. Use a bar chart to show the values themselves."
+                ],
+            }
         encoding: dict[str, Any] = {
             "theta": {**enc(channels["y"]), "type": "quantitative"},
             "color": {**enc(channels["x"]), "type": "nominal"},
@@ -405,7 +469,10 @@ def generate_chart(
         if notice:
             axis_notices.append(notice)
 
-    data_layer: dict[str, Any] = {"mark": _mark_def(chart_type), "encoding": encoding}
+    data_layer: dict[str, Any] = {
+        "mark": _mark_def(chart_type, len(result_table)),
+        "encoding": encoding,
+    }
     label_layer = build_label_layer(chart_type, encoding, result_table)
 
     spec: dict[str, Any] = {

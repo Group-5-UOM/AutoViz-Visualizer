@@ -97,7 +97,42 @@ const CHECKS = {
     if (!(byType.rule ?? []).length) return 'no whiskers drawn';
     return null;
   },
+
+  // --- awkward data ---------------------------------------------------------
+  // Three defects that structural tests could never see, because the specs were
+  // valid. Only the scenegraph showed what was actually drawn.
+
+  edge_line_one_point: ({ byType }) => {
+    // A line through one point is a zero-length path: axes, and nothing else.
+    // The point overlay is the only thing that makes the datum exist on screen.
+    if (!(byType.symbol ?? []).length) return 'one-point line drew no point — the panel is blank';
+    return null;
+  },
+  edge_bar_all_null: ({ byType }) => {
+    // The worst of the three. With every value null, Vega gave both bars the
+    // full plot height, so an empty answer looked like two large equal ones.
+    const bars = byType.rect ?? [];
+    if (bars.length) return `drew ${bars.length} bar(s) for rows that have no values`;
+    return null;
+  },
+  edge_bar_some_null: ({ byType }) => {
+    // The null row is dropped (and disclosed in a notice); the other two must
+    // survive at heights proportional to their values, not stretched to fill.
+    const bars = byType.rect ?? [];
+    if (bars.length !== 2) return `expected 2 bars for 2 plottable rows, drew ${bars.length}`;
+    const heights = bars.map((b) => Math.round(b.height));
+    if (heights[0] === heights[1]) return `bars are equal height (${heights}) — values 300 and 900 are not`;
+    return null;
+  },
 };
+
+/**
+ * Specs that are *supposed* to draw nothing. Without this the generic "rendered
+ * empty" and "carries no inline rows" checks would fail the very case whose
+ * correct behaviour is emptiness — and the only way to pass them would be to
+ * put the misleading bars back.
+ */
+const EMPTY_BY_DESIGN = new Set(['edge_bar_all_null']);
 
 /**
  * Direct labels (Docs/13 §5) must actually reach the canvas — a text layer that
@@ -224,16 +259,17 @@ for (const [name, spec] of Object.entries(specs)) {
   const problems = [];
   try {
     const result = await render(spec);
+    const empty = EMPTY_BY_DESIGN.has(name);
     if (result.errors.length) problems.push(...result.errors);
-    if (result.svg.length < 400) problems.push('rendered empty');
+    if (!empty && result.svg.length < 400) problems.push('rendered empty');
     const marks = Object.values(result.byType).flat().length;
-    if (!marks) problems.push('no marks in the scenegraph');
+    if (!empty && !marks) problems.push('no marks in the scenegraph');
 
     const pal = paletteCheck(result);
     if (pal) problems.push(pal);
     const lbl = labelCheck(name, result);
     if (lbl) problems.push(lbl);
-    const rows = inlineRowsCheck(spec);
+    const rows = empty ? null : inlineRowsCheck(spec);
     if (rows) problems.push(rows);
     const brush = await brushCheck(name, spec);
     if (brush) problems.push(brush);
