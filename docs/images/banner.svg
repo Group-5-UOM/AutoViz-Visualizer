@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-label="AutoViz AI — ask a question, get a chart you can trust">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="55%" stop-color="#152a4d"/>
+      <stop offset="100%" stop-color="#1b3a6b"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#2a78d6"/>
+      <stop offset="100%" stop-color="#5aa9f5"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#1baf7a"/>
+      <stop offset="100%" stop-color="#5fe0b0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="360" fill="url(#sky)"/>
+
+  <!-- soft grid -->
+  <g stroke="#ffffff" stroke-opacity="0.05" stroke-width="1">
+    <path d="M0 90h1280M0 180h1280M0 270h1280"/>
+    <path d="M160 0v360M320 0v360M480 0v360M640 0v360M800 0v360M960 0v360M1120 0v360"/>
+  </g>
+
+  <!-- wordmark -->
+  <g transform="translate(72,86)">
+    <text font-family="'DM Sans','Segoe UI',system-ui,sans-serif" font-size="62" font-weight="700" fill="#ffffff">
+      AutoViz <tspan fill="#5aa9f5">AI</tspan>
+    </text>
+    <text y="48" font-family="'DM Sans','Segoe UI',system-ui,sans-serif" font-size="23" fill="#c8d6ea">
+      Ask a question in plain English. Get a chart you can trust.
+    </text>
+    <text y="92" font-family="'DM Sans','Segoe UI',system-ui,sans-serif" font-size="16" fill="#8fa9c9">
+      The AI plans the query — it never invents the numbers.
+    </text>
+  </g>
+
+  <!-- chat bubble -->
+  <g transform="translate(74,258)">
+    <rect width="430" height="46" rx="23" fill="#ffffff" fill-opacity="0.09" stroke="#5aa9f5" stroke-opacity="0.45"/>
+    <text x="22" y="29" font-family="'DM Sans','Segoe UI',system-ui,sans-serif" font-size="16" fill="#dce8f7">
+      “Which day brings in the most revenue?”
+    </text>
+  </g>
+
+  <!-- chart card -->
+  <g transform="translate(830,64)">
+    <rect width="380" height="232" rx="16" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.14"/>
+
+    <!-- axis -->
+    <path d="M42 186H344" stroke="#ffffff" stroke-opacity="0.25" stroke-width="2"/>
+    <path d="M42 40V186" stroke="#ffffff" stroke-opacity="0.25" stroke-width="2"/>
+
+    <!-- bars -->
+    <rect x="66"  y="118" width="38" height="68"  rx="5" fill="url(#bar)"/>
+    <rect x="122" y="92"  width="38" height="94"  rx="5" fill="url(#bar)"/>
+    <rect x="178" y="140" width="38" height="46"  rx="5" fill="url(#bar)"/>
+    <rect x="234" y="62"  width="38" height="124" rx="5" fill="url(#bar2)"/>
+    <rect x="290" y="106" width="38" height="80"  rx="5" fill="url(#bar)"/>
+
+    <!-- labels -->
+    <g font-family="'DM Sans','Segoe UI',system-ui,sans-serif" font-size="12" fill="#9fb6d2">
+      <text x="70"  y="204">Mon</text>
+      <text x="126" y="204">Tue</text>
+      <text x="182" y="204">Wed</text>
+      <text x="238" y="204">Thu</text>
+      <text x="294" y="204">Fri</text>
+    </g>
+
+    <!-- provenance tag -->
+    <g transform="translate(42,10)">
+      <rect width="150" height="22" rx="11" fill="#1baf7a" fill-opacity="0.18"/>
+      <text x="11" y="15" font-family="'DM Sans','Segoe UI',system-ui,sans-serif" font-size="11" fill="#5fe0b0">
+        ✓ traced to SQL
+      </text>
+    </g>
+  </g>
+</svg>
