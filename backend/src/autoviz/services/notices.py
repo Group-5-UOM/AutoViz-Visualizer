@@ -532,10 +532,31 @@ def _ingest_extra_sheets(report: dict[str, Any]) -> Notice | None:
         severity=ADVISORY,
         note=(
             f"This workbook has {len(others)} other sheet(s) — only '{sheet}' was read. "
-            f"The rest ({rest}) are not in this analysis."
+            f"The rest ({rest}) are not in this analysis. Upload the file again and "
+            f"pick a sheet to use one of them."
         ),
         technique=f"read sheet '{sheet}'",
         detail={"sheet": sheet, "other_sheets": list(others)},
+    )
+
+
+def _ingest_multiple_tables(report: dict[str, Any]) -> Notice | None:
+    others = report.get("other_sheets") or []
+    if not others:
+        return None
+    names = ", ".join(f"'{s}'" for s in others)
+    return Notice(
+        kind="ingest_multiple_tables",
+        severity=ADVISORY,
+        note=(
+            f"This file looks like it holds {len(others)} separate tables ({names}), "
+            "stacked one after another. All of it was read as a single table, so "
+            "the columns below are the first table's and the later rows will not "
+            "line up with them. Upload the table you want on its own, or pick one "
+            "when you upload."
+        ),
+        technique="read the whole file as one table",
+        detail={"tables": list(others)},
     )
 
 
@@ -547,6 +568,7 @@ _INGEST_CHECKS = {
     "ambiguous_dates": _ingest_ambiguous_dates,
     "na_exclusion": _ingest_na_exclusion,
     "extra_sheets": _ingest_extra_sheets,
+    "multiple_tables": _ingest_multiple_tables,
 }
 
 

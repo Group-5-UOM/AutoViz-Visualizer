@@ -164,7 +164,7 @@ def test_every_server_tool_is_observed():
     import autoviz.mcp.server as server
 
     registered = [fn for fn, _desc in server.PROFILES["advanced"]]
-    assert len(registered) == 18
+    assert len(registered) == 19
     for fn in registered:
         # @observed uses functools.wraps, which sets __wrapped__ on the wrapper.
         assert hasattr(fn, "__wrapped__"), f"{fn.__name__} is not wrapped by @observed"

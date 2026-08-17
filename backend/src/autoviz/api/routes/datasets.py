@@ -1,7 +1,8 @@
 """Dataset routes — thin adapters over services.dataset, scoped to the
 authenticated user (MCP tools 1-6 plus a multipart upload the frontend needs).
 
-    POST   /datasets/upload               multipart CSV -> session dir -> register (owned)
+    POST   /datasets/inspect               multipart -> the tables in the file, registering none
+    POST   /datasets/upload               multipart data file -> session dir -> register (owned)
     POST   /datasets                       register by file_ref (owned)
     GET    /datasets                       list the caller's datasets
     DELETE /datasets/{dataset_id}          unregister + delete file (owner only)
@@ -14,15 +15,18 @@ Ownership is enforced on every id: a caller can only see/act on their own
 datasets (403 otherwise, 404 for an unknown id).
 """
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+import json
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from autoviz.api.deps import get_current_user, get_db, get_registry
 from autoviz.api.errors import respond
+from autoviz.errors import FILE_ERROR, RESOURCE_LIMIT, make_error
 from autoviz.models import User
 from autoviz.services import dataset as dataset_service
-from autoviz.services import execution
+from autoviz.services import execution, ingest
 from autoviz.services.registry import DatasetRegistry
 from autoviz.storage import blobs, repository, uploads
 
@@ -31,6 +35,9 @@ router = APIRouter()
 
 class RegisterRequest(BaseModel):
     file_ref: str
+    # Which table inside the file, when it holds more than one — a worksheet
+    # name, or the name of a block in a delimited file. See POST /inspect.
+    sheet: str | None = None
 
 
 def _persist(
@@ -62,24 +69,155 @@ def _persist(
     return {**res, "logical_name": filename}
 
 
+@router.post("/inspect")
+async def inspect(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
+    """The tables inside an uploaded file. Registers nothing, keeps nothing.
+
+    A workbook's sheets cannot be listed without the workbook, and the user has
+    to see the list before they can say which one they meant — so the bytes are
+    staged, read for their structure alone, and deleted on the way out. Only the
+    sheet names and headers survive the call, never the data.
+    """
+    data = await file.read()
+    path = uploads.save_upload(user.id, file.filename or "upload.csv", data)
+    try:
+        return respond(dataset_service.list_file_sheets(str(path)))
+    finally:
+        path.unlink(missing_ok=True)
+
+
+ALL_SHEETS: list[str] = []  # the sentinel _parse_sheets returns for "all"
+
+
+def _parse_sheets(raw: str) -> list[str] | None:
+    """The requested sheets.
+
+    ``None`` means "read the file as one table", the behaviour that predates
+    sheet selection; an empty list means "every sheet with data in it".
+
+    A JSON array rather than a comma-separated list, because sheet names come
+    from the file and "Revenue, net" is a perfectly ordinary one to find in a
+    workbook.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return None
+    if text == "all":
+        return ALL_SHEETS
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return [text]  # a bare name, sent unquoted
+    if isinstance(parsed, str):
+        return [parsed]
+    if isinstance(parsed, list):
+        return [str(s) for s in parsed]
+    return None
+
+
 @router.post("/upload", status_code=201)
 async def upload(
     file: UploadFile = File(...),
+    sheets: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     registry: DatasetRegistry = Depends(get_registry),
 ):
+    """Register an uploaded file, optionally one dataset per chosen table.
+
+    ``sheets`` is a JSON array of names from ``POST /inspect``, or ``"all"``, or
+    absent for the historical behaviour of reading the file as a single table.
+    Each chosen sheet becomes a dataset of its own, because sheets in one
+    workbook rarely share a schema — merging them would be a join the user did
+    not ask for, and the join machinery is already there for when they do.
+
+    The response's top level always describes the *first* dataset, so a caller
+    that predates sheet selection keeps working unchanged.
+    """
     data = await file.read()
-    path = uploads.save_upload(user.id, file.filename or "upload.csv", data)
-    res = dataset_service.register_dataset(str(path), registry)
-    if "error" in res:  # e.g. RESOURCE_LIMIT (413) or unreadable CSV (400)
+    filename = file.filename or "upload.csv"
+    path = uploads.save_upload(user.id, filename, data)
+    try:
+        wanted = _parse_sheets(sheets)
+        if wanted is None:
+            res = dataset_service.register_dataset(str(path), registry)
+            if "error" in res:  # e.g. RESOURCE_LIMIT (413) or an unreadable file
+                return respond(res)
+            return respond(
+                _persist(db, user, res, filename, str(path), registry), ok_status=201
+            )
+
+        if not wanted:  # "all"
+            try:
+                wanted = [s.name for s in ingest.list_sheets(path) if not s.is_empty]
+            except ingest.IngestError as exc:
+                return respond(
+                    make_error(
+                        exc.code, exc.message, **({"hint": exc.hint} if exc.hint else {})
+                    )
+                )
+        if len(wanted) > ingest.MAX_SHEETS:
+            return respond(
+                make_error(
+                    RESOURCE_LIMIT,
+                    f"{len(wanted)} sheets were requested; the limit is "
+                    f"{ingest.MAX_SHEETS} per upload.",
+                    hint="Import the sheets you need in smaller batches.",
+                )
+            )
+
+        imported: list[dict] = []
+        skipped: list[dict] = []
+        failures: list[dict] = []
+        first: dict | None = None
+        for name in wanted:
+            res = dataset_service.register_dataset(str(path), registry, sheet=name)
+            if "error" in res:
+                # One unreadable sheet must not cost the user the other eleven.
+                skipped.append(
+                    {"sheet": name, "error": res["error"]}
+                    | ({"hint": res["hint"]} if res.get("hint") else {})
+                )
+                failures.append(res)
+                continue
+            logical = f"{filename} — {name}" if len(wanted) > 1 else filename
+            body = _persist(db, user, res, logical, str(path), registry)
+            first = first or body
+            imported.append(
+                {
+                    "dataset_id": body["dataset_id"],
+                    "logical_name": logical,
+                    "sheet": name,
+                    "row_count": body["row_count"],
+                    "column_count": body["column_count"],
+                }
+            )
+        if first is None:
+            if len(failures) == 1:
+                # One sheet asked for, one sheet refused: hand back the reader's
+                # own error untouched. Its hint is what lists the names that do
+                # exist, which is the only thing that gets the user unstuck.
+                return respond(failures[0])
+            reasons = "; ".join(f"{s['sheet']}: {s['error']}" for s in skipped)
+            return respond(
+                make_error(
+                    FILE_ERROR,
+                    f"None of the chosen sheets could be read. {reasons}",
+                    hint="Pick a sheet that holds a table with a header row.",
+                )
+                | {"skipped": skipped}
+            )
+        return respond(
+            first | {"datasets": imported, "skipped": skipped}, ok_status=201
+        )
+    finally:
+        # The rows now live in the database; the staged file has served its
+        # purpose. Nothing durable references it, so the API no longer depends
+        # on local disk — including when a read above raised part-way through.
         path.unlink(missing_ok=True)
-        return respond(res)
-    body = _persist(db, user, res, file.filename or path.name, str(path), registry)
-    # The rows now live in the database; the staged CSV has served its purpose.
-    # Nothing durable references it, so the API no longer depends on local disk.
-    path.unlink(missing_ok=True)
-    return respond(body, ok_status=201)
 
 
 @router.post("", status_code=201)
@@ -89,7 +227,7 @@ def register(
     user: User = Depends(get_current_user),
     registry: DatasetRegistry = Depends(get_registry),
 ):
-    res = dataset_service.register_dataset(body.file_ref, registry)
+    res = dataset_service.register_dataset(body.file_ref, registry, sheet=body.sheet)
     if "error" in res:
         return respond(res)
     logical = body.file_ref.replace("\\", "/").rsplit("/", 1)[-1]

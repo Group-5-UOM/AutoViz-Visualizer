@@ -45,6 +45,31 @@ export const UPLOAD_ACCEPT = [
 /** Human-facing list, e.g. for a drop zone: "CSV, TSV, Excel, Parquet, JSON". */
 export const ACCEPTED_LABEL = 'CSV, TSV, TXT, Excel, Parquet or JSON';
 
+/** Formats that hold exactly one table, so there is never anything to pick. */
+const SINGLE_TABLE_EXTENSIONS = ['.parquet', '.json', '.jsonl'];
+
+/** Formats built around several tables, where asking is worth a round trip. */
+const WORKBOOK_EXTENSIONS = ['.xlsx', '.xlsm'];
+
+/**
+ * Delimited text above this size is assumed to be one table.
+ *
+ * Inspecting means sending the file twice — once to ask what is in it, once to
+ * upload what was chosen. For a workbook that is worth it every time, because
+ * sheets are the norm and picking the wrong one is silent. For a 40 MB CSV it
+ * is not: several tables stacked in one file is rare at that size, and the
+ * upload discloses it anyway if it turns out to be true.
+ */
+const INSPECT_TEXT_MAX_BYTES = 8 * 1024 * 1024;
+
+/** Whether to ask the server what tables are in this file before uploading. */
+export function shouldInspect(file: File): boolean {
+  const ext = extensionOf(file.name);
+  if (SINGLE_TABLE_EXTENSIONS.includes(ext)) return false;
+  if (WORKBOOK_EXTENSIONS.includes(ext)) return true;
+  return file.size <= INSPECT_TEXT_MAX_BYTES;
+}
+
 /** The file's extension including the dot, lower-cased. '' when it has none. */
 export function extensionOf(filename: string): string {
   const dot = filename.lastIndexOf('.');

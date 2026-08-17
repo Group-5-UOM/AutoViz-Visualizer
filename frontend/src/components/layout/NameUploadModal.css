@@ -1,0 +1,118 @@
+/* The sheet picker inside the naming modal.
+ *
+ * Lives in the same dialog as the name field rather than in a second modal: the
+ * user is already answering "what is this?", and "which part of it?" is the same
+ * question. A separate step would make picking a sheet feel like a detour.
+ */
+
+.sheet-picker {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.sheet-picker-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheet-picker-all {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--accent, #2a78d6);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.sheet-picker-all:hover {
+  text-decoration: underline;
+}
+
+.sheet-picker-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  /* Twelve-sheet workbooks are ordinary. Scroll the list, never the dialog. */
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.sheet-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sheet-picker-list li:last-child .sheet-picker-item {
+  border-bottom: none;
+}
+
+.sheet-picker-item:hover {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+.sheet-picker-item input {
+  flex: none;
+  cursor: pointer;
+}
+
+.sheet-picker-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.sheet-picker-meta {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shown, not hidden: a sheet missing from the list reads as a bug, whereas an
+   empty one greyed out explains itself. */
+.sheet-picker-item.is-empty {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.sheet-picker-item.is-empty:hover {
+  background-color: transparent;
+}
+
+.sheet-picker-looking {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 14px 0 0;
+  color: var(--text-tertiary);
+  font-size: 0.82rem;
+}
+
+.sheet-picker-spin {
+  animation: sheetPickerSpin 1s linear infinite;
+}
+
+@keyframes sheetPickerSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-picker-spin {
+    animation: none;
+  }
+}

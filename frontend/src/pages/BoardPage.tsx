@@ -415,7 +415,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     setPendingUpload(file);
   };
 
-  const handleCsvSelected = async (file: File, boardName?: string) => {
+  const handleCsvSelected = async (file: File, boardName?: string, sheets?: string[]) => {
     setUploadError(null);
     setUploading(true);
     try {
@@ -428,7 +428,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
           console.warn('Failed to save chat history:', err);
         });
       }
-      const result = await uploadDataset(file);
+      const result = await uploadDataset(file, sheets);
       const isSwitch = result.dataset_id !== dataset?.datasetId;
       if (isSwitch) {
         setHydratedDatasetId(null);
@@ -464,10 +464,10 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     }
   };
 
-  const handleConfirmUploadName = (displayName: string) => {
+  const handleConfirmUploadName = (displayName: string, sheets: string[]) => {
     if (!pendingUpload) return;
     const named = namedCsvFile(pendingUpload, displayName);
-    void handleCsvSelected(named, displayName.trim());
+    void handleCsvSelected(named, displayName.trim(), sheets);
   };
 
   const handleExistingDatasetSelected = async (selected: DatasetMetadata) => {
