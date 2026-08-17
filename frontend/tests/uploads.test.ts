@@ -16,10 +16,16 @@ import {
   extensionOf,
   isAcceptedFile,
   rejectionMessage,
+  shouldInspect,
   uploadFilename,
 } from '../src/lib/uploads.ts';
 
 const file = (name: string, type = '') => new File(['x'], name, { type });
+
+/** A File that claims to be `bytes` long, without allocating that many. */
+function sized(name: string, bytes: number): File {
+  return Object.defineProperty(new File([''], name), 'size', { value: bytes });
+}
 
 // --- what the engine can read ------------------------------------------------
 
@@ -99,4 +105,32 @@ test('a source with no extension defaults to .csv', () => {
 test('extensionOf handles dots in the stem', () => {
   assert.equal(extensionOf('2026.q3.sales.csv'), '.csv');
   assert.equal(extensionOf('noextension'), '');
+});
+
+// --- when to ask what tables are in the file ---------------------------------
+//
+// Inspecting sends the file twice: once to ask, once to upload what was chosen.
+// So the question is not "could this have several tables" but "is finding out
+// worth another copy over the wire".
+
+test('a workbook is always inspected, however big', () => {
+  // Several sheets is the norm for a workbook, and reading the wrong one is
+  // silent — no error, just numbers from a table nobody meant.
+  assert.equal(shouldInspect(sized('quarter.xlsx', 40 * 1024 * 1024)), true);
+  assert.equal(shouldInspect(sized('macro.xlsm', 1024)), true);
+});
+
+test('formats that hold exactly one table are never inspected', () => {
+  // There is nothing to pick, so a round trip could only ever confirm that.
+  assert.equal(shouldInspect(sized('facts.parquet', 1024)), false);
+  assert.equal(shouldInspect(sized('events.jsonl', 1024)), false);
+  assert.equal(shouldInspect(sized('records.json', 1024)), false);
+});
+
+test('a small delimited file is inspected, a large one is assumed to be one table', () => {
+  // Stacked tables are a report-export habit, and those files are small. At
+  // 40 MB the odds do not justify sending it twice — and the upload discloses
+  // the stacking anyway if it turns out to be there.
+  assert.equal(shouldInspect(sized('report.csv', 200 * 1024)), true);
+  assert.equal(shouldInspect(sized('events.csv', 40 * 1024 * 1024)), false);
 });

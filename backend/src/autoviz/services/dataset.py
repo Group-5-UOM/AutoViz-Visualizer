@@ -224,7 +224,9 @@ def _build_profile(df: pd.DataFrame, schema: dict[str, str]) -> dict[str, Any]:
 
 
 def register_dataset(
-    file_ref: str, registry: DatasetRegistry = REGISTRY
+    file_ref: str,
+    registry: DatasetRegistry = REGISTRY,
+    sheet: str | int | None = None,
 ) -> dict[str, Any]:
     path = _resolve_file_ref(file_ref)
     if path is None:
@@ -238,7 +240,7 @@ def register_dataset(
     # Reading, and the ceilings that bound it, both live in services/ingest.py —
     # which also reports how the file had to be read to be read at all.
     try:
-        df, report = ingest.read_table(path)
+        df, report = ingest.read_table(path, sheet)
     except IngestError as exc:
         return make_error(exc.code, exc.message, **({"hint": exc.hint} if exc.hint else {}))
 
@@ -249,6 +251,33 @@ def register_dataset(
         "row_count": int(len(df)),
         "column_count": int(len(df.columns)),
         "ingest": report.to_wire(),
+    }
+
+
+def list_file_sheets(file_ref: str) -> dict[str, Any]:
+    """The tables inside a file, without registering any of them.
+
+    Separate from ``register_dataset`` because it answers a question asked
+    *before* the user has decided what they want: a picker has to be drawn before
+    there is anything to register, and enumerating must not cost a full read.
+    """
+    path = _resolve_file_ref(file_ref)
+    if path is None:
+        return make_error(
+            FILE_ERROR,
+            f"File not found: {file_ref}",
+            hint="Use an absolute path, or a path relative to an approved data root: "
+            + "; ".join(str(r) for r in DATA_ROOTS),
+        )
+    try:
+        sheets = ingest.list_sheets(path)
+    except IngestError as exc:
+        return make_error(exc.code, exc.message, **({"hint": exc.hint} if exc.hint else {}))
+    return {
+        "sheets": [s.to_wire() for s in sheets],
+        # One table means there is nothing to ask the user, and the caller can
+        # skip straight to uploading rather than showing a picker with one row.
+        "needs_choice": len(sheets) > 1,
     }
 
 

@@ -31,7 +31,8 @@ Config (env, all optional except the DB URL in production):
 |---|---|---|
 | `GET /health` | — | no |
 | `POST /auth/register` · `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` | `storage` + `api.security` | mixed |
-| `POST /datasets/upload` (multipart) | `services.dataset.register_dataset` + session storage | yes |
+| `POST /datasets/inspect` (multipart) | `services.dataset.list_file_sheets` — the tables in a file, registering none | yes |
+| `POST /datasets/upload` (multipart, optional `sheets`) | `services.dataset.register_dataset` + session storage | yes |
 | `POST /datasets` (`{file_ref}`) | `services.dataset.register_dataset` | yes |
 | `GET /datasets` · `DELETE /datasets/{id}` | `storage.repository` | yes (owner) |
 | `GET /datasets/{id}/schema` · `/profile` · `/preview` | `services.dataset.*` | yes (owner) |

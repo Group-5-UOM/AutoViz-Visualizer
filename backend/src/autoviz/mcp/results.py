@@ -91,6 +91,22 @@ class RegisterDatasetOutput(_Strict):
     ingest: dict[str, Any] = {}
 
 
+class SheetSummary(_Strict):
+    """One table inside a file: a worksheet, or a block in a delimited file."""
+
+    name: str
+    index: int
+    kind: str
+    columns: list[str] = []
+    approx_rows: int | None = None
+    is_empty: bool = False
+
+
+class ListSheetsOutput(_Strict):
+    sheets: list[SheetSummary]
+    needs_choice: bool
+
+
 class ListDatasetsOutput(_Strict):
     datasets: list[DatasetSummary]
 

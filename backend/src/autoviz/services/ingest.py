@@ -18,6 +18,13 @@ The list stays **empty for a well-formed UTF-8 comma CSV**, which is the common
 case. Disclosure that fires on every upload is noise, and noise is how a real
 disclosure gets skipped.
 
+A third step sits in front of both for files that hold more than one table.
+``list_sheets`` enumerates them — worksheets in a workbook, or blank-line-separated
+blocks in a delimited file, which is what exported "reports" are made of — and
+``read_table(sheet=...)`` reads the one that was picked. Nothing is picked
+automatically beyond the first sheet with data in it; where a choice was made on
+the user's behalf, ``assumptions`` says so.
+
 Prose lives in services/notices.py, not here: this module reports facts and the
 kinds of assumption it made, and the sentences are composed there with everything
 else the user is told.
@@ -33,7 +40,7 @@ import csv
 import io
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +70,10 @@ def _env_int(name: str, default: int) -> int:
 MAX_FILE_BYTES = _env_int("AUTOVIZ_MAX_FILE_BYTES", 50 * 1024 * 1024)  # 50 MiB
 MAX_ROWS = _env_int("AUTOVIZ_MAX_ROWS", 1_000_000)
 MAX_COLUMNS = _env_int("AUTOVIZ_MAX_COLUMNS", 512)
+# How many tables one file may be split into. A workbook with hundreds of sheets
+# is a database export, not a spreadsheet, and importing it wholesale would bury
+# the real data in the dataset list.
+MAX_SHEETS = _env_int("AUTOVIZ_MAX_SHEETS", 20)
 
 # How much of the file the probe looks at. Big enough that the sniffing heuristics
 # see real variety, small enough that probing a 50 MiB file is free.
@@ -93,6 +104,7 @@ DECIMAL_COMMA = "decimal_comma"
 AMBIGUOUS_DATES = "ambiguous_dates"
 NA_EXCLUSION = "na_exclusion"
 EXTRA_SHEETS = "extra_sheets"
+MULTIPLE_TABLES = "multiple_tables"
 
 _TWO_LETTER_CODE = re.compile(r"^[A-Z]{2}$")
 # 1.234.567,89 (grouped) or 1234,89 / 12,5 (plain) — the European convention.
@@ -100,6 +112,9 @@ _EU_DECIMAL = re.compile(r"^-?\d{1,3}(?:\.\d{3})+,\d+$|^-?\d+,\d{1,2}$")
 # Any slash/dash date; which component is the day is the question, not whether it
 # is a date at all.
 _SLASH_DATE = re.compile(r"^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$")
+# A cell that is plainly a measurement rather than a label: a header row does not
+# look like this, and a row that does is data continuing, not a new table.
+_NUMERIC_CELL = re.compile(r"^[-+]?[\d,. ]*\d[\d,. ]*(?:[eE][-+]?\d+)?%?$")
 
 # Fraction of a column's sampled values that must look like two-letter codes before
 # "NA" is read as data rather than as missing. High, because the cost of being
@@ -169,6 +184,52 @@ class IngestReport:
         if self.dayfirst is not None:
             out["dayfirst"] = self.dayfirst
         return out
+
+
+@dataclass(frozen=True)
+class SheetInfo:
+    """One table inside one file.
+
+    A file is not the same thing as a table, and pretending otherwise is how a
+    workbook's other twelve sheets get dropped without anyone noticing. Three
+    shapes reduce to this one description:
+
+    * ``sheet``  — a worksheet in an .xlsx/.xlsm workbook.
+    * ``block``  — a run of rows in a delimited file, separated from its
+      neighbours by blank lines and carrying its own header. Exported "reports"
+      are full of these; read whole, they parse into nonsense.
+    * ``table``  — the file *is* one table (Parquet, JSON), so there is nothing
+      to choose and exactly one of these is returned.
+
+    ``name`` is what the user picks by and what ``read_table(sheet=...)``
+    accepts. It comes from the file, so it is untrusted text and is neutralized
+    on the way out — never on the way in, because it has to still match the
+    workbook when it is passed back.
+    """
+
+    name: str
+    index: int
+    kind: str
+    columns: list[str] = field(default_factory=list)
+    # Approximate for a worksheet: read-only openpyxl reports the sheet's
+    # declared dimension, which trailing formatting can inflate. Exact for a
+    # block, which was counted. None when it could not be established at all.
+    approx_rows: int | None = None
+    is_empty: bool = False
+    # Where the header sits, and how many data rows follow. Relative to the sheet
+    # for a worksheet; absolute line numbers for a block.
+    header_offset: int = 0
+    row_span: int | None = None
+
+    def to_wire(self) -> dict[str, Any]:
+        return {
+            "name": neutralize_text(self.name),
+            "index": self.index,
+            "kind": self.kind,
+            "columns": [neutralize_text(c) for c in self.columns],
+            "approx_rows": self.approx_rows,
+            "is_empty": self.is_empty,
+        }
 
 
 # --- encoding -----------------------------------------------------------------
@@ -374,6 +435,193 @@ def _detect_dayfirst(data_rows: list[list[str]]) -> bool | None:
     return None if saw_ambiguous else False
 
 
+# --- several tables in one file -----------------------------------------------
+
+
+def _looks_like_header(row: list[str]) -> bool:
+    """Whether this row names columns rather than holding measurements.
+
+    Used to decide whether a run of rows after a blank line is a *new* table or
+    the same one continuing. Requiring every cell to be a non-numeric label is
+    strict on purpose: splitting one table in half is a far worse failure than
+    leaving two joined, because the second half silently disappears.
+    """
+    if len(row) < 2:
+        return False
+    return all(cell.strip() and not _NUMERIC_CELL.match(cell.strip()) for cell in row)
+
+
+def _scan_blocks(path: Path, report: IngestReport) -> list[SheetInfo]:
+    """The separate tables inside a delimited file, in the order they appear.
+
+    Streams the file through ``csv.reader`` rather than splitting on newlines, so
+    a quoted field containing a line break does not invent a table boundary. That
+    same quoting is the one thing that can put row numbers out of step with raw
+    line numbers, which is what ``skiprows`` counts — so if any field turns out to
+    span lines, this gives up and reports a single table rather than handing back
+    offsets it cannot stand behind.
+
+    Returns one entry for an ordinary file. Two or more only when the evidence is
+    unambiguous: blank-line-separated runs that each carry their own header.
+    """
+    groups: list[tuple[int, list[list[str]]]] = []  # (first line index, rows)
+    current: list[list[str]] = []
+    start = 0
+    try:
+        with open(path, "r", encoding=report.encoding, errors="replace", newline="") as fh:
+            for index, row in enumerate(csv.reader(fh, delimiter=report.delimiter or ",")):
+                if any("\n" in cell for cell in row):
+                    return []  # offsets would be wrong; caller falls back
+                if not row or all(not cell.strip() for cell in row):
+                    if current:
+                        groups.append((start, current))
+                        current = []
+                    continue
+                if not current:
+                    start = index
+                current.append(row)
+    except (OSError, csv.Error):
+        return []
+    if current:
+        groups.append((start, current))
+    if not groups:
+        return []
+
+    blocks: list[SheetInfo] = []
+    pending_title: str | None = None
+    for first_line, rows in groups:
+        # A one-line run above a table is its title, not a table of its own.
+        if len(rows) < 2:
+            cells = [c.strip() for c in rows[0] if c.strip()]
+            pending_title = cells[0] if len(cells) == 1 else None
+            continue
+        counts = [len(r) for r in rows]
+        modal = max(set(counts), key=counts.count)
+        if modal < 2:
+            pending_title = None
+            continue
+        header_offset = _detect_header_row(rows)
+        header = [c.strip() for c in rows[header_offset]]
+        if not _looks_like_header(header) and blocks:
+            # Data carrying on after a blank line: absorb it into the table above
+            # rather than orphaning it as a headerless block of its own.
+            previous = blocks[-1]
+            span = (first_line + len(rows)) - (
+                previous.header_offset + 1 + (previous.row_span or 0)
+            )
+            blocks[-1] = replace(previous, row_span=(previous.row_span or 0) + span)
+            pending_title = None
+            continue
+        name = pending_title or f"Table {len(blocks) + 1}"
+        blocks.append(
+            SheetInfo(
+                name=name,
+                index=len(blocks),
+                kind="block",
+                columns=header,
+                approx_rows=len(rows) - header_offset - 1,
+                header_offset=first_line + header_offset,
+                row_span=len(rows) - header_offset - 1,
+            )
+        )
+        pending_title = None
+    return blocks
+
+
+# --- worksheets ---------------------------------------------------------------
+
+
+def _open_workbook(path: Path) -> pd.ExcelFile:
+    try:
+        return pd.ExcelFile(path)
+    except ImportError as exc:  # openpyxl missing
+        raise IngestError(
+            FILE_ERROR,
+            "Reading .xlsx files needs the openpyxl package.",
+            hint="Install it, or export the sheet as CSV.",
+        ) from exc
+    except Exception as exc:
+        raise IngestError(FILE_ERROR, f"Could not read workbook: {exc}") from exc
+
+
+def _sheet_grid(book: pd.ExcelFile, name: str, rows: int) -> list[list[str]]:
+    """The top of a worksheet as trimmed text cells, blank rows kept as ``[]``.
+
+    Blank rows are kept because ``skiprows`` counts them, so dropping them here
+    would shift every offset derived from this grid.
+
+    Trailing empty cells are trimmed, which is what makes header detection work
+    on a worksheet at all: every row pandas returns is padded to the widest one,
+    so a title sitting alone in A1 would otherwise have the same field count as
+    the table below it and be mistaken for its header.
+    """
+    try:
+        frame = book.parse(name, header=None, nrows=rows, dtype=str)
+    except Exception as exc:
+        raise IngestError(FILE_ERROR, f"Could not read sheet '{name}': {exc}") from exc
+    grid: list[list[str]] = []
+    for values in frame.itertuples(index=False, name=None):
+        cells = ["" if v is None or v != v else str(v).strip() for v in values]
+        while cells and not cells[-1]:
+            cells.pop()
+        grid.append(cells)
+    return grid
+
+
+def _sheet_rows(book: pd.ExcelFile, name: str) -> int | None:
+    """The worksheet's declared row count, or None.
+
+    pandas opens workbooks read-only, where openpyxl takes this from the sheet's
+    stored dimension rather than counting — trailing formatting inflates it. Good
+    enough to tell a lookup table from a fact table in a picker, not good enough
+    to report as a row count, which is why the field it feeds says ``approx``.
+
+    Must be read **before** the sheet is parsed: pandas calls
+    ``reset_dimensions()`` on its way in, precisely because that stored dimension
+    is unreliable, and afterwards this reads None.
+    """
+    try:
+        return int(book.book[name].max_row)
+    except Exception:
+        return None
+
+
+def _workbook_sheets(book: pd.ExcelFile) -> list[SheetInfo]:
+    sheets: list[SheetInfo] = []
+    # Excel permits a sheet named "2024", which openpyxl hands back as an int.
+    for index, name in enumerate(str(s) for s in book.sheet_names):
+        rows = _sheet_rows(book, name)  # before the parse below clears it
+        grid = _sheet_grid(book, name, SAMPLE_ROWS)
+        if not any(row for row in grid):
+            sheets.append(
+                SheetInfo(name=name, index=index, kind="sheet", approx_rows=0, is_empty=True)
+            )
+            continue
+        header_offset = _detect_header_row(grid)
+        header = [c.strip() for c in grid[header_offset]] if header_offset < len(grid) else []
+        sheets.append(
+            SheetInfo(
+                name=name,
+                index=index,
+                kind="sheet",
+                columns=header,
+                # Data rows, not sheet rows: what the picker means by "how big".
+                approx_rows=max(rows - header_offset - 1, 0) if rows else None,
+                header_offset=header_offset,
+            )
+        )
+    return sheets
+
+
+def _excel_sheets(path: Path) -> list[SheetInfo]:
+    # Closed explicitly: pandas holds the file open until told otherwise, and the
+    # upload path deletes what it staged the moment it is done with it. On Linux
+    # the delete succeeds anyway and the leaked handle is invisible; on Windows
+    # it fails outright, which is how this was found.
+    with _open_workbook(path) as book:
+        return _workbook_sheets(book)
+
+
 # --- probe --------------------------------------------------------------------
 
 
@@ -492,21 +740,62 @@ def _na_argument(
     }
 
 
-def _read_csv(path: Path) -> tuple[pd.DataFrame, IngestReport]:
+def _resolve_sheet(sheet: str | int, available: list[SheetInfo]) -> SheetInfo:
+    """The table the caller named, by name or by position.
+
+    Raises rather than falling back to the first one. A caller who asked for
+    "Q3 Actuals" and silently received "Instructions" would have no way to tell,
+    and every number after that would be attributed to the wrong table.
+    """
+    text = str(sheet).strip()
+    if isinstance(sheet, int) or text.isdigit():
+        index = int(text)
+        if 0 <= index < len(available):
+            return available[index]
+    for info in available:
+        if info.name == text:
+            return info
+    folded = text.casefold()
+    for info in available:
+        if info.name.strip().casefold() == folded:
+            return info
+    names = ", ".join(f"'{i.name}'" for i in available)
+    raise IngestError(
+        FILE_ERROR,
+        f"There is no sheet called '{sheet}' in this file.",
+        hint=f"This file has: {names}." if names else None,
+    )
+
+
+def _read_csv(path: Path, sheet: str | int | None = None) -> tuple[pd.DataFrame, IngestReport]:
     report = probe(path)
-    # The probe already parsed the header, so the column cap is free — no second
-    # read of the file to count them.
-    try:
-        with open(path, "rb") as fh:
-            sample = _whole_lines(fh.read(SAMPLE_BYTES)).decode(
-                report.encoding, errors="replace"
+    # Exported "reports" often stack several tables in one file, separated by
+    # blank lines. Read whole, they collapse into one nonsense frame — so find
+    # them, and either read the one that was asked for or say they are there.
+    blocks = _scan_blocks(path, report)
+    chosen: SheetInfo | None = None
+    if sheet is not None and sheet != "":
+        chosen = _resolve_sheet(sheet, blocks or [SheetInfo(path.stem, 0, "table")])
+        if chosen.kind != "block":
+            chosen = None  # names the file itself: read all of it, as before
+
+    if chosen is not None:
+        header, header_row = chosen.columns, chosen.header_offset
+    else:
+        header_row = report.header_row
+        # The probe already parsed the header, so the column cap is free — no
+        # second read of the file to count them.
+        try:
+            with open(path, "rb") as fh:
+                sample = _whole_lines(fh.read(SAMPLE_BYTES)).decode(
+                    report.encoding, errors="replace"
+                )
+            rows = list(
+                csv.reader(sample.splitlines()[:SAMPLE_ROWS], delimiter=report.delimiter or ",")
             )
-        rows = list(
-            csv.reader(sample.splitlines()[:SAMPLE_ROWS], delimiter=report.delimiter or ",")
-        )
-        header = [c.strip() for c in rows[report.header_row]] if rows else []
-    except (OSError, csv.Error, IndexError):
-        header = []
+            header = [c.strip() for c in rows[header_row]] if rows else []
+        except (OSError, csv.Error, IndexError):
+            header = []
     _check_columns(len(header))
 
     kwargs: dict[str, Any] = {
@@ -517,7 +806,7 @@ def _read_csv(path: Path) -> tuple[pd.DataFrame, IngestReport]:
         # dropping blank lines, so a blank spacer above the table shifts the index
         # and the first data row is silently promoted to column names. `skiprows`
         # counts raw lines, which is what the probe measured.
-        "skiprows": report.header_row,
+        "skiprows": header_row,
         "header": 0,
         "decimal": report.decimal,
         "keep_default_na": False,
@@ -525,44 +814,96 @@ def _read_csv(path: Path) -> tuple[pd.DataFrame, IngestReport]:
     }
     if report.thousands is not None:
         kwargs["thousands"] = report.thousands
+    if chosen is not None and chosen.row_span is not None:
+        kwargs["nrows"] = chosen.row_span
     try:
         df = pd.read_csv(path, **kwargs)
     except Exception as exc:
+        if chosen is None and len(blocks) > 1:
+            # We know exactly why this failed, so say that instead of passing on
+            # "Expected 2 fields in line 9, saw 3" — which is true, unreadable,
+            # and gives the user nothing to do about it.
+            names = ", ".join(f"'{b.name}'" for b in blocks)
+            raise IngestError(
+                FILE_ERROR,
+                f"This file holds {len(blocks)} separate tables ({names}) stacked one "
+                "after another, so it cannot be read as a single table.",
+                hint="Upload one table at a time, or pick which table to use.",
+            ) from exc
         raise IngestError(FILE_ERROR, f"Could not read CSV: {exc}") from exc
     _check_frame(df)
-    return df, report
 
-
-def _read_excel(path: Path) -> tuple[pd.DataFrame, IngestReport]:
-    try:
-        book = pd.ExcelFile(path)
-        sheets = list(book.sheet_names)
-        head = book.parse(sheets[0], nrows=0)
-    except ImportError as exc:  # openpyxl missing
-        raise IngestError(
-            FILE_ERROR,
-            "Reading .xlsx files needs the openpyxl package.",
-            hint="Install it, or export the sheet as CSV.",
-        ) from exc
-    except Exception as exc:
-        raise IngestError(FILE_ERROR, f"Could not read workbook: {exc}") from exc
-    _check_columns(len(head.columns))
-    try:
-        df = book.parse(sheets[0])
-    except Exception as exc:
-        raise IngestError(FILE_ERROR, f"Could not read workbook: {exc}") from exc
-    _check_frame(df)
-    return df, IngestReport(
-        format="excel",
-        sheet=sheets[0],
-        other_sheets=sheets[1:],
-        # A workbook's other sheets are data the user may have meant and did not
-        # get. Silence here reads as "your file had one table in it".
-        assumptions=[EXTRA_SHEETS] if len(sheets) > 1 else [],
+    if len(blocks) < 2:
+        return df, report
+    assumptions = list(report.assumptions)
+    # Only when nobody chose. Having picked a table, being told the others exist
+    # on every question afterwards is nagging, not disclosure.
+    if chosen is None:
+        assumptions.append(MULTIPLE_TABLES)
+    else:
+        # The rows above a chosen block are the blocks before it, not furniture
+        # this module guessed at. Reporting an offset of 7 as "7 rows skipped"
+        # would be arithmetic about a decision the user made themselves.
+        assumptions = [a for a in assumptions if a != HEADER_ROW]
+    return df, replace(
+        report,
+        header_row=header_row,
+        sheet=chosen.name if chosen else None,
+        other_sheets=[b.name for b in blocks if chosen is None or b.name != chosen.name],
+        assumptions=assumptions,
     )
 
 
-def _read_parquet(path: Path) -> tuple[pd.DataFrame, IngestReport]:
+def _read_excel(path: Path, sheet: str | int | None = None) -> tuple[pd.DataFrame, IngestReport]:
+    with _open_workbook(path) as book:  # see _excel_sheets on why this is closed
+        sheets = _workbook_sheets(book)
+        if not sheets:
+            raise IngestError(FILE_ERROR, "This workbook has no sheets in it.")
+
+        asked = sheet is not None and sheet != ""
+        if sheet is not None and sheet != "":
+            chosen = _resolve_sheet(sheet, sheets)
+        else:
+            # The first sheet with anything in it, not simply the first. A blank
+            # "Sheet1" in front of the data used to fail the whole upload as "no
+            # data rows", a dead end for a workbook that plainly has some.
+            chosen = next((s for s in sheets if not s.is_empty), sheets[0])
+        if chosen.is_empty:
+            raise IngestError(
+                FILE_ERROR,
+                f"Sheet '{chosen.name}' is empty.",
+                hint="Pick a sheet that has data in it.",
+            )
+        _check_columns(len(chosen.columns))
+        try:
+            df = book.parse(chosen.name, skiprows=chosen.header_offset, header=0)
+        except Exception as exc:
+            raise IngestError(
+                FILE_ERROR, f"Could not read sheet '{chosen.name}': {exc}"
+            ) from exc
+    _check_frame(df)
+
+    others = [s.name for s in sheets if s.name != chosen.name]
+    assumptions: list[str] = []
+    if chosen.header_offset > 0:
+        assumptions.append(HEADER_ROW)
+    # A workbook's other sheets are data the user may have meant and did not get.
+    # Silence here reads as "your file had one table in it" — but once they have
+    # named a sheet, they know, and repeating it is noise.
+    if others and not asked:
+        assumptions.append(EXTRA_SHEETS)
+    return df, IngestReport(
+        format="excel",
+        sheet=chosen.name,
+        other_sheets=others,
+        header_row=chosen.header_offset,
+        assumptions=assumptions,
+    )
+
+
+# Parquet and JSON hold exactly one table, so `sheet` has nothing to select and
+# is accepted only to keep one signature across the readers.
+def _read_parquet(path: Path, sheet: str | int | None = None) -> tuple[pd.DataFrame, IngestReport]:
     try:
         import pyarrow.parquet as pq
 
@@ -584,7 +925,7 @@ def _read_parquet(path: Path) -> tuple[pd.DataFrame, IngestReport]:
     return df, IngestReport(format="parquet")
 
 
-def _read_json(path: Path) -> tuple[pd.DataFrame, IngestReport]:
+def _read_json(path: Path, sheet: str | int | None = None) -> tuple[pd.DataFrame, IngestReport]:
     lines = path.suffix.lower() == ".jsonl"
     try:
         df = pd.read_json(path, lines=lines)
@@ -617,25 +958,64 @@ _READERS = {
 }
 
 
-def read_table(path: Path) -> tuple[pd.DataFrame, IngestReport]:
+def _reader_for(path: Path):
+    reader = _READERS.get(path.suffix.lower())
+    if reader is not None:
+        return reader
+    if path.suffix.lower() == ".xls":
+        raise IngestError(
+            FILE_ERROR,
+            "The legacy .xls format is not supported.",
+            hint="Re-save the workbook as .xlsx, or export the sheet as CSV.",
+        )
+    # No suffix, or an unfamiliar one: a great many exports are delimited text
+    # under some other name, so try to read it as one rather than refusing on
+    # the strength of a file extension.
+    return _read_csv
+
+
+def read_table(
+    path: Path, sheet: str | int | None = None
+) -> tuple[pd.DataFrame, IngestReport]:
     """Read `path` into a frame, with the decisions that produced it.
+
+    ``sheet`` names one of the tables ``list_sheets`` found — a worksheet, or a
+    block within a delimited file — by name or by position. Omitted, the whole
+    file is read as one table exactly as before, and the report says so when
+    that meant leaving something out.
 
     Raises ``IngestError`` — the caller maps ``.code`` onto the error taxonomy.
     """
     _check_size(path)
-    reader = _READERS.get(path.suffix.lower())
-    if reader is None:
-        if path.suffix.lower() == ".xls":
-            raise IngestError(
-                FILE_ERROR,
-                "The legacy .xls format is not supported.",
-                hint="Re-save the workbook as .xlsx, or export the sheet as CSV.",
-            )
-        # No suffix, or an unfamiliar one: a great many exports are delimited text
-        # under some other name, so try to read it as one rather than refusing on
-        # the strength of a file extension.
-        reader = _read_csv
-    return reader(path)
+    return _reader_for(path)(path, sheet)
+
+
+def list_sheets(path: Path) -> list[SheetInfo]:
+    """The separate tables inside `path`, in the order they appear.
+
+    Always at least one entry, so a caller never has to special-case "this format
+    has no sheets" — for Parquet and JSON the file simply *is* the table.
+
+    Enumeration is deliberately cheap: sheet names, the header row, and a row
+    estimate, without reading any sheet's data. A picker has to open before the
+    user has decided what they want, so paying to parse twelve sheets to show a
+    list of twelve names would make choosing slower than not offering the choice.
+    """
+    _check_size(path)
+    suffix = path.suffix.lower()
+    if suffix in (".xlsx", ".xlsm"):
+        return _excel_sheets(path)
+    if suffix in (".parquet", ".json", ".jsonl"):
+        return [SheetInfo(name=path.stem, index=0, kind="table")]
+    if suffix == ".xls":
+        _reader_for(path)  # raises the "re-save as .xlsx" error, with its hint
+    blocks = _scan_blocks(path, probe(path))
+    if len(blocks) > 1:
+        return blocks
+    # One table, so there is nothing to choose — but keep the columns that were
+    # found, because a caller showing "1 table, 11 columns" needs them too.
+    columns = blocks[0].columns if blocks else []
+    return [SheetInfo(name=path.stem, index=0, kind="table", columns=columns)]
 
 
 def sample_lines(path: Path, encoding: str, limit: int = SAMPLE_ROWS) -> list[str]:
