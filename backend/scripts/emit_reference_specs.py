@@ -36,6 +36,47 @@ _XY = [{"a": float(i), "b": float(i * i % 7), "g": "g%d" % (i % 3)} for i in ran
 _TIME = [{"d": f"2024-{m:02d}-01", "v": float(m * 2 % 7)} for m in range(1, 13)]
 _NUM = [{"price": float(p)} for p in (100, 120, 130, 250, 260, 270, 350, 355, 500)]
 
+# --- data shapes the sub-types need ------------------------------------------
+
+# Repeated observations per group: what an error interval and a density curve
+# are computed from. One value per group would give both of them nothing to do.
+_REPEATED = [
+    {"cls": cls, "v": float(base + (i * 7) % 11)}
+    for cls, base in (("a", 10), ("b", 22), ("c", 16))
+    for i in range(9)
+]
+_REPEATED_TIME = [
+    {"m": m, "v": float(m * 3 + (r * 5) % 7)} for m in range(1, 7) for r in range(6)
+]
+
+# Two series over time, for the stacking family (plain / 100% / streamgraph).
+_SERIES_TIME = [
+    {"d": f"2024-{m:02d}-01", "v": float((m * k) % 9 + 2), "s": s}
+    for k, s in ((2, "web"), (3, "store"))
+    for m in range(1, 13)
+]
+
+# Enough points that a plain scatter is a solid block — the case binning exists
+# to recover.
+_DENSE = [
+    {"a": float((i * 37) % 100), "b": float((i * 61) % 100)} for i in range(1200)
+]
+
+# A year of daily readings, for the calendar heatmap: the same date column read
+# at two granularities, which is the shape SQL cannot produce in one pass.
+_CALENDAR = [
+    {"d": f"2024-{m:02d}-{day:02d}", "v": float((m * day) % 13)}
+    for m in range(1, 7)
+    for day in range(1, 29)
+]
+
+# A measure across two categories, for small multiples.
+_PANELS = [
+    {"month": m, "sales": float((m * k) % 8 + 1), "region": r}
+    for k, r in ((2, "north"), (3, "south"), (5, "east"), (7, "west"))
+    for m in range(1, 8)
+]
+
 # name -> (rows, chart_spec). One per chart type, plus the pairs whose difference
 # is behavioural rather than structural (grouped vs stacked, donut vs pie).
 CASES: dict[str, tuple[list[dict], dict]] = {
@@ -64,6 +105,79 @@ CASES: dict[str, tuple[list[dict], dict]] = {
     "donut": (_PARTS, {"type": "donut", "x": "region", "y": "revenue"}),
     "heatmap": (_GRID, {"type": "heatmap", "x": "cls", "y": "grp", "color": "n"}),
     "boxplot": (_RAW, {"type": "boxplot", "x": "cls", "y": "v"}),
+    # --- sub-types (Docs/13 §11) ---------------------------------------------
+    # Every one of these is a modifier on a type already above. They are here
+    # because the difference is almost always behavioural rather than
+    # structural — a stack mode, a swapped axis, a substituted mark — which is
+    # exactly the class of mistake the Python suite cannot see.
+    "bar_horizontal": (
+        _PARTS,
+        {"type": "bar", "x": "region", "y": "revenue", "orientation": "horizontal"},
+    ),
+    "bar_stacked_100": (
+        _GRID,
+        {"type": "bar", "x": "cls", "y": "n", "color": "grp", "stack": "normalize"},
+    ),
+    "bar_error": (_REPEATED, {"type": "bar", "x": "cls", "y": "v", "error": "bar"}),
+    "bar_faceted": (
+        _PANELS,
+        {"type": "bar", "x": "month", "y": "sales", "facet": "region"},
+    ),
+    "grouped_bar_horizontal": (
+        _GRID,
+        {
+            "type": "grouped_bar", "x": "cls", "y": "n", "color": "grp",
+            "orientation": "horizontal",
+        },
+    ),
+    "line_step": (
+        _TIME,
+        {"type": "line", "x": "d", "y": "v", "interpolate": "step",
+         "column_types": {"d": "datetime", "v": "number"}},
+    ),
+    "line_points": (
+        _TIME,
+        {"type": "line", "x": "d", "y": "v", "points": True,
+         "column_types": {"d": "datetime", "v": "number"}},
+    ),
+    "line_error_band": (
+        _REPEATED_TIME,
+        {"type": "line", "x": "m", "y": "v", "error": "band"},
+    ),
+    "area_stacked": (
+        _SERIES_TIME,
+        {"type": "area", "x": "d", "y": "v", "color": "s", "stack": "zero",
+         "column_types": {"d": "datetime", "v": "number"}},
+    ),
+    "area_streamgraph": (
+        _SERIES_TIME,
+        {"type": "area", "x": "d", "y": "v", "color": "s", "stack": "center",
+         "column_types": {"d": "datetime", "v": "number"}},
+    ),
+    "scatter_bubble": (_XY, {"type": "scatter", "x": "a", "y": "b", "size": "b"}),
+    "scatter_binned": (_DENSE, {"type": "scatter", "x": "a", "y": "b", "bin": True}),
+    "histogram_density": (_NUM, {"type": "histogram", "x": "price", "density": True}),
+    "histogram_cumulative": (
+        _NUM,
+        {"type": "histogram", "x": "price", "cumulative": True},
+    ),
+    "histogram_horizontal": (
+        _NUM,
+        {"type": "histogram", "x": "price", "orientation": "horizontal"},
+    ),
+    "heatmap_calendar": (
+        _CALENDAR,
+        {"type": "heatmap", "x": "d", "y": "d", "color": "v",
+         "time_unit": {"x": "yearmonth", "y": "date"},
+         "column_types": {"d": "datetime", "v": "number"}},
+    ),
+    "boxplot_violin": (_REPEATED, {"type": "boxplot", "x": "cls", "y": "v", "form": "violin"}),
+    "boxplot_strip": (_REPEATED, {"type": "boxplot", "x": "cls", "y": "v", "form": "strip"}),
+    "boxplot_points": (_REPEATED, {"type": "boxplot", "x": "cls", "y": "v", "points": True}),
+    "boxplot_horizontal": (
+        _REPEATED,
+        {"type": "boxplot", "x": "cls", "y": "v", "orientation": "horizontal"},
+    ),
     # --- awkward data --------------------------------------------------------
     # Every case above is well-formed: several rows, all populated, all
     # positive. Real results are not, and three defects lived in the gap. They

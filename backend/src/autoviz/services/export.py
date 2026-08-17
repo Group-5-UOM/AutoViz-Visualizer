@@ -54,14 +54,15 @@ def _slugify(filename: str) -> str:
 def export_chart(
     vega_lite_spec: dict[str, Any], filename: str | None = None
 ) -> dict[str, Any]:
-    # A spec carrying direct labels is layered rather than a bare unit spec, so
-    # either key identifies a renderable top level.
+    # Three shapes count as a renderable top level: a bare unit spec, a layered
+    # one (direct labels, error bands, jitter overlays), and a faceted one, where
+    # small multiples put the chart itself under `spec`.
     if not isinstance(vega_lite_spec, dict) or not (
-        "mark" in vega_lite_spec or "layer" in vega_lite_spec
+        "mark" in vega_lite_spec or "layer" in vega_lite_spec or "facet" in vega_lite_spec
     ):
         return make_error(
             INVALID_SPEC,
-            "vega_lite_spec must be a Vega-Lite spec dict (missing 'mark' or 'layer')",
+            "vega_lite_spec must be a Vega-Lite spec dict (missing 'mark', 'layer' or 'facet')",
         )
 
     name = _slugify(filename or f"chart-{time.strftime('%Y%m%d-%H%M%S')}")

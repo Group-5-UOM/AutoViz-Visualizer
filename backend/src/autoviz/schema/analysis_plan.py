@@ -46,6 +46,22 @@ ChartType = Literal[
     "grouped_bar",
     "donut",
 ]
+
+# --- chart modifiers ----------------------------------------------------------
+# The sub-type layer. Keep in lockstep with the frozensets in allowlists.py —
+# these Literals are the parse-time enforcement, those are what validation.py and
+# the chart builder read.
+Orientation = Literal["vertical", "horizontal"]
+StackMode = Literal["zero", "normalize", "center", "none"]
+Interpolation = Literal["linear", "step", "monotone"]
+DistributionForm = Literal["box", "violin", "strip"]
+ErrorForm = Literal["bar", "band"]
+TimeUnit = Literal[
+    "year", "quarter", "month", "week", "date", "day", "hours",
+    "yearquarter", "yearmonth", "yearmonthdate", "monthdate",
+]
+TimeUnitChannel = Literal["x", "y", "color"]
+
 Intent = Literal[
     "comparison", "trend", "distribution", "relationship", "composition", "ranking"
 ]
@@ -544,12 +560,94 @@ PreprocessOp = Annotated[
 
 
 class ChartSpec(_StrictModel):
+    """A chart type, its channels, and the modifiers that pick a sub-type.
+
+    The ten `type` values are chart *families*. Each family has recognised
+    sub-types — a bar is vertical or horizontal, plain or stacked or 100%
+    stacked; an area is plain, stacked or a streamgraph — and they are reached
+    by the modifiers below rather than by their own names in `ChartType`.
+
+    That is a deliberate trade. Naming them would need a literal for every
+    orientation x stack x interpolate combination, and the enum passes twenty
+    before it covers what Vega-Lite already expresses in three properties.
+    Modifiers compose instead, and they keep the planner's decision space narrow,
+    which Docs/05 records as a measurable quality factor in its own right.
+
+    Every modifier is `None` by default and every default reproduces the chart
+    this grammar drew before they existed, so no stored plan changes meaning.
+    Which modifiers a type accepts is `allowlists.CHART_MODIFIERS`, enforced in
+    services/validation.py.
+    """
+
     type: ChartType
     x: str
     # Optional only for histogram (count of binned x); every other chart type
     # requires y — enforced in services/validation.py.
     y: str | None = None
     color: str | None = None
+
+    # --- sub-type modifiers ---------------------------------------------------
+
+    # scatter -> bubble. A third quantitative channel, so the series cap is the
+    # all-pairs one; size and colour together is already three visual variables.
+    size: str | None = None
+
+    # Small multiples: one panel per value of this column. The principled answer
+    # to "too many series" — it separates them in space rather than asking the
+    # palette for a ninth hue it does not have.
+    facet: str | None = None
+    facet_columns: int | None = Field(default=None, ge=1, le=6)
+
+    # Which axis carries the category (bar, grouped_bar, histogram, boxplot).
+    orientation: Orientation | None = None
+
+    # What a series-bearing bar/area does with its segments: plain stack,
+    # 100%-normalised, streamgraph, or overlaid.
+    stack: StackMode | None = None
+
+    # Path shape for line/area. "step" for a value that holds until it changes.
+    interpolate: Interpolation | None = None
+
+    # Mark every datum on a line/area, or overlay the raw points on a box.
+    points: bool | None = None
+
+    # Bucket a temporal channel in the chart rather than in SQL: {"x": "yearmonth"}.
+    # What makes a calendar heatmap expressible from raw dated rows.
+    time_unit: dict[TimeUnitChannel, TimeUnit] | None = None
+
+    # scatter -> binned density. Bins both axes and counts per cell, for the
+    # overplotted scatter where 50,000 points are one black rectangle.
+    bin: bool | None = None
+
+    # histogram -> kernel density curve, and histogram -> cumulative distribution.
+    # Mutually exclusive; both are checked in services/validation.py.
+    density: bool | None = None
+    cumulative: bool | None = None
+
+    # Uncertainty under a line/bar, as a Vega-Lite composite computed from the
+    # raw rows. Needs an unaggregated plan, like boxplot does and for the reason.
+    error: ErrorForm | None = None
+
+    # boxplot -> box | violin | strip. Three amounts of summarising over the same
+    # question; strip is the honest one when each group holds a handful of rows.
+    form: DistributionForm | None = None
+
+    def modifiers_set(self) -> set[str]:
+        """Which sub-type modifiers this spec actually sets.
+
+        Read by validation (is this modifier legal on this type?) and by
+        retyping (which of these survive a change of type?), so the field list
+        lives here rather than being retyped at both call sites.
+        """
+        return {
+            name
+            for name in (
+                "size", "facet", "facet_columns", "orientation", "stack",
+                "interpolate", "points", "time_unit", "bin", "density",
+                "cumulative", "error", "form",
+            )
+            if getattr(self, name) is not None
+        }
 
 
 class AnalysisPlan(_StrictModel):

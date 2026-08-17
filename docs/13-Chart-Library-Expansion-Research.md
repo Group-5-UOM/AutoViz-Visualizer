@@ -6,6 +6,7 @@ Scope: making AutoViz charts interactive and visually rich, and widening the
 chart library beyond the original six types.
 
 **Jump to:** [§9 Supported chart types](#9-supported-chart-types) ·
+[§11 Sub-types](#11-sub-types--the-modifier-layer) ·
 [§10 Future work](#10-future-work) ·
 [the verification harness](#the-renderer-verification-harness)
 
@@ -549,6 +550,10 @@ Ten types. The allow-list is `schema/allowlists.py:CHART_TYPES`, mirrored by the
 `ChartType` literal in `schema/analysis_plan.py` and described to the model in
 `schema/plan_guide.py`. Adding one means touching all three plus `charts.py`.
 
+Each of the ten is a chart *family*. Its sub-types — horizontal bar, 100%
+stacked, streamgraph, step line, bubble, violin, small multiples — are reached
+by modifiers on `ChartSpec` rather than by names of their own; see **§11**.
+
 ### Grammar — what each type needs
 
 | Type | Vega mark | Required channels | What `color` means | Auto-picked for |
@@ -623,10 +628,11 @@ scenegraph assertions cannot see. Nothing below is worth starting before this.
 |---|---|---|
 | **A7 cross-widget cross-filter** | shared signal bus in `DashboardCanvas.tsx` | The one that makes the canvas a BI tool rather than a wall of images. Blocked on a design question, not on code: what does a selection in widget A *mean* to widget B, when they are built from different plans and different SQL? A6 deliberately does not answer that. |
 | **Dark mode** | frontend `config` override at embed time | `vegaEmbed(el, spec, {config: DARK})` merges over the spec's own config, so no stored spec is regenerated. The theme is baked in on the backend precisely so this stays possible — see §5. The app is single-theme today (`index.css` has one `:root`). |
-| **Horizontal bar** | orientation rule, not a new type | Swap the axes when category labels are long or numerous. Cheap legibility win; the current vertical bar truncates long labels. |
-| **Tier 2: `size` channel** | new channel on `ChartSpec` | Bubble charts. Cap series at 3 — it is an all-pairs form. |
-| **Tier 2: `facet`** | `row`/`column` channels | Small multiples: the principled answer to "too many series" that does not involve generating more hues. Changes the top-level spec shape again, the way layering did. |
+| ~~Horizontal bar~~ | — | **Done** — §11, as the `orientation` modifier. |
+| ~~Tier 2: `size` channel~~ | — | **Done** — §11, as the `size` modifier. |
+| ~~Tier 2: `facet`~~ | — | **Done** — §11, as the `facet` modifier. |
 | **Table view: sort & CSV** | frontend | The table is currently read-only and unsorted. Sorting by column and copying out are the obvious next asks once people use it. |
+| **Sub-type controls in the Setup panel** | frontend | §11 is reachable from natural language, MCP and the API, but the Setup panel's type buttons are still family-level — there is no way to click "make it horizontal". |
 
 ### Known limits, recorded rather than fixed
 
@@ -638,8 +644,129 @@ scenegraph assertions cannot see. Nothing below is worth starting before this.
 - **No frontend test runner.** `tsc`, `oxlint` and the spec harness cover a lot,
   but `DataTable`, the brush listener and the widget toggle have no unit tests
   because there is nothing to run them with. Adding Vitest would close this.
-- **`Docs/` is gitignored** (`.gitignore:1`), so this document and its siblings
-  live outside version control.
+- ~~`Docs/` is gitignored~~ — no longer true. The wholesale ignore was removed
+  and all 39 documents are tracked; `.gitignore` now says so at the top.
+
+---
+
+## 11. Sub-types — the modifier layer
+
+Status: **implemented**. `services/chart_modifiers.py`, with structural tests in
+`tests/test_chart_subtypes.py` and scenegraph checks in the harness.
+
+### The finding that started it
+
+Ten types (§9) resolve to **seven Vega marks**, and three of the ten are already
+sub-types promoted to a name of their own: `grouped_bar` is `bar` + `xOffset`,
+`histogram` is `bar` + `bin`, `donut` is `pie` + `innerRadius`. Underneath them
+the pipeline was *already* drawing about sixteen distinct forms — a stacked bar,
+a sorted ranking bar, a one-point line with markers, a series scatter with a
+different gesture set — none of which anything could ask for by name.
+
+### Why modifiers rather than more type names
+
+Naming the sub-types needs a literal per combination. `horizontal_stacked_bar_100`
+is a real shape someone asks for, and the enum passes twenty entries before it
+covers what Vega-Lite already expresses in three properties. §7 records that a
+wider decision space measurably degrades plan quality, so the grammar composes
+instead:
+
+```json
+{"type": "bar", "orientation": "horizontal", "stack": "normalize"}
+```
+
+`ChartType` therefore stays at ten. Thirteen optional fields on `ChartSpec` carry
+the sub-type, every one defaulting to off, and off reproduces exactly the chart
+the pipeline drew before — which is what lets this sit under a stored plan
+without changing its meaning.
+
+### The modifiers
+
+| Modifier | Types | Sub-types it reaches |
+|---|---|---|
+| `orientation` | bar, grouped_bar, histogram, boxplot | horizontal bar / box / histogram |
+| `stack` | bar, area | plain stack, **100% stacked**, **streamgraph**, overlaid |
+| `interpolate` | line, area | **step line**, spline |
+| `points` | line, area, boxplot | marked readings; **box + jitter** |
+| `size` | scatter | **bubble** |
+| `bin` | scatter | **binned density grid** |
+| `density` / `cumulative` | histogram | **KDE curve**, **CDF** |
+| `error` | line, bar | **error bars**, **confidence band** |
+| `form` | boxplot | **violin**, **strip** |
+| `facet` (+ `facet_columns`) | all | **small multiples** |
+| `time_unit` | bar, line, area, heatmap | **calendar heatmap** |
+
+Which modifiers a type accepts is `allowlists.CHART_MODIFIERS`, enforced in both
+`validation.py` (plans) and `generate_chart` (direct MCP calls with a
+hand-written chart spec no plan validator saw). Contradictory *pairs* are a
+separate check — `density` with `cumulative`, `bin` with `color`, `stack`
+without `color`, `facet` with `form: violin` — because each would otherwise
+render something, just not the thing that was asked for.
+
+### Four constraints found while building this
+
+1. **A composite is not always the first layer.** An error *band* draws under
+   its line, so `layer[0]` is the `errorband` — and Vega-Lite refuses a
+   selection param on a composite mark. `primary_layer()` now skips composites
+   rather than returning `layer[0]`, and the interaction layer hangs its params
+   on what that returns.
+2. **An opacity encoding overrides the mark's own opacity outright.** Any
+   sub-type translucent by design — a bubble, a density curve, a strip — was
+   forced opaque the moment interaction was attached, deleting exactly the
+   overlaps it was drawn to show. The resting opacity is now read back off the
+   built mark instead of assumed to be 1.
+3. **Container sizing does not survive a facet.** Vega-Lite ignores
+   `"container"` on a faceted top level, so faceted sub-types take a real
+   per-panel size and do not reflow with the widget. Recorded, not worked around
+   — the alternative is measuring the widget on the backend, which has no widget.
+4. **A faceted spec has no top-level `mark` or `layer`.** Small multiples put the
+   chart under `spec`, which `export.py`'s validity check rejected as-is — the
+   same breakage §6.1 predicted for this feature, arriving as predicted.
+
+### What the harness caught
+
+Twenty new reference specs, one per sub-type. Three of the new checks failed on
+first run for the same underlying reason: **axis chrome was being read as data**.
+Gridlines, ticks and axis domains are all `rule` marks, and a brush renders two
+`rect` marks of its own — so "no whiskers drawn" was satisfied by any chart with
+a grid, and a horizontal histogram appeared to have bars of two different
+heights. The scenegraph walk now filters to `role === 'mark'` and drops
+`autoviz_`-named interaction chrome.
+
+That flaw was **pre-existing**: the original `boxplot` check has been passing on
+gridlines since it was written. It is the failure mode §6 already records for
+the label check — "a check that reads the wrong part of the output looks exactly
+like a passing check" — found a second time, in a second place.
+
+**Mutation-tested, twenty injected regressions**: each sub-type re-emitted with
+its modifier stripped, every one producing a specific correct failure ("bands
+stand at 51,167,283 — not normalised", "line path has 11 segments — not
+stepped", "still drawing individual points — not binned"). Run it with
+`node scripts/verify-specs.mjs <mutant-file>`.
+
+### Declined, with reasons
+
+- **True hexbin.** Vega-Lite has no hexbin transform. The published recipe fakes
+  it with calculate transforms and a hardcoded hexagon path whose size must
+  track the plot dimensions — which breaks under container sizing, and every
+  chart here is container-sized. `bin` gives a rect density grid instead, which
+  is the honest Vega-Lite answer to the same question.
+- **Correlation matrix.** Not a chart type: it needs a transform producing a
+  long-form `(var1, var2, corr)` table, after which it *is* an ordinary heatmap.
+  Belongs to the preprocessing grammar, not here.
+- **Dual-axis.** Still declined, for the reason in §6 Tier 3.
+
+### Known limits
+
+- **Faceted charts do not reflow** (constraint 3), and carry no direct labels — a
+  180px panel cannot hold them, so the table view is the relief, as it already is
+  for scatter and stacked bar.
+- **The Setup panel is family-level.** Sub-types are reachable from natural
+  language, MCP and the API, but there is no click-to-pick control for
+  "horizontal" or "stacked 100%".
+- **The recommender never proposes a sub-type.** It picks a family, as before;
+  every modifier has to be asked for. Deliberate — the asymmetry §7 argues for —
+  but it does mean a chart with 40 categories will not turn itself horizontal.
 
 ---
 
