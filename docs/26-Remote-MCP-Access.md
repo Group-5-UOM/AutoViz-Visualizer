@@ -1,6 +1,13 @@
 # 26 — Remote MCP Access: "Connect AutoViz to Gemini"
 
-**Plan, 16 August 2026. Phase 1 is implemented; Phases 2–5 are not.**
+**16 August 2026. Phases 1, 2 and 3 are built. Phases 0, 4 and 5 are not.**
+
+> **Status.** The endpoint is serving on the production host right now:
+> `POST https://autoviz.duckdns.org/c/<key>/mcp` returns **401** for an unknown key, which means
+> nginx, the auth middleware, the transport and the migration are all in place. What is missing
+> The Connections panel now ships too, so a key can be minted from the UI — but **that build is
+> not deployed yet**; the live site still serves the previous frontend. What remains is a
+> deployment and a demonstration against a real host (Phase 4). A running tally is in §6.
 
 The idea: a user opens **Settings → Connections**, clicks *Generate link*, gets a URL, and pastes
 it into Gemini (or Claude, or any MCP host) as a custom MCP server. From then on that host can
@@ -24,7 +31,7 @@ the running EC2 host over SSH, and the code.
 | | |
 |---|---|
 | TLS | **Valid Let's Encrypt certificate**, managed by certbot, nginx terminating on :443 |
-| nginx routes | `/` → static frontend at `/home/ec2-user/autoviz/frontend-dist` · `/api/` → `localhost:8000` · `/health` → backend |
+| nginx routes | `/` → static frontend · `/api/` → `localhost:8000` · `/health` → backend · **`/c/` → `localhost:8000/c/`, added 16 Aug, unbuffered, with the access-log path redacted** |
 | API | `autoviz-api-1` container, port 8000 |
 | Database | `autoviz-db-1` (postgres:16), listening on 5432 **inside Docker only** |
 | Port 8000 externally | **Not reachable** — `curl http://autoviz.duckdns.org:8000/health` fails. Docker binds `0.0.0.0:8000` but the AWS security group blocks it, so nginx is the only way in |
@@ -41,12 +48,13 @@ HTTPS and the host already serves it on a real domain.
 
 | | |
 |---|---|
-| Transport | **stdio only.** `server.py` ends in a bare `mcp.run()`; the module docstring says "Run: `python -m autoviz.mcp` (stdio transport)" |
-| Library support | `mcp==1.28.1` — `streamable_http_app()` and `stateless_http` **already exist**, so the transport is a configuration change, not a rewrite |
-| Tools | 18 in `advanced` (the shipped default), 7 in `default`, selected by `AUTOVIZ_MCP_PROFILE` |
-| **User scoping** | **None.** Every tool reads the module-level `REGISTRY` singleton directly (`server.py:50`) |
+| Transport | stdio **and** Streamable HTTP. `mcp.run()` still serves stdio; `streamable_http_app()` is mounted at `/c` when `AUTOVIZ_REMOTE_MCP=1` |
+| Library support | `mcp==1.28.1` — `streamable_http_app()` and `stateless_http` already existed, so the transport was configuration, not a rewrite |
+| Tools | **11 in `host`** (the default for a new key), 7 in `default`, 18 in `advanced` |
+| **User scoping** | **Done.** No `REGISTRY` reference remains in the MCP layer; every tool resolves `current_registry()` |
 
-That last row is the blocker, and §3 is about it.
+*This table described the state before the work. Both rows that were blockers are now closed —
+§3 records what the problem was and how it was fixed, because the reasoning is the reusable part.*
 
 ### "Gemini" is three different products with three different rules
 
@@ -128,9 +136,10 @@ sufficient or that the second is affordable this week.
 
 ---
 
-## 3. The blocker: today, one link would expose everyone's data
+## 3. The blocker that had to be cleared first · ✅ closed
 
-**This must be fixed before a single byte of MCP traffic is served over HTTP.**
+**Kept as written, because the reasoning outlived the fix.** This was the gate on serving MCP over
+HTTP at all, and the same trap waits for anyone adding a second transport to a process-wide cache.
 
 Every MCP tool resolves datasets through the global `REGISTRY` singleton:
 
@@ -162,9 +171,13 @@ gate:
 3. Every `server.py` tool takes its registry from that function instead of importing the
    singleton.
 
-**Acceptance test, and it is not optional:** two users, two links, one dataset each. User A's link
-must return `UNKNOWN_DATASET` for user B's `dataset_id`, and `list_datasets` on A's link must not
-mention B's. Until that test is green, the HTTP transport stays off.
+**Acceptance test, and it was not optional:** two users, two links, one dataset each. User A's
+link must return `UNKNOWN_DATASET` for user B's `dataset_id`, and `list_datasets` on A's link must
+not mention B's.
+
+✅ **Green** — [`tests/test_mcp_scoping.py`](../backend/tests/test_mcp_scoping.py), 10 tests. And
+verified non-vacuous: disabling scoping makes 7 of the 10 fail, including all five cross-user leak
+cases. A test that cannot fail is not a gate.
 
 ---
 
@@ -199,7 +212,7 @@ A new table, so MCP keys are not confused with login sessions:
 | `user_id` | FK → `users`, cascade delete |
 | `token_hash` | **SHA-256 of the key.** The plaintext is shown once at creation and never stored — a database dump must not yield working links |
 | `label` | user-supplied, e.g. "Gemini on my laptop" |
-| `profile` | `default` \| `advanced` — which tool surface this key exposes |
+| `profile` | `host` \| `default` \| `advanced` — which tool surface this key exposes. New keys default to `host` (§4.4) |
 | `created_at`, `last_used_at`, `expires_at`, `revoked_at` | lifecycle |
 
 `last_used_at` matters more than it looks: it is the only way a user can tell whether a link they
@@ -246,9 +259,9 @@ conventional sense and publicly reachable.
 
 ### 4.4 Which tools to expose — and why the answer is *fewer*
 
-**Default a new key to the `default` profile (7 tools), not `advanced` (18).**
+**A new key defaults to the `host` profile — 11 tools, and none of them ours to think with.**
 
-The reasoning is specific to this feature rather than general caution. Two of the seven —
+The reasoning is specific to this feature rather than general caution. Two tools in `default` —
 `analyze` and `answer_clarification` — run *our* LangGraph agent and *our* Gemini planner. Called
 from inside Gemini, that is Gemini asking AutoViz to ask Gemini: double latency, double cost, and
 the host's model reduced to a passthrough. The whole point of MCP is that the **host's** model
@@ -271,7 +284,7 @@ LLM too, which is a stronger claim than the project has been able to make so far
 
 `analyze` stays available under `advanced` for hosts that genuinely want the agent.
 
-### 4.5 The settings UI
+### 4.5 The settings UI · ✅ built — see Phase 3
 
 **Settings → Connections**
 
@@ -346,18 +359,55 @@ cannot fail is not a gate.
 Unscoped behaviour is byte-for-byte unchanged: with no caller bound, `current_registry()` returns
 the global `REGISTRY`, which is why the other 820 tests never noticed.
 
-### Phase 2 — Transport and keys · ~1–2 days
+### Phase 2 — Transport and keys · ✅ **DONE and DEPLOYED, 16 August**
 
-4. `mcp_keys` model + Alembic migration.
-5. Auth middleware (constant-time lookup, context binding, throttled `last_used_at`, rate limit).
-6. Mount `streamable_http_app()` at `/mcp` with `stateless_http = True`.
-7. Add the `host` profile from §4.4.
-8. nginx `location /c/` block **plus the access-log redaction**, deployed via the existing
-   CodeBuild → ECR → CodeDeploy path.
+4. ✅ [`models/mcp_key.py`](../backend/src/autoviz/models/mcp_key.py) + migration
+   [`009_mcp_keys`](../backend/alembic/versions/009_mcp_keys.py). Single head; DDL checked against
+   Postgres offline, and the table now exists on the live database.
+5. ✅ [`api/mcp_auth.py`](../backend/src/autoviz/api/mcp_auth.py) — pure-ASGI middleware (not
+   `BaseHTTPMiddleware`, which buffers the body and would defeat a streaming transport).
+6. ✅ Mounted at `/c` with `stateless_http = True`, **opt-in behind `AUTOVIZ_REMOTE_MCP=1`** — a
+   publicly reachable, capability-authenticated endpoint should not arrive as a side effect of
+   deploying. A test asserts it 404s when unset.
+7. ✅ `host` profile — 11 tools.
+8. ✅ nginx `location /c/` with `proxy_buffering off` **and the access-log redaction**, validated
+   with `nginx -t` before reload. Verified live: a request with a key logs `/c/[redacted]`.
+9. ✅ Beyond the original scope — `POST/GET/DELETE /auth/mcp-keys`, so Phase 3 is pure frontend.
 
-### Phase 3 — Settings UI · ~1 day
+**Tests: 830 → 864.** 34 new, including a real HTTP round trip through the middleware into the
+MCP transport.
 
-9. Connections panel: generate, show-once, list, revoke, per-host setup snippets.
+#### Four things only the real HTTP path revealed
+
+Every unit test passed while the endpoint was entirely broken. Each of these cost a debugging
+cycle and none would have been caught by testing the pieces:
+
+| Symptom | Cause |
+|---|---|
+| Every request 401 | **Starlette hands a mounted ASGI app the *full* path**, prefix included — so the first segment read as the key was `c`. The middleware now strips its own mount prefix |
+| `Task group is not initialized` | The Streamable HTTP **session manager must be started in the parent app's lifespan**. Mounting a sub-app does not run its lifespan |
+| `run() can only be called once` | `streamable_http_app()` caches the manager on the FastMCP singleton, so a second `create_app()` in one process failed at startup. Each app now gets a fresh manager |
+| `421 Invalid Host header` | MCP ships **DNS-rebinding protection on by default** and rejects any `Host` it was not told about — which would have rejected `autoviz.duckdns.org` in production too. Allowed hosts derive from `AUTOVIZ_API_PUBLIC_URL` |
+
+The last one is the one worth remembering: it would have looked like a deployment problem and was
+a library default.
+
+### Phase 3 — Settings UI · ✅ **DONE, 16 August**
+
+10. ✅ [`ConnectionsModal.tsx`](../frontend/src/components/layout/ConnectionsModal.tsx) — generate,
+    show-once with a copy button, list with **last used**, revoke behind `ConfirmDialog`
+    (the pattern [`Docs/22`](22-Export-and-UI-States.md) established — no `window.confirm`).
+    `useFocusTrap` + `useEscapeToClose`, both suspended while the confirm dialog is up so two
+    traps never fight. Entry point is a link icon in the `TopBar` account cluster.
+11. ✅ [`lib/mcpSetup.ts`](../frontend/src/lib/mcpSetup.ts) — the per-host setup snippets, pulled
+    out of the component **because they are contracts with other people's software**, not
+    presentation. Claude Desktop wants `{type, url}`; Gemini CLI wants `httpUrl`. A wrong key name
+    fails the way integrations always fail: silently, with our server never contacted and nothing
+    anywhere to say why. 10 tests pin the shapes — frontend suite **25 → 35**.
+
+The show-once block is deliberately loud, and closing the panel clears the key from component
+state. There is no path back to it: losing it means revoking and minting again, which the copy
+says in those words.
 
 ### Phase 4 — Prove it, and say what it proves · ~half a day
 

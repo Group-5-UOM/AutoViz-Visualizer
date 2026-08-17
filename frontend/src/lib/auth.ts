@@ -104,3 +104,47 @@ export async function logoutUser() {
     clearSession();
   }
 }
+
+// --- MCP connection keys -----------------------------------------------------
+//
+// The link a user pastes into Claude, Gemini CLI or any other MCP host to give
+// it access to *their* AutoViz data. The key is a capability — possession of
+// the URL is the authorisation — so the server returns it exactly once, at
+// creation, and never again.
+
+export interface McpKey {
+  id: string;
+  label: string;
+  profile: 'host' | 'default' | 'advanced';
+  created_at: string | null;
+  last_used_at: string | null;
+  expires_at: string | null;
+  revoked: boolean;
+}
+
+/** The create response, and the only one that ever carries the key itself. */
+export interface McpKeyCreated extends McpKey {
+  key: string;
+  url: string;
+}
+
+export async function listMcpKeys() {
+  return apiRequest<McpKey[]>('/auth/mcp-keys');
+}
+
+export async function createMcpKey(
+  label: string,
+  profile: McpKey['profile'] = 'host',
+  expiresInDays: number | null = 90,
+) {
+  return apiRequest<McpKeyCreated>('/auth/mcp-keys', {
+    method: 'POST',
+    body: { label, profile, expires_in_days: expiresInDays },
+  });
+}
+
+export async function revokeMcpKey(keyId: string) {
+  return apiRequest<void>(`/auth/mcp-keys/${encodeURIComponent(keyId)}`, {
+    method: 'DELETE',
+  });
+}

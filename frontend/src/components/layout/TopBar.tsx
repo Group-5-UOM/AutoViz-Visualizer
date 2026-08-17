@@ -5,6 +5,7 @@ import {
   FileImage,
   FileText,
   KeyRound,
+  Link2,
   LogOut,
   Menu,
   PanelLeft,
@@ -35,6 +36,8 @@ interface TopBarProps {
   saveError?: string | null;
   onNewDashboard?: () => void;
   onSetPassword?: () => void;
+  /** Opens the MCP connection-link panel. */
+  onOpenConnections?: () => void;
   onLogout?: () => void | Promise<void>;
   /** Used to disable Export when the canvas has no charts. */
   canExport?: boolean;
@@ -55,6 +58,7 @@ export function TopBar({
   saveError,
   onNewDashboard,
   onSetPassword,
+  onOpenConnections,
   onLogout,
   canExport = true,
 }: TopBarProps) {
@@ -217,6 +221,17 @@ export function TopBar({
             <span className="topbar-user-name" title={userEmail || displayName}>
               {displayName}
             </span>
+            {onOpenConnections && (
+              <button
+                type="button"
+                className="topbar-icon-btn"
+                onClick={onOpenConnections}
+                title="Connections — link an AI assistant"
+                aria-label="Connections — link an AI assistant"
+              >
+                <Link2 size={16} />
+              </button>
+            )}
             {onSetPassword && (
               <button
                 type="button"
