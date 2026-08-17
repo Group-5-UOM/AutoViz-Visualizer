@@ -149,8 +149,18 @@ NUMERIC_ONLY_AGGS = frozenset({"sum", "mean", "min", "max", "median"})
 # and wrong for every trend, which is the commoner request.
 DATETIME_DERIVE_FNS = frozenset({"month_start", "quarter_start", "week_start", "year_start"})
 
+# Extraction: datetime -> a bare number (month gives 1-12, weekday 0-6).
+#
+# Named separately from the truncating fns above because the *result* is a
+# different kind of thing, and lumping the two together is what made a trend
+# over an extracted month come back as a scatter: a bare 1-12 was typed "number",
+# which emptied both the temporal and the categorical bucket and left the
+# recommender with nothing but measures. These are ordered discrete positions —
+# ORDINAL — not quantities to be summed.
+DATE_PART_DERIVE_FNS = frozenset({"month", "year", "day", "weekday"})
+
 # Every fn that reads a datetime column, whatever it returns.
-DATE_DERIVE_FNS = frozenset({"month", "year", "day", "weekday"}) | DATETIME_DERIVE_FNS
+DATE_DERIVE_FNS = DATE_PART_DERIVE_FNS | DATETIME_DERIVE_FNS
 STRING_DERIVE_FNS = frozenset({"lower", "upper", "trim"})
 NUMERIC_DERIVE_FNS = frozenset({"round", "abs"})
 STRING_ONLY_OPS = frozenset({"contains"})

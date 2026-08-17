@@ -305,9 +305,17 @@ def test_a_pivoted_trend_reaches_the_chart_as_a_real_time_axis(registry, tmp_pat
     assert _x_type(out["vega_lite_spec"]) == "temporal"
 
 
-def test_an_extracted_month_still_reaches_the_chart_as_a_number(registry, tmp_path):
+def test_an_extracted_month_reaches_the_chart_as_an_ordinal(registry, tmp_path):
     """The other half of the same mapping, so a fix to one does not silently
-    swap the other."""
+    swap the other.
+
+    An extracted month must never be *temporal* — that is what the truncating
+    fns are for, and confusing them collapses January 2025 into January 2026.
+    It is not quantitative either: a bare 1-12 is an ordered position, not a
+    quantity to sum. It used to be typed "number", and that emptied both the
+    temporal and the categorical bucket, so a trend over it fell through every
+    rule in the recommender and came back as a scatter.
+    """
     rows = [{"d": "2026-01-15", "rev": 10}, {"d": "2026-02-15", "rev": 20}]
     ds = _register(registry, tmp_path, "narrow.csv", rows)
     out = run_pipeline(
@@ -323,4 +331,5 @@ def test_an_extracted_month_still_reaches_the_chart_as_a_number(registry, tmp_pa
         registry,
     )
     assert out["status"] == "ok", out
-    assert _x_type(out["vega_lite_spec"]) == "quantitative"
+    assert _x_type(out["vega_lite_spec"]) == "ordinal"
+    assert _x_type(out["vega_lite_spec"]) != "temporal"  # the truncate/extract line

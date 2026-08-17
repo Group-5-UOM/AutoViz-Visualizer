@@ -7,6 +7,7 @@ chart library beyond the original six types.
 
 **Jump to:** [§9 Supported chart types](#9-supported-chart-types) ·
 [§11 Sub-types](#11-sub-types--the-modifier-layer) ·
+[§12 The scatter fallback](#12-the-scatter-fallback--one-cause-four-symptoms) ·
 [§10 Future work](#10-future-work) ·
 [the verification harness](#the-renderer-verification-harness)
 
@@ -558,12 +559,12 @@ by modifiers on `ChartSpec` rather than by names of their own; see **§11**.
 
 | Type | Vega mark | Required channels | What `color` means | Auto-picked for |
 |---|---|---|---|---|
-| `bar` | `bar` | x, y | series (**stacks**) | ranking (sorted desc), distribution or comparison over one category |
+| `bar` | `bar` | x, y | series (**stacks**) | ranking (sorted desc), distribution or comparison over one category — **including a numeric-coded one** (§12) |
 | `grouped_bar` | `bar` + `xOffset` | x, y, **color** | series (side by side) | comparison over two categories |
-| `line` | `line` | x, y | series | trend; any intent over a datetime |
+| `line` | `line` | x, y | series | trend; any intent over a datetime; **trend over an ordered dimension or a bare measure** (§12) |
 | `area` | `area` | x, y | series | — explicit only |
-| `scatter` | `point` | x, y | series | relationship over two numerics; numeric-only fallback |
-| `histogram` | `bar` (binned) | **x only** | — | distribution over a numeric with no category |
+| `scatter` | `point` | x, y | series | relationship over two numerics; two measures with no dimension (**no longer the catch-all** — §12) |
+| `histogram` | `bar` (binned) | **x only** | — | distribution over a numeric with no category; **one measure with no dimension at all** (§12) |
 | `pie` | `arc` | x = category, y = measure | the category | — explicit only (donut is preferred) |
 | `donut` | `arc` + `innerRadius` | x = category, y = measure | the category | composition |
 | `heatmap` | `rect` | x, y, **color** | **the measure** (quantitative) | distribution or relationship over two categories |
@@ -767,6 +768,96 @@ stepped", "still drawing individual points — not binned"). Run it with
 - **The recommender never proposes a sub-type.** It picks a family, as before;
   every modifier has to be asked for. Deliberate — the asymmetry §7 argues for —
   but it does mean a chart with 40 categories will not turn itself horizontal.
+
+---
+
+## 12. The scatter fallback — one cause, four symptoms
+
+Status: **fixed**. `tests/test_chart_recommender_dimensions.py`.
+
+Reported as two separate defects: *"comparison of two groups drew a scatter"* and
+*"time trend drew a scatter"*. They were the same bug reached two ways.
+
+### How it worked
+
+`recommend_chart_type` sorts the result's columns into three buckets — measures,
+temporal, categorical — and every one of its rules is guarded on those buckets.
+The last branch was guarded on nothing, and **did not read `intent` at all**:
+
+```python
+else:
+    chart_type, x = "scatter", numeric[0]
+    y = numeric[1] if len(numeric) > 1 else numeric[0]
+    rationale = "Only numeric columns available — scatter plot."
+```
+
+So whenever the temporal and categorical buckets both came up empty, every rule
+fell through and a scatter came back — for a trend, for a ranking, for anything.
+The rationale did not even mention which question had been asked.
+
+Two kinds of column were landing in the wrong bucket:
+
+- **Extracted date parts.** `month`/`year`/`day`/`weekday` return a bare number,
+  and the orchestrator typed them `"number"` — sharing a branch with `round` and
+  `abs`. `temporal` empty, `categorical` empty. A trend over an extracted month
+  was a scatter; the same trend over `month_start` was correctly a line.
+- **Numeric-coded categories.** `pclass`, `survived` were demoted to a class only
+  when used as a `group_by` key or `chart.color`. A plan that merely *selected*
+  one left `categorical` empty, so a comparison of two groups was a scatter.
+
+Two further symptoms of the same cause, not reported but present:
+
+- An explicit `chart.x = pclass` put three passenger classes on a **continuous
+  1–3 axis** — `chart.x` was never in the demotion scope, only `chart.color`.
+- A single total (`avg_fare`, one row) was drawn as a scatter **of the value
+  against itself**, one point at (x, x).
+
+### The fix, in three parts
+
+1. **A third derive outcome.** `DATE_PART_DERIVE_FNS` split out of
+   `DATE_DERIVE_FNS`; extraction now yields `ORDINAL` — an ordered discrete
+   position, deliberately sorted into *both* the categorical bucket (so every
+   existing rule sees it) and a new `ordered` list (so a trend puts it on x
+   rather than whichever category came back first). Ordinal rather than nominal
+   because a month axis sorted as text puts 10, 11, 12 before 2.
+2. **Demotion scoped per channel, not per column.** `discrete_channel_columns()`
+   answers "which channels of *this* chart hold classes", because the question
+   has no per-column answer: pclass is three classes on a bar's x and a genuine
+   number on a scatter's. It covers `facet`, and follows the `orientation` swap.
+   With no chart yet, a coded column is a class unless the plan aggregates over
+   it — the recommender cannot pick a chart that treats pclass as classes unless
+   it is told that is what pclass is.
+3. **The terminal branch reads `intent`.** Trend → line over the measures;
+   relationship and everything else with two measures → scatter; one measure over
+   many rows → histogram; one measure over one row → `NO_CHART_FIT`.
+
+### Two things found while fixing it
+
+**The narrow demotion scope had a real reason.** Widening it wholesale broke
+`test_under_threshold_never_gates`: `categorical_numeric` detection keys off how
+few distinct values a column has, so on a narrow result the *measure* gets
+flagged too — a lone `fare` column comes back coded. Demoting it left no numeric
+column at all, and "nothing to plot as a measure" is a worse answer than a
+continuous axis. There is now a guard: **if demoting would leave the result with
+no measure, demote nothing.**
+
+**A schema cannot tell a column of values from a single total.** Both are "one
+numeric column". `recommend_chart_type` takes an optional `row_count` for exactly
+this, passed by the orchestrator, which holds the table. Without it the histogram
+reading is assumed — a histogram of one value is a single bar, odd-looking but
+not the lie that a scatter of a column against itself is.
+
+### Why the tests missed all of it
+
+Every existing test of the recommender fed it a proper string category or a real
+datetime — the well-behaved shapes. Neither broken shape was in the set. The
+plan guide's own worked example sidesteps it too: *"which month of the year is
+wettest"* hardcodes `chart: {"type": "bar"}`, so the recommender never runs on it.
+
+Refusing a chart is safe because a chart failure downgrades an agent run to
+`status: "partial"` with the result table intact (`agent/nodes.py` — *"partial
+results are never discarded"*), so the single total still reaches the user as a
+number.
 
 ---
 

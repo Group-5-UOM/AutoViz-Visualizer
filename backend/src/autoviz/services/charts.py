@@ -52,19 +52,95 @@ _REQUIRED_CHANNELS: dict[str, tuple[str, ...]] = {
 }
 
 
+# A discrete dimension whose values have a meaningful order: month 1-12, a
+# weekday, a year. Sorted with the categoricals — every rule that wants "a
+# category to put on an axis" should see one — but tracked separately, because a
+# trend belongs on the *ordered* one and Vega-Lite must not sort it as text.
+ORDINAL = "ordinal"
+
+# Channels that carry a discrete class rather than a measure, per chart type.
+#
+# Exists so the orchestrator can decide whether a numeric-coded category
+# (pclass, survived) is acting as a class on *this* chart. It cannot be answered
+# per column — pclass is three classes on a bar's x axis and a genuine number on
+# a scatter's — so it is answered per channel, here, next to the types it
+# describes.
+_DISCRETE_CHANNELS: dict[str, frozenset[str]] = {
+    "bar": frozenset({"x", "color"}),
+    "grouped_bar": frozenset({"x", "color"}),
+    "line": frozenset({"x", "color"}),
+    "area": frozenset({"x", "color"}),
+    "pie": frozenset({"x", "color"}),
+    "donut": frozenset({"x", "color"}),
+    "boxplot": frozenset({"x", "color"}),
+    "heatmap": frozenset({"x", "y"}),  # colour is the measure on a heatmap
+    "scatter": frozenset({"color"}),   # both axes are measures
+    "histogram": frozenset({"color"}), # x is binned, y is a derived count
+}
+
+
+def discrete_channel_columns(chart_spec: dict[str, Any]) -> set[str]:
+    """Columns this chart puts on a discrete channel.
+
+    `facet` is always discrete — one panel per value is the definition of a
+    class. Orientation moves which *axis* holds the category, so the answer
+    follows the swap rather than assuming the vertical layout.
+    """
+    channels = _DISCRETE_CHANNELS.get(chart_spec.get("type"))
+    if channels is None:
+        return set()
+    if chart_spec.get("orientation") == "horizontal":
+        flip = {"x": "y", "y": "x"}
+        channels = frozenset(flip.get(c, c) for c in channels)
+    cols = {chart_spec[c] for c in channels if chart_spec.get(c)}
+    if chart_spec.get("facet"):
+        cols.add(chart_spec["facet"])
+    return cols
+
+
 def _split_columns(result_schema: list[dict[str, str]]):
+    """Sort the result's columns into the buckets the rules are written against.
+
+    Returns ``(numeric, temporal, categorical, ordered)``. ``ordered`` is the
+    subset of ``categorical`` whose values have a sequence — it is deliberately
+    *in* both, so an ordinal satisfies every existing "is there a category?"
+    rule while still being identifiable as the right x for a trend.
+    """
     numeric = [c["name"] for c in result_schema if c["type"] == "number"]
     temporal = [c["name"] for c in result_schema if c["type"] == "datetime"]
     categorical = [
         c["name"] for c in result_schema if c["type"] not in ("number", "datetime")
     ]
-    return numeric, temporal, categorical
+    ordered = [c["name"] for c in result_schema if c["type"] == ORDINAL]
+    return numeric, temporal, categorical, ordered
 
 
 def recommend_chart_type(
-    result_schema: list[dict[str, str]], intent: str
+    result_schema: list[dict[str, str]], intent: str, row_count: int | None = None
 ) -> dict[str, Any]:
-    numeric, temporal, categorical = _split_columns(result_schema)
+    """Pick a chart for this result shape and this question.
+
+    ``row_count`` separates the two shapes a schema alone cannot tell apart: one
+    measure over many rows (a column of fares — its distribution is the chart)
+    from one measure over one row (a single total — not a chart at all). Optional
+    so existing callers keep working; without it the first reading is assumed,
+    because it is the one whose wrong answer is merely odd rather than false.
+
+    **Intent is the question; the column types only decide how to answer it.**
+    Every branch below is guarded on the types, and for a long time the terminal
+    fallback was not guarded on anything — so whenever the temporal and
+    categorical buckets both came up empty, a *trend* request was answered with
+    a scatter whose rationale did not even mention that a trend was asked for.
+    The fix is in two halves and both matter:
+
+    * upstream, the buckets are filled correctly — an extracted month is an
+      ordinal, not a number, and a numeric-coded category is a class (see
+      `ORDINAL` and `discrete_channel_columns`);
+    * here, the terminal case reads `intent` like every other branch, because
+      something will always slip past the bucketing and a scatter is not a
+      neutral default. It is the answer to one specific question.
+    """
+    numeric, temporal, categorical, ordered = _split_columns(result_schema)
 
     if not numeric:
         return make_error(
@@ -80,10 +156,17 @@ def recommend_chart_type(
         if categorical:
             color = categorical[0]
     elif intent == "trend" and categorical:
-        chart_type, x = "line", categorical[0]
-        rationale = f"Trend intent over ordered category '{x}' — line chart."
-        if len(categorical) > 1:
-            color = categorical[1]
+        # An ordered dimension is the x axis a trend wants — a month or a year
+        # runs along the axis, where an unordered category merely sits on it.
+        # Taking categorical[0] regardless put the series column on x whenever
+        # it happened to come back first.
+        x = ordered[0] if ordered else categorical[0]
+        chart_type = "line"
+        kind = "ordered" if ordered else "sequential"
+        rationale = f"Trend intent over {kind} dimension '{x}' — line chart."
+        others = [c for c in categorical if c != x]
+        if others:
+            color = others[0]
     elif intent == "relationship" and len(numeric) >= 2:
         chart_type, x, y = "scatter", numeric[0], numeric[1]
         rationale = "Relationship intent with two numeric columns — scatter shows correlation."
@@ -127,10 +210,41 @@ def recommend_chart_type(
     elif temporal:
         chart_type, x = "line", temporal[0]
         rationale = f"Temporal column '{x}' available — line chart."
+    elif intent == "trend" and len(numeric) >= 2:
+        # Nothing discrete and nothing temporal, but a trend was still asked for:
+        # the sequence must be one of the measures (a raw year column, a period
+        # index). A line over it answers the question; a scatter does not.
+        chart_type, x, y = "line", numeric[0], numeric[1]
+        rationale = (
+            f"Trend intent with no date or category — line over numeric '{x}', "
+            "which is the only column that can carry a sequence here."
+        )
+    elif len(numeric) >= 2:
+        chart_type, x, y = "scatter", numeric[0], numeric[1]
+        rationale = (
+            "Only measures available and no dimension to break them down by — "
+            "scatter shows how the two relate."
+        )
+    elif row_count == 1:
+        # One measure, one row: a single number. The old fallback plotted it
+        # against itself — a scatter of one point at (x, x) — which is a picture
+        # of nothing. Refusing is the honest answer and costs the caller nothing:
+        # a chart failure downgrades the run to "partial" with the result table
+        # intact, so the number still reaches the user.
+        return make_error(
+            NO_CHART_FIT,
+            f"'{numeric[0]}' is a single value with nothing to plot it against — "
+            "the number is the whole answer. Group by a column to chart it.",
+        )
     else:
-        chart_type, x = "scatter", numeric[0]
-        y = numeric[1] if len(numeric) > 1 else numeric[0]
-        rationale = "Only numeric columns available — scatter plot."
+        # One measure over many rows: its distribution is the only thing there is
+        # to show. Reached when `row_count` is unknown too, because a histogram of
+        # one value is a single bar — wrong-looking, but not a lie the way a
+        # scatter of a column against itself is.
+        chart_type, x = "histogram", numeric[0]
+        rationale = (
+            f"One measure and nothing to break it down by — histogram of '{x}'."
+        )
 
     result: dict[str, Any] = {
         "chart_type": chart_type,
@@ -194,7 +308,9 @@ def retype_chart_spec(
     if chart_spec.get("type") == chart_type:
         return dict(chart_spec)
 
-    numeric, temporal, categorical = _split_columns(result_schema)
+    # `ordered` is unused here: an ordinal is already in `categorical`, which is
+    # the pool a "dim" or "cat" role draws from.
+    numeric, temporal, categorical, _ordered = _split_columns(result_schema)
     # Modifiers survive a retype wherever the new type can carry them — turning a
     # horizontal bar into a horizontal box plot should stay on its side — and are
     # dropped where it cannot, because a `stack` left on a scatter is a plan the
@@ -223,7 +339,10 @@ def retype_chart_spec(
 
 def _encoding_type(values: list[Any], column_schema: dict[str, str] | None, name: str) -> str:
     if column_schema and name in column_schema:
-        return {"number": "quantitative", "datetime": "temporal"}.get(
+        # ORDINAL rather than nominal for an ordered dimension: a month axis
+        # sorted as text puts 10, 11, 12 before 2, and a nominal scale is exactly
+        # what would do that.
+        return {"number": "quantitative", "datetime": "temporal", ORDINAL: "ordinal"}.get(
             column_schema[name], "nominal"
         )
     non_null = [v for v in values if v is not None]
@@ -412,6 +531,20 @@ def generate_chart(
         values = [row.get(col) for row in result_table]
         return {"field": col, "type": _encoding_type(values, schema_hint, col)}
 
+    def series_enc(col: str) -> dict[str, Any]:
+        """A colour or offset channel — a series, never a position.
+
+        Ordinal is right on an axis and wrong here: the theme's palette is
+        registered as `config.range.category`, which Vega-Lite applies to a
+        *nominal* colour scale only. An ordinal one falls through to Vega's own
+        ordered scheme, and the chart quietly stops using the app's colours —
+        the exact defect Docs/13 §5 already records for single-series charts.
+        """
+        field_def = enc(col)
+        if field_def["type"] == "ordinal":
+            return {**field_def, "type": "nominal"}
+        return field_def
+
     if chart_type == "histogram":
         if "y" in channels:
             return {
@@ -486,11 +619,11 @@ def generate_chart(
         # horizontal ranking bar sorted on the wrong axis comes back unsorted
         # while still claiming to be sorted.
         if "color" in channels:
-            encoding["color"] = enc(channels["color"])
+            encoding["color"] = series_enc(channels["color"])
             if chart_type == "grouped_bar":
                 # What separates grouped from stacked: without xOffset a bar with
                 # a colour channel stacks.
-                encoding["xOffset"] = enc(channels["color"])
+                encoding["xOffset"] = series_enc(channels["color"])
             n_colors = len({row.get(channels["color"]) for row in result_table})
             cap = (
                 MAX_SERIES_ALL_PAIRS

@@ -16,12 +16,18 @@ from autoviz.errors import (
     UNKNOWN_DATASET,
 )
 from autoviz.schema.allowlists import (
-    DATE_DERIVE_FNS,
+    DATE_PART_DERIVE_FNS,
     DATETIME_DERIVE_FNS,
     NUMERIC_DERIVE_FNS,
 )
 from autoviz.schema.analysis_plan import AnalysisPlan
-from autoviz.services.charts import generate_chart, recommend_chart_type, retype_chart_spec
+from autoviz.services.charts import (
+    ORDINAL,
+    discrete_channel_columns,
+    generate_chart,
+    recommend_chart_type,
+    retype_chart_spec,
+)
 from autoviz.services.execution import execute_analysis
 from autoviz.services.registry import REGISTRY, DatasetRegistry
 from autoviz.services.validation import validate_analysis_plan
@@ -109,33 +115,77 @@ def run_pipeline(
     result_table = executed["result_table"]
 
     result_columns = list(result_table[0].keys()) if result_table else []
-    # Effective type of every column the query produces. A numeric-coded category
-    # (pclass, survived) is demoted to "categorical" only where it is used as a
-    # dimension — a group_by key or an explicit colour channel — so it renders as
-    # discrete classes instead of a continuous scale. Elsewhere it stays a number:
-    # the same column can still be a measure when selected or aggregated on.
+    # Effective type of every column the query produces — the labels the whole
+    # chart layer reasons from. A numeric-coded category (pclass, survived) is
+    # demoted to "categorical" where it is acting as a dimension, so it renders
+    # as discrete classes rather than a continuous scale; elsewhere it stays a
+    # number, because the same column can still be a measure.
     coded = set(record.categorical_numeric)
-    dimension_cols = set(plan.group_by)
-    if plan.chart is not None and plan.chart.color:
-        dimension_cols.add(plan.chart.color)
+    # Where a coded category is acting as a class rather than as a quantity.
+    #
+    # Scoped to `group_by` plus `chart.color` alone, this missed the two commonest
+    # cases outright. An explicit `chart.x = pclass` left three passenger classes
+    # on a continuous 1-3 axis, and a plan that merely *selected* a coded column
+    # gave the recommender nothing discrete to work with, so it fell through to a
+    # scatter. Both were silent.
+    if plan.chart is not None:
+        # The chart itself says which of its channels hold classes — and it has
+        # to, because the answer is not a property of the column: pclass is three
+        # classes on a bar's x axis and a genuine number on a scatter's.
+        dimension_cols = set(plan.group_by) | discrete_channel_columns(
+            plan.chart.model_dump(exclude_none=True)
+        )
+    else:
+        # No chart yet, so there are no channels to ask. The recommender is about
+        # to choose one and cannot choose a chart that treats pclass as three
+        # classes unless it is told that is what pclass is. Aggregating over the
+        # column is the one use that makes it a measure again.
+        dimension_cols = set(plan.group_by) | (
+            coded - {a.column for a in plan.aggregations}
+        )
     # Start from the cleaned types: a column cast to a number in preprocessing must
     # reach the chart encoder as a number, or it would be plotted as a text axis.
     effective_types = plan.preprocessing_schema(record.schema)
-    for c in coded & dimension_cols:
-        effective_types[c] = "categorical"
     for d in plan.derive:
-        # Same three-way split as services/validation.py, and it has to stay in
-        # step with it: a truncation is a timestamp, and typing it as a number
-        # here puts 2026-01-01 on a linear axis at the chart encoder — the exact
-        # mis-rendering the truncating fns exist to prevent.
+        # Same split as services/validation.py, and it has to stay in step with
+        # it. Three outcomes, not two:
+        #   truncation  -> a timestamp; typing it as a number puts 2026-01-01 on a
+        #                  linear axis, the mis-rendering these fns exist to prevent
+        #   extraction  -> an ORDERED DISCRETE position (month 1-12), not a
+        #                  quantity. Typed "number" it emptied both the temporal
+        #                  and categorical buckets, and a trend over it came back
+        #                  as a scatter.
+        #   round/abs   -> genuinely a number
         if d.fn in DATETIME_DERIVE_FNS:
             effective_types[d.name] = "datetime"
-        elif d.fn in (DATE_DERIVE_FNS | NUMERIC_DERIVE_FNS):
+        elif d.fn in DATE_PART_DERIVE_FNS:
+            effective_types[d.name] = ORDINAL
+        elif d.fn in NUMERIC_DERIVE_FNS:
             effective_types[d.name] = "number"
         else:
             effective_types[d.name] = "string"
     for a in plan.aggregations:
         effective_types[a.as_] = "number"
+
+    # Demote last, once every other column's type is settled, because whether a
+    # demotion is safe depends on what else the result holds.
+    #
+    # The guard is not hypothetical: `categorical_numeric` detection keys off how
+    # few distinct values a column has, so on a narrow result the *measure* is
+    # often flagged too — a lone `fare` column comes back coded. Demoting it left
+    # the result with no numeric column at all, and "nothing to plot as a measure"
+    # is a worse answer than a continuous axis on a column that has an order.
+    demote = coded & dimension_cols
+    if not {
+        c for c in result_columns
+        if effective_types.get(c) == "number" and c not in demote
+    }:
+        demote = set()
+    for c in demote:
+        # Nominal, not ordinal: a coded category may or may not have an order
+        # (pclass does, survived does not), and only a nominal colour scale picks
+        # up the theme's palette. See charts.series_enc.
+        effective_types[c] = "categorical"
 
     progress(4, "Selecting chart type")
     result_schema = [
@@ -145,7 +195,11 @@ def run_pipeline(
         chart_spec: dict[str, Any] = plan.chart.model_dump(exclude_none=True)
         recommendation = None
     else:
-        recommendation = recommend_chart_type(result_schema, plan.intent)
+        # The row count is what separates a column of values from a single total,
+        # which the schema alone cannot say — see recommend_chart_type.
+        recommendation = recommend_chart_type(
+            result_schema, plan.intent, row_count=len(result_table)
+        )
         if "error" in recommendation:
             return {
                 "status": "error",
