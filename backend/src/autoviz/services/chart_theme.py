@@ -13,11 +13,24 @@ arrives it should be a frontend override at embed time (`vegaEmbed(el, spec,
 regenerated.
 
 **Colour choices.** The eight categorical slots and the blue sequential ramp are
-a validated palette: on this app's `#ffffff` chart surface they clear the
-lightness band, the chroma floor, adjacent-pair CVD separation (worst ΔE 9.1,
-target ≥ 8) and the normal-vision floor (worst ΔE 19.6, floor ≥ 15). The slot
-*ordering* is the CVD-safety mechanism, not decoration — do not reorder these
-without re-running the check.
+a validated palette, and `tests/test_palette_accessibility.py` is what validates
+them — CIEDE2000 distances, Machado (2009) colour-blindness simulation, and WCAG
+contrast, all computed rather than asserted. On this app's `#ffffff` surface:
+
+* adjacent-pair separation under protanopia / deuteranopia / tritanopia,
+  worst ΔE **8.4** (yellow against magenta, under tritanopia), floor 8;
+* any pair that can co-occur, under ordinary vision, worst ΔE **13.3** (orange
+  against red — reachable only on a chart using seven or more series), floor 13.
+
+The slot *ordering* is the CVD-safety mechanism, not decoration. Reordering is
+what the test above exists to catch: moving green next to orange takes
+protanopia separation from 14.6 down to 4.8, and the two series become one hue
+for roughly 1 in 12 men in the room.
+
+*(An earlier version of this note claimed ΔE 9.1 and a normal-vision floor of 15
+with a worst case of 19.6. Neither reproduces on a standard CIEDE2000 +
+Machado implementation, on either reading of "which pairs" — the method behind
+them was never recorded. The figures above are the ones the test computes.)*
 
 Three slots (aqua, yellow, magenta) sit below 3:1 contrast against white. That is
 a known property of this palette and carries a standing obligation: those series
