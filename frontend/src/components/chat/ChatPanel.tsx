@@ -42,7 +42,7 @@ export function ChatPanel({
   messages,
   isThinking,
   disabled = false,
-  disabledReason = 'Add a CSV file to start chatting.',
+  disabledReason = 'Add a data file to start chatting.',
   onClose,
   onSend,
   onFocusChart,
@@ -252,7 +252,7 @@ export function ChatPanel({
           }}
           placeholder={
             disabled
-              ? 'Add a CSV file first…'
+              ? 'Add a data file first…'
               : referenced
                 ? `Change "${referenced.title}"…`
                 : 'Ask for a chart, or @ to reference one…'

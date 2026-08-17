@@ -163,3 +163,11 @@
   flex-wrap: wrap;
   justify-content: center;
 }
+
+/* The accepted formats, under the upload prompt. Discoverable up front beats
+   finding out by having a file rejected. */
+.canvas-empty-formats {
+  margin: -4px 0 14px;
+  font-size: 0.78rem;
+  color: var(--text-secondary, #6b7280);
+}

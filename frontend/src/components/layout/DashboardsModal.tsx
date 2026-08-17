@@ -234,7 +234,7 @@ export function DashboardsModal({
                 <div className="dashboards-empty">
                   <Database size={32} strokeWidth={1} />
                   <h3>No saved datasets</h3>
-                  <p>Upload a CSV with Add to see it here.</p>
+                  <p>Upload a file with Add to see it here.</p>
                 </div>
               ) : (
                 <div className="dashboards-list">

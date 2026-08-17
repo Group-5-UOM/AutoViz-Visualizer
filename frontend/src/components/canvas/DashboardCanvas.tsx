@@ -3,6 +3,7 @@ import { FileSpreadsheet, Table, Upload } from 'lucide-react';
 import { ChartWidgetCard } from './ChartWidget';
 import type { ChartWidget } from '../../types/dashboard';
 import './DashboardCanvas.css';
+import { ACCEPTED_LABEL, UPLOAD_ACCEPT, isAcceptedFile } from '../../lib/uploads';
 
 interface DatasetInfo {
   datasetId: string;
@@ -80,7 +81,7 @@ export function DashboardCanvas({
     
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
-    if (file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')) {
+    if (isAcceptedFile(file)) {
       void onCsvSelected(file);
     }
   };
@@ -102,11 +103,12 @@ export function DashboardCanvas({
             <div className="canvas-upload-icon" aria-hidden>
               <FileSpreadsheet size={28} strokeWidth={1.75} />
             </div>
-            <h2>Add a CSV file</h2>
+            <h2>Add a data file</h2>
             <p>
-              Upload a structured CSV dataset to start asking questions and
+              Upload a spreadsheet or data file to start asking questions and
               building charts on this canvas, or drop a file here.
             </p>
+            <p className="canvas-empty-formats">{ACCEPTED_LABEL}</p>
             <button
               type="button"
               className="canvas-upload-btn"
@@ -115,7 +117,7 @@ export function DashboardCanvas({
               disabled={uploading}
             >
               <Upload size={16} />
-              {uploading ? 'Uploading…' : 'Add CSV file'}
+              {uploading ? 'Uploading…' : 'Add data file'}
             </button>
             {uploadError && (
               <p className="canvas-upload-error" role="alert">
@@ -125,7 +127,7 @@ export function DashboardCanvas({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv,text/csv"
+              accept={UPLOAD_ACCEPT}
               className="canvas-file-input"
               onChange={handleFileChange}
               disabled={uploading}
@@ -166,7 +168,7 @@ export function DashboardCanvas({
                 disabled={uploading}
               >
                 <Upload size={16} />
-                {uploading ? 'Uploading…' : 'Replace CSV'}
+                {uploading ? 'Uploading…' : 'Replace file'}
               </button>
             </div>
             {uploadError && (
@@ -177,7 +179,7 @@ export function DashboardCanvas({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv,text/csv"
+              accept={UPLOAD_ACCEPT}
               className="canvas-file-input"
               onChange={handleFileChange}
               disabled={uploading}

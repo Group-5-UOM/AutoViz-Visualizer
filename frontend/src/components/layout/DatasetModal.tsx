@@ -5,6 +5,7 @@ import { listDatasets, deleteDataset, previewDataset, type DatasetMetadata } fro
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { ConfirmDialog } from './ConfirmDialog';
 import './DatasetModal.css';
+import { UPLOAD_ACCEPT, isAcceptedFile } from '../../lib/uploads';
 
 interface DatasetModalProps {
   currentDatasetId?: string;
@@ -150,7 +151,7 @@ export function DatasetModal({ currentDatasetId, onClose, onSelect, onCsvSelecte
     
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
-    if (file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')) {
+    if (isAcceptedFile(file)) {
       void onCsvSelected(file);
     }
   };
@@ -204,7 +205,7 @@ export function DatasetModal({ currentDatasetId, onClose, onSelect, onCsvSelecte
                 <div className="data-empty">
                   <Database size={32} strokeWidth={1} />
                   <h3>No datasets found</h3>
-                  <p>Upload a CSV file.</p>
+                  <p>Upload a data file.</p>
                 </div>
               ) : (
                 <div className="dataset-list">
@@ -332,14 +333,14 @@ export function DatasetModal({ currentDatasetId, onClose, onSelect, onCsvSelecte
               <div className="dataset-preview-empty">
                 <Table size={64} strokeWidth={1} />
                 <h3>No dataset selected</h3>
-                <p>Select a dataset from the list to preview its contents, or drop a new CSV file here.</p>
+                <p>Select a dataset from the list to preview its contents, or drop a new data file here.</p>
                 <div style={{ marginTop: '16px' }}>
                   <label className="upload-label">
                     <Upload size={16} />
                     {uploading ? 'Uploading...' : 'Upload new CSV'}
                     <input
                       type="file"
-                      accept=".csv"
+                      accept={UPLOAD_ACCEPT}
                       className="upload-input"
                       onChange={handleFileChange}
                       disabled={uploading}

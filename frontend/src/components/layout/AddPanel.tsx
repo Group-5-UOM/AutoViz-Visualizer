@@ -2,6 +2,7 @@ import { useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { Upload } from 'lucide-react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import './ToolSidePanel.css';
+import { UPLOAD_ACCEPT, isAcceptedFile } from '../../lib/uploads';
 
 interface AddPanelProps {
   open: boolean;
@@ -49,7 +50,7 @@ export function AddPanel({
     
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
-    if (file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')) {
+    if (isAcceptedFile(file)) {
       void onCsvSelected(file);
     }
   };
@@ -58,7 +59,7 @@ export function AddPanel({
     <section className="tool-panel" aria-label="Add dataset">
       <div className="tool-panel-body">
         <p className="tool-panel-copy">
-          Upload a new CSV dataset to start building charts on the canvas.
+          Upload a spreadsheet or data file to start building charts on the canvas.
         </p>
 
         <div 
@@ -76,7 +77,7 @@ export function AddPanel({
           >
             <Upload size={16} />
             <span>
-              {uploading ? 'Uploading…' : 'Upload CSV'}
+              {uploading ? 'Uploading…' : 'Upload file'}
               <span className="tool-action-meta">
                 {isDragging ? 'Drop file here' : 'Drag and drop or click to add'}
               </span>
@@ -92,7 +93,7 @@ export function AddPanel({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv,text/csv"
+          accept={UPLOAD_ACCEPT}
           className="tool-file-input"
           onChange={handleFileChange}
           disabled={uploading}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FileSpreadsheet, X } from 'lucide-react';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
+import { uploadFilename } from '../../lib/uploads';
 import './SaveDashboardModal.css';
 
 interface NameUploadModalProps {
@@ -97,12 +98,14 @@ export function NameUploadModal({ file, onCancel, onConfirm }: NameUploadModalPr
   );
 }
 
-/** Build the File that will be uploaded / stored under this display name. */
+/** Build the File that will be uploaded / stored under this display name.
+ *
+ * Keeps the source extension. The backend chooses its reader from it, so
+ * renaming an `.xlsx` to `.csv` hands workbook bytes to the CSV parser.
+ */
 export function namedCsvFile(source: File, displayName: string): File {
-  const stem = displayName.trim().replace(/\.csv$/i, '');
-  const filename = `${stem || 'dataset'}.csv`;
-  return new File([source], filename, {
-    type: source.type || 'text/csv',
+  return new File([source], uploadFilename(displayName, source.name), {
+    type: source.type,
     lastModified: source.lastModified,
   });
 }
