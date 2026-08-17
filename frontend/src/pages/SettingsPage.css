@@ -1,0 +1,234 @@
+/* Settings page chrome. The `.set-*` classes here are shared by every section
+   (see components/settings/) so a new section inherits the page's typography,
+   buttons and fields rather than restating them. */
+
+.set-page {
+  min-height: 100vh;
+  background: var(--app-bg, #f6f7f9);
+  color: var(--text-primary, #111827);
+}
+
+.set-topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 22px;
+  background: var(--surface, #fff);
+  border-bottom: 1px solid var(--border-subtle, #e4e7ec);
+}
+
+.set-topbar h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.set-who {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #6b7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40vw;
+}
+
+.set-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, #e4e7ec);
+  background: var(--surface, #fff);
+  color: var(--text-primary, #111827);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.set-back:hover {
+  background: var(--surface-hover, #f9fafb);
+}
+
+.set-body {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 28px;
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 28px 22px 64px;
+}
+
+.set-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  position: sticky;
+  top: 28px;
+  align-self: start;
+}
+
+.set-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary, #6b7280);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.set-nav-item:hover {
+  background: var(--surface-hover, #eef1f5);
+}
+
+.set-nav-item--on {
+  background: var(--surface, #fff);
+  border-color: var(--border-subtle, #e4e7ec);
+  color: var(--text-primary, #111827);
+  font-weight: 500;
+}
+
+.set-main {
+  min-width: 0;
+}
+
+.set-section {
+  padding: 22px;
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border-subtle, #e4e7ec);
+}
+
+.set-section-head {
+  margin-bottom: 18px;
+}
+
+.set-section-head h2 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+}
+
+.set-section-head p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text-secondary, #6b7280);
+  max-width: 62ch;
+}
+
+.set-facts {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 18px;
+}
+
+.set-facts div {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+}
+
+.set-facts dt {
+  font-size: 0.82rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+.set-facts dd {
+  margin: 0;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.set-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+.set-field input {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, #e4e7ec);
+  font: inherit;
+  color: var(--text-primary, #111827);
+  background: var(--surface, #fff);
+}
+
+.set-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, #e4e7ec);
+  background: var(--surface, #fff);
+  color: var(--text-primary, #111827);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.set-btn:hover {
+  background: var(--surface-hover, #f9fafb);
+}
+
+.set-btn--primary {
+  background: var(--accent, #2a78d6);
+  border-color: var(--accent, #2a78d6);
+  color: #fff;
+}
+
+.set-btn--primary:hover {
+  filter: brightness(1.05);
+}
+
+.set-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.set-error {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #b42318;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+}
+
+.set-empty {
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+  font-size: 0.86rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+@media (max-width: 720px) {
+  .set-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .set-nav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .set-facts div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}

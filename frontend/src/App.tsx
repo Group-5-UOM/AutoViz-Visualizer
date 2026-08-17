@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { SharedBoardPage } from './pages/SharedBoardPage';
 import {
   SESSION_EXPIRED_EVENT,
@@ -104,6 +105,16 @@ function App() {
           element={
             user ? (
               <DashboardRoute user={user} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            user ? (
+              <SettingsPage userEmail={user.email} username={user.username} />
             ) : (
               <Navigate to="/login" replace />
             )

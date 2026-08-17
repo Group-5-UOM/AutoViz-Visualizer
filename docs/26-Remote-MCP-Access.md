@@ -394,11 +394,22 @@ a library default.
 
 ### Phase 3 — Settings UI · ✅ **DONE, 16 August**
 
-10. ✅ [`ConnectionsModal.tsx`](../frontend/src/components/layout/ConnectionsModal.tsx) — generate,
-    show-once with a copy button, list with **last used**, revoke behind `ConfirmDialog`
-    (the pattern [`Docs/22`](22-Export-and-UI-States.md) established — no `window.confirm`).
-    `useFocusTrap` + `useEscapeToClose`, both suspended while the confirm dialog is up so two
-    traps never fight. Entry point is a link icon in the `TopBar` account cluster.
+10. ✅ A **Settings page** at `/settings`, not a modal —
+    [`SettingsPage.tsx`](../frontend/src/pages/SettingsPage.tsx) with an Account section and
+    [`ConnectionsSection.tsx`](../frontend/src/components/settings/ConnectionsSection.tsx).
+    Generate, show-once, list with **last used**, revoke behind `ConfirmDialog` (the pattern
+    [`Docs/22`](22-Export-and-UI-States.md) established — no `window.confirm`). Deep-links via
+    `/settings#connections`, so an instruction elsewhere can point straight at it.
+
+    *It shipped as a modal first and that was the wrong shape.* Connections carries setup
+    instructions for three different hosts, and a dialog has to be dismissed to consult anything
+    else — exactly wrong for something you read **while** configuring another application. A page
+    also gives the URL somewhere to live.
+
+    One real layout bug came out of the first version: the Copy button was absolutely positioned
+    over the code block, so a URL long enough to wrap ran underneath it and **the tail — the part
+    you need — was covered**. The button now sits in its own bar above the code, where it cannot
+    collide with text at any width.
 11. ✅ [`lib/mcpSetup.ts`](../frontend/src/lib/mcpSetup.ts) — the per-host setup snippets, pulled
     out of the component **because they are contracts with other people's software**, not
     presentation. Claude Desktop wants `{type, url}`; Gemini CLI wants `httpUrl`. A wrong key name

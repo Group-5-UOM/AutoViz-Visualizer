@@ -5,12 +5,12 @@ import {
   FileImage,
   FileText,
   KeyRound,
-  Link2,
   LogOut,
   Menu,
   PanelLeft,
   Share2,
   Save,
+  Settings as SettingsIcon,
   FilePlus2,
 } from 'lucide-react';
 import type { ExportFormat } from '../../lib/exportDashboard';
@@ -36,8 +36,8 @@ interface TopBarProps {
   saveError?: string | null;
   onNewDashboard?: () => void;
   onSetPassword?: () => void;
-  /** Opens the MCP connection-link panel. */
-  onOpenConnections?: () => void;
+  /** Opens the Settings page (Connections section). */
+  onOpenSettings?: () => void;
   onLogout?: () => void | Promise<void>;
   /** Used to disable Export when the canvas has no charts. */
   canExport?: boolean;
@@ -58,7 +58,7 @@ export function TopBar({
   saveError,
   onNewDashboard,
   onSetPassword,
-  onOpenConnections,
+  onOpenSettings,
   onLogout,
   canExport = true,
 }: TopBarProps) {
@@ -221,15 +221,15 @@ export function TopBar({
             <span className="topbar-user-name" title={userEmail || displayName}>
               {displayName}
             </span>
-            {onOpenConnections && (
+            {onOpenSettings && (
               <button
                 type="button"
                 className="topbar-icon-btn"
-                onClick={onOpenConnections}
-                title="Connections — link an AI assistant"
-                aria-label="Connections — link an AI assistant"
+                onClick={onOpenSettings}
+                title="Settings"
+                aria-label="Settings"
               >
-                <Link2 size={16} />
+                <SettingsIcon size={16} />
               </button>
             )}
             {onSetPassword && (

@@ -4,7 +4,6 @@ import { Sidebar } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
 import { NoticeStack } from '../components/layout/NoticeStack';
 import { AccountPasswordModal } from '../components/layout/AccountPasswordModal';
-import { ConnectionsModal } from '../components/layout/ConnectionsModal';
 import { AddPanel } from '../components/layout/AddPanel';
 import { SetupPanel, buildChartPrompt } from '../components/layout/SetupPanel';
 import { FilterPanel } from '../components/layout/FilterPanel';
@@ -102,7 +101,6 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
-  const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [hasPassword, setHasPassword] = useState(true);
   const [styleWidgetId, setStyleWidgetId] = useState<string | null>(null);
   const [styleBusy, setStyleBusy] = useState(false);
@@ -606,7 +604,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         shareDashboardId={dashboard.dashboardId}
         onNewDashboard={handleNewDashboard}
         onSetPassword={!hasPassword ? () => setPasswordOpen(true) : undefined}
-        onOpenConnections={() => setConnectionsOpen(true)}
+        onOpenSettings={() => navigate('/settings#connections')}
         onLogout={onLogout}
         canExport={dashboard.widgets.length > 0}
       />
@@ -617,8 +615,6 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         onClose={() => setPasswordOpen(false)}
         onSaved={() => setHasPassword(true)}
       />
-
-      <ConnectionsModal open={connectionsOpen} onClose={() => setConnectionsOpen(false)} />
 
       <div className="board-body">
         <NoticeStack notices={notices} onDismiss={dismiss} />

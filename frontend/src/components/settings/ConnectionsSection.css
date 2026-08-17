@@ -1,0 +1,207 @@
+/* Connections section — MCP link generation, inside the Settings page.
+   Shared page chrome (.set-*) lives in SettingsPage.css. */
+
+.conn-create {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.conn-create .set-field {
+  flex: 1 1 240px;
+}
+
+/* --- the shown-once block ----------------------------------------------- */
+
+.conn-minted {
+  margin-bottom: 20px;
+  padding: 16px;
+  border-radius: 10px;
+  /* Deliberately loud: this is the only moment the key exists on screen. */
+  border: 1px solid #f5c26b;
+  background: #fffaf0;
+}
+
+.conn-minted h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  color: #92400e;
+}
+
+.conn-minted-warn {
+  margin: 0 0 14px;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: #7c5310;
+}
+
+.conn-tabs {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.conn-tab {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle, #e4e7ec);
+  background: var(--surface, #fff);
+  color: var(--text-secondary, #6b7280);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.conn-tab--on {
+  background: var(--text-primary, #111827);
+  border-color: var(--text-primary, #111827);
+  color: #fff;
+}
+
+.conn-snippet {
+  margin-bottom: 14px;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid #2c3342;
+}
+
+/* The Copy button gets its own bar. It used to be absolutely positioned over
+   the code block, which covered the tail of any URL long enough to wrap — and
+   the tail is the part that matters. A bar cannot collide with the text. */
+.conn-snippet-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 8px 7px 12px;
+  background: #2c3342;
+}
+
+.conn-hint {
+  font-size: 0.78rem;
+  color: #c8cede;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conn-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  color: #e6e9ef;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.conn-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.conn-snippet pre {
+  margin: 0;
+  padding: 12px;
+  background: #1f2430;
+  color: #e6e9ef;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  /* A long URL wraps instead of widening the page. */
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+}
+
+/* --- list --------------------------------------------------------------- */
+
+.conn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border-subtle, #e4e7ec);
+  background: var(--surface, #fff);
+}
+
+.conn-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.conn-row-label {
+  font-size: 0.92rem;
+  color: var(--text-primary, #111827);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conn-row-meta {
+  font-size: 0.77rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+.conn-revoke {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle, #e4e7ec);
+  background: var(--surface, #fff);
+  color: #b42318;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.conn-revoke:hover {
+  background: #fef3f2;
+  border-color: #fecdca;
+}
+
+.conn-revoked {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+.conn-revoked summary {
+  cursor: pointer;
+  padding: 7px 2px;
+}
+
+.conn-row--dead {
+  opacity: 0.55;
+  margin-top: 6px;
+}
+
+@media (max-width: 640px) {
+  .conn-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
