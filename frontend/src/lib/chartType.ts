@@ -11,7 +11,45 @@ const MARK_TO_TYPE: Record<string, ChartType> = {
   boxplot: 'boxplot',
   box: 'boxplot',
   rule: 'boxplot',
+  tick: 'boxplot', // a strip plot is the boxplot family drawn as ticks
 };
+
+/**
+ * Vega-Lite composite marks. They are siblings of the data mark, never the data
+ * mark itself, so reading one would name the wrong family — an error band under
+ * a line would make the widget report "boxplot".
+ */
+const COMPOSITE_MARKS = new Set(['errorband', 'errorbar']);
+
+type SpecNode = {
+  mark?: unknown;
+  layer?: unknown;
+  spec?: unknown;
+};
+
+/**
+ * The frame a spec actually draws in, and the mark it draws there.
+ *
+ * Mirrors `charts.primary_layer` on the backend: small multiples put the chart
+ * under `spec`, and a sub-type needing a sibling layer (an error band, a jitter
+ * overlay, direct labels) means the first layer is not necessarily the data.
+ */
+function primaryMark(spec: SpecNode | undefined): unknown {
+  if (!spec) return undefined;
+  const root = (spec.spec && typeof spec.spec === 'object' ? spec.spec : spec) as SpecNode;
+  const layers = root.layer;
+  if (!Array.isArray(layers)) return root.mark;
+  const data = layers.find((layer) => {
+    const mark = (layer as SpecNode | null)?.mark;
+    const name = typeof mark === 'string'
+      ? mark
+      : mark && typeof mark === 'object' && 'type' in mark
+        ? String((mark as { type: unknown }).type)
+        : '';
+    return name !== '' && name !== 'text' && !COMPOSITE_MARKS.has(name);
+  });
+  return (data as SpecNode | undefined)?.mark ?? (layers[0] as SpecNode | undefined)?.mark;
+}
 
 /** Best-effort chart type for filtering — stored type, then Vega-Lite mark. */
 export function inferChartType(widget: ChartWidget): ChartType | 'other' {
@@ -34,7 +72,7 @@ export function inferChartType(widget: ChartWidget): ChartType | 'other' {
     }
   }
 
-  const mark = widget.vegaLiteSpec?.mark;
+  const mark = primaryMark(widget.vegaLiteSpec as SpecNode | undefined);
   const markType =
     typeof mark === 'string'
       ? mark
@@ -43,14 +81,12 @@ export function inferChartType(widget: ChartWidget): ChartType | 'other' {
         : '';
 
   if (markType === 'arc') {
-    const inner = (widget.vegaLiteSpec as { encoding?: { theta?: unknown } })?.encoding;
-    // Donut often sets innerRadius; treat plain arc as pie.
+    // Donut sets innerRadius; treat plain arc as pie.
     const hasInner =
       typeof mark === 'object' &&
       mark !== null &&
       'innerRadius' in mark &&
       (mark as { innerRadius?: unknown }).innerRadius != null;
-    void inner;
     return hasInner ? 'donut' : 'pie';
   }
 

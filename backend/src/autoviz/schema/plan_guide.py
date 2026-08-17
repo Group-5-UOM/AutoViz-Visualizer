@@ -47,7 +47,23 @@ analysis_plan JSON structure (lists may be empty/omitted; dataset_id and intent 
   "limit": <int, optional>,
   "chart": {"type": "bar"|"line"|"scatter"|"pie"|"area"|"histogram"|"heatmap"|"boxplot"
                     |"grouped_bar"|"donut",
-            "x": "col", "y": "col", "color": "col"}
+            "x": "col", "y": "col", "color": "col",
+            // Sub-type modifiers — all optional, all default to off. Only set one
+            // when the user asked for that specific form; see "Chart sub-types".
+            "orientation": "vertical"|"horizontal",
+            "stack": "zero"|"normalize"|"center"|"none",
+            "interpolate": "linear"|"step"|"monotone",
+            "points": true|false,
+            "size": "col",            // scatter -> bubble
+            "bin": true|false,        // scatter -> binned density grid
+            "density": true|false,    // histogram -> smooth curve
+            "cumulative": true|false, // histogram -> running total
+            "error": "bar"|"band",    // line/bar -> uncertainty interval
+            "form": "box"|"violin"|"strip",   // boxplot only
+            "facet": "col", "facet_columns": <int 1-6>,   // small multiples
+            "time_unit": {"x"|"y"|"color": "year"|"quarter"|"month"|"week"|"date"|"day"
+                                          |"hours"|"yearquarter"|"yearmonth"
+                                          |"yearmonthdate"|"monthdate"}}
 }
 Preprocessing (explicit, never silent — the source CSV is never modified):
 - Order of execution: preprocessing -> filters -> derive -> group/aggregate. Preprocessing
@@ -162,6 +178,46 @@ Chart types with extra requirements:
   aggregations, x = the category to split by, y = the numeric column.
 - "donut" and "pie" are both part-to-whole over one category (x) and a measure (y); donut is
   the better default. Both warn above 6 categories.
+
+Chart sub-types (modifiers). The ten types above are chart FAMILIES. Named variants — horizontal
+bar, 100% stacked bar, streamgraph, step line, bubble, violin, small multiples — are reached by
+adding a modifier to the family, NOT by a new type name. Leave every modifier unset unless the
+user asked for that form; the defaults reproduce the plain chart. A modifier on a type that does
+not accept it is a rejected plan, so check the list before setting one.
+- orientation "horizontal" (bar, grouped_bar, histogram, boxplot): turns the chart on its side.
+  Use it whenever the category labels are long or there are many of them — the vertical form
+  truncates them. "horizontal bar chart" / "bar chart of the top 20 X" -> set this.
+- stack (bar, area; REQUIRES color): "zero" is a plain stack, "normalize" makes every column sum
+  to 100% (use for "share of", "as a percentage of the total", "composition over time"),
+  "center" is a streamgraph, "none" overlays the series instead. Note plain bar/area with a
+  color column ALREADY stacks at "zero" — only set stack to ask for one of the other three.
+- interpolate (line, area): "step" for a value that holds until it changes (a price, a headcount,
+  a status) — a straight line between readings claims changes that did not happen. "monotone"
+  smooths. Do not smooth to make a chart look nicer; it invents intermediate values.
+- points true (line, area): mark every actual reading, so the reader can tell data from
+  interpolation.
+- size (scatter): a bubble chart. Needs a numeric column; the bubble's AREA is the value.
+  Three visual variables is already a lot — avoid size and color together unless asked.
+- bin true (scatter): bins both axes and colours by the count. The fix for an overplotted
+  scatter — past a few thousand points the marks are one solid block. Cannot be used with color.
+- density true / cumulative true (histogram): a smooth distribution curve, or a running total
+  ("what share is below X"). Mutually exclusive.
+- error "bar"|"band" (line, bar): a 95% confidence interval computed from the RAW repeated
+  values, so the plan must NOT aggregate — select the column and let the chart take the mean.
+  Same rule as boxplot, for the same reason.
+- form (boxplot): "box" (default), "violin" for the full distribution shape rather than five
+  numbers, "strip" to draw every value. Prefer "strip" when each group holds only a handful of
+  rows — quartiles over five points invent structure the sample cannot support.
+- points true (boxplot, form "box" only): overlays the raw values on the box.
+- facet (any type): small multiples, one panel per value. The right answer to "too many series"
+  — better than an unreadable number of colours. Keep it under 12 panels; pair it with
+  group_rare_categories or a filter if the column has more. Do not facet and color by the same
+  column. Note a faceted chart does not resize with its widget.
+- time_unit (bar, line, area, heatmap): buckets a DATETIME channel in the chart. Prefer the SQL
+  derives (month_start etc.) for a normal trend. This exists for the shape SQL cannot produce in
+  one pass — a calendar heatmap, where the same date column is read at two granularities:
+  chart {"type": "heatmap", "x": "order_date", "y": "order_date", "color": "revenue",
+         "time_unit": {"x": "yearmonth", "y": "date"}}.
 
 Example — average sepal length per species, largest first:
 {"dataset_id": "ds_abc123", "intent": "comparison", "group_by": ["species"],

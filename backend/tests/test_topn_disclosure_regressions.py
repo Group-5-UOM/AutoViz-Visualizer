@@ -170,6 +170,60 @@ def test_grouped_bar_is_not_read_as_bar():
     assert fidelity.unmet_requests("as a grouped bar chart", _outcome("bar")) != []
 
 
+# --- 3b. a sub-type that was named and not delivered --------------------------
+# The family check cannot see these: ask for a violin, get a box plot, and both
+# are `boxplot` — so it reads the request as honoured. These compare the
+# modifier on the produced plan instead.
+
+
+def _charted(chart_type, **chart):
+    return _outcome(chart_type, plan={"chart": {"type": chart_type, **chart}})
+
+
+def test_a_requested_violin_that_came_back_a_box_is_disclosed():
+    (notice,) = fidelity.unmet_requests("show it as a violin plot", _charted("boxplot"))
+    assert "not a violin plot" in notice.note
+    assert notice.detail["modifier"] == "form"
+
+
+def test_a_violin_that_was_delivered_says_nothing():
+    assert fidelity.unmet_requests(
+        "show it as a violin plot", _charted("boxplot", form="violin")
+    ) == []
+
+
+def test_a_requested_horizontal_bar_that_stayed_vertical_is_disclosed():
+    (notice,) = fidelity.unmet_requests("as a horizontal bar chart", _charted("bar"))
+    assert "horizontal bar chart" in notice.note
+
+
+def test_a_horizontal_bar_that_was_delivered_says_nothing():
+    assert fidelity.unmet_requests(
+        "as a horizontal bar chart", _charted("bar", orientation="horizontal")
+    ) == []
+
+
+def test_a_bubble_request_is_honoured_by_any_size_column():
+    assert fidelity.unmet_requests(
+        "a bubble chart of gdp against life expectancy",
+        _charted("scatter", size="population"),
+    ) == []
+    assert fidelity.unmet_requests("a bubble chart", _charted("scatter")) != []
+
+
+def test_plain_stacked_is_not_read_as_a_request_for_100_percent():
+    """A bar with a colour column already stacks, so "stacked bar" asks for the
+    default. Reporting a refusal that never happened is the louder failure."""
+    assert fidelity.unmet_requests("a stacked bar chart", _charted("bar", color="grp")) == []
+
+
+def test_a_density_heatmap_request_is_not_disclosed_twice():
+    """It contains "heatmap", so the family check speaks; the modifier check
+    must stay quiet or the user is told one thing in two different sentences."""
+    notices = fidelity.unmet_requests("a density heatmap", _charted("scatter"))
+    assert len(notices) == 1
+
+
 def test_an_ignored_sort_request_is_disclosed():
     (notice,) = fidelity.unmet_requests(
         "revenue by rep sorted descending", _outcome("bar", plan={"intent": "comparison"})

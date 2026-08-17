@@ -33,7 +33,9 @@ from autoviz.schema.allowlists import (
     STRING_ONLY_OPS,
 )
 from autoviz.errors import INVALID_PLAN, TYPE_MISMATCH, UNKNOWN_DATASET
+from autoviz.schema.allowlists import CHART_MODIFIERS
 from autoviz.schema.analysis_plan import AnalysisPlan
+from autoviz.services import chart_modifiers
 from autoviz.services.registry import REGISTRY, DatasetRecord, DatasetRegistry
 
 # Substrings unique to type-compatibility failures (op/fn on the wrong column
@@ -434,6 +436,70 @@ def _validate_preprocessing(
         )
 
 
+def _chart_modifier_errors(
+    plan: AnalysisPlan,
+    column_type: Any,
+    produced: set[str],
+) -> list[str]:
+    """Sub-type modifiers checked against the type they sit on and the data they need.
+
+    Three separate failures, deliberately not collapsed:
+
+    * a modifier on a type with no use for it (`stack` on a scatter) — caught
+      here rather than by `extra="forbid"`, which only sees misspellings;
+    * two modifiers that contradict each other (`density` with `cumulative`);
+    * a modifier whose *data* requirement this plan does not meet.
+
+    The last is the one worth stating. An error interval is computed from
+    repeated observations of the same group, so it needs the raw rows — over an
+    aggregated plan there is one value per group, and Vega-Lite draws a
+    confidence interval of zero width rather than complaining. That is the same
+    trap `boxplot` already guards against, and for the same reason.
+    """
+    chart = plan.chart
+    if chart is None:
+        return []
+    spec = chart.model_dump(exclude_none=True)
+    errors: list[str] = []
+
+    misapplied = chart_modifiers.unsupported_modifiers(spec)
+    if misapplied:
+        accepted = sorted(CHART_MODIFIERS.get(chart.type, frozenset()))
+        errors.append(
+            f"chart: type '{chart.type}' does not take {', '.join(misapplied)} "
+            f"(it accepts: {', '.join(accepted) or 'no modifiers'})"
+        )
+    errors.extend(chart_modifiers.modifier_conflicts(spec))
+
+    if chart.size is not None and chart.size in produced:
+        size_type = column_type(chart.size)
+        if size_type != "number":
+            errors.append(
+                f"chart.size: a bubble's area is a magnitude, so size requires a numeric "
+                f"column — '{chart.size}' is {size_type}"
+            )
+    if chart.error is not None and plan.aggregations:
+        errors.append(
+            "chart.error: an interval is computed from the raw repeated values, but this "
+            "plan aggregates — there is one value per group and the interval would have "
+            "zero width. Drop the aggregations and select the column."
+        )
+    for channel, unit in (chart.time_unit or {}).items():
+        col = getattr(chart, channel, None)
+        if col is None:
+            errors.append(
+                f"chart.time_unit: '{channel}' carries no column, so there is nothing "
+                f"for time unit '{unit}' to bucket"
+            )
+            continue
+        if col in produced and column_type(col) != "datetime":
+            errors.append(
+                f"chart.time_unit: '{unit}' buckets a date, but chart.{channel} is "
+                f"'{col}' which is {column_type(col)}"
+            )
+    return errors
+
+
 def validate_analysis_plan(
     dataset_id: str,
     analysis_plan: dict[str, Any],
@@ -604,7 +670,13 @@ def validate_analysis_plan(
         repaired["limit"] = MAX_LIMIT
 
     if plan.chart is not None:
-        for channel, col in (("x", plan.chart.x), ("y", plan.chart.y), ("color", plan.chart.color)):
+        for channel, col in (
+            ("x", plan.chart.x),
+            ("y", plan.chart.y),
+            ("color", plan.chart.color),
+            ("size", plan.chart.size),
+            ("facet", plan.chart.facet),
+        ):
             if col is not None and col not in produced:
                 errors.append(
                     f"chart.{channel}: column '{col}' is not produced by the query "
@@ -614,6 +686,8 @@ def validate_analysis_plan(
 
         def _column_type(col: str) -> str | None:
             return "number" if col in agg_aliases else effective.get(col)
+
+        errors.extend(_chart_modifier_errors(plan, _column_type, produced))
 
         if plan.chart.type == "histogram":
             # Histogram bins one numeric column; y is a count, not a column.

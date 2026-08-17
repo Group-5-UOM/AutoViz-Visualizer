@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generated_at": "2026-08-16T13:04:16"
+    "generated_at": "2026-08-18T01:41:41"
   },
   "type_accuracy": {
     "cases": 14,
@@ -36,7 +36,7 @@
         ],
         "got": "line",
         "pass": true,
-        "rationale": "Trend intent over ordered category 'quarter_label' \u2014 line chart."
+        "rationale": "Trend intent over sequential dimension 'quarter_label' \u2014 line chart."
       },
       {
         "case": "ranking over one category",

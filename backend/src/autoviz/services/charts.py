@@ -9,13 +9,15 @@ from typing import Any
 
 from autoviz.errors import NO_CHART_FIT, make_error
 from autoviz.schema.allowlists import (
+    CHART_MODIFIERS,
     CHART_TYPES,
     MAX_SERIES_ADJACENT,
     MAX_SERIES_ALL_PAIRS,
 )
-from autoviz.services import skew
+from autoviz.services import chart_modifiers, skew
 from autoviz.services.chart_interaction import attach as attach_interaction
 from autoviz.services.chart_labels import build_label_layer
+from autoviz.services.chart_modifiers import COMPOSITE_MARKS, Form
 from autoviz.services.chart_theme import attach as attach_theme
 from autoviz.services.notices import ADVISORY, Notice
 from autoviz.vega import VEGA_LITE_SCHEMA
@@ -50,19 +52,95 @@ _REQUIRED_CHANNELS: dict[str, tuple[str, ...]] = {
 }
 
 
+# A discrete dimension whose values have a meaningful order: month 1-12, a
+# weekday, a year. Sorted with the categoricals — every rule that wants "a
+# category to put on an axis" should see one — but tracked separately, because a
+# trend belongs on the *ordered* one and Vega-Lite must not sort it as text.
+ORDINAL = "ordinal"
+
+# Channels that carry a discrete class rather than a measure, per chart type.
+#
+# Exists so the orchestrator can decide whether a numeric-coded category
+# (pclass, survived) is acting as a class on *this* chart. It cannot be answered
+# per column — pclass is three classes on a bar's x axis and a genuine number on
+# a scatter's — so it is answered per channel, here, next to the types it
+# describes.
+_DISCRETE_CHANNELS: dict[str, frozenset[str]] = {
+    "bar": frozenset({"x", "color"}),
+    "grouped_bar": frozenset({"x", "color"}),
+    "line": frozenset({"x", "color"}),
+    "area": frozenset({"x", "color"}),
+    "pie": frozenset({"x", "color"}),
+    "donut": frozenset({"x", "color"}),
+    "boxplot": frozenset({"x", "color"}),
+    "heatmap": frozenset({"x", "y"}),  # colour is the measure on a heatmap
+    "scatter": frozenset({"color"}),   # both axes are measures
+    "histogram": frozenset({"color"}), # x is binned, y is a derived count
+}
+
+
+def discrete_channel_columns(chart_spec: dict[str, Any]) -> set[str]:
+    """Columns this chart puts on a discrete channel.
+
+    `facet` is always discrete — one panel per value is the definition of a
+    class. Orientation moves which *axis* holds the category, so the answer
+    follows the swap rather than assuming the vertical layout.
+    """
+    channels = _DISCRETE_CHANNELS.get(chart_spec.get("type"))
+    if channels is None:
+        return set()
+    if chart_spec.get("orientation") == "horizontal":
+        flip = {"x": "y", "y": "x"}
+        channels = frozenset(flip.get(c, c) for c in channels)
+    cols = {chart_spec[c] for c in channels if chart_spec.get(c)}
+    if chart_spec.get("facet"):
+        cols.add(chart_spec["facet"])
+    return cols
+
+
 def _split_columns(result_schema: list[dict[str, str]]):
+    """Sort the result's columns into the buckets the rules are written against.
+
+    Returns ``(numeric, temporal, categorical, ordered)``. ``ordered`` is the
+    subset of ``categorical`` whose values have a sequence — it is deliberately
+    *in* both, so an ordinal satisfies every existing "is there a category?"
+    rule while still being identifiable as the right x for a trend.
+    """
     numeric = [c["name"] for c in result_schema if c["type"] == "number"]
     temporal = [c["name"] for c in result_schema if c["type"] == "datetime"]
     categorical = [
         c["name"] for c in result_schema if c["type"] not in ("number", "datetime")
     ]
-    return numeric, temporal, categorical
+    ordered = [c["name"] for c in result_schema if c["type"] == ORDINAL]
+    return numeric, temporal, categorical, ordered
 
 
 def recommend_chart_type(
-    result_schema: list[dict[str, str]], intent: str
+    result_schema: list[dict[str, str]], intent: str, row_count: int | None = None
 ) -> dict[str, Any]:
-    numeric, temporal, categorical = _split_columns(result_schema)
+    """Pick a chart for this result shape and this question.
+
+    ``row_count`` separates the two shapes a schema alone cannot tell apart: one
+    measure over many rows (a column of fares — its distribution is the chart)
+    from one measure over one row (a single total — not a chart at all). Optional
+    so existing callers keep working; without it the first reading is assumed,
+    because it is the one whose wrong answer is merely odd rather than false.
+
+    **Intent is the question; the column types only decide how to answer it.**
+    Every branch below is guarded on the types, and for a long time the terminal
+    fallback was not guarded on anything — so whenever the temporal and
+    categorical buckets both came up empty, a *trend* request was answered with
+    a scatter whose rationale did not even mention that a trend was asked for.
+    The fix is in two halves and both matter:
+
+    * upstream, the buckets are filled correctly — an extracted month is an
+      ordinal, not a number, and a numeric-coded category is a class (see
+      `ORDINAL` and `discrete_channel_columns`);
+    * here, the terminal case reads `intent` like every other branch, because
+      something will always slip past the bucketing and a scatter is not a
+      neutral default. It is the answer to one specific question.
+    """
+    numeric, temporal, categorical, ordered = _split_columns(result_schema)
 
     if not numeric:
         return make_error(
@@ -78,10 +156,17 @@ def recommend_chart_type(
         if categorical:
             color = categorical[0]
     elif intent == "trend" and categorical:
-        chart_type, x = "line", categorical[0]
-        rationale = f"Trend intent over ordered category '{x}' — line chart."
-        if len(categorical) > 1:
-            color = categorical[1]
+        # An ordered dimension is the x axis a trend wants — a month or a year
+        # runs along the axis, where an unordered category merely sits on it.
+        # Taking categorical[0] regardless put the series column on x whenever
+        # it happened to come back first.
+        x = ordered[0] if ordered else categorical[0]
+        chart_type = "line"
+        kind = "ordered" if ordered else "sequential"
+        rationale = f"Trend intent over {kind} dimension '{x}' — line chart."
+        others = [c for c in categorical if c != x]
+        if others:
+            color = others[0]
     elif intent == "relationship" and len(numeric) >= 2:
         chart_type, x, y = "scatter", numeric[0], numeric[1]
         rationale = "Relationship intent with two numeric columns — scatter shows correlation."
@@ -125,10 +210,41 @@ def recommend_chart_type(
     elif temporal:
         chart_type, x = "line", temporal[0]
         rationale = f"Temporal column '{x}' available — line chart."
+    elif intent == "trend" and len(numeric) >= 2:
+        # Nothing discrete and nothing temporal, but a trend was still asked for:
+        # the sequence must be one of the measures (a raw year column, a period
+        # index). A line over it answers the question; a scatter does not.
+        chart_type, x, y = "line", numeric[0], numeric[1]
+        rationale = (
+            f"Trend intent with no date or category — line over numeric '{x}', "
+            "which is the only column that can carry a sequence here."
+        )
+    elif len(numeric) >= 2:
+        chart_type, x, y = "scatter", numeric[0], numeric[1]
+        rationale = (
+            "Only measures available and no dimension to break them down by — "
+            "scatter shows how the two relate."
+        )
+    elif row_count == 1:
+        # One measure, one row: a single number. The old fallback plotted it
+        # against itself — a scatter of one point at (x, x) — which is a picture
+        # of nothing. Refusing is the honest answer and costs the caller nothing:
+        # a chart failure downgrades the run to "partial" with the result table
+        # intact, so the number still reaches the user.
+        return make_error(
+            NO_CHART_FIT,
+            f"'{numeric[0]}' is a single value with nothing to plot it against — "
+            "the number is the whole answer. Group by a column to chart it.",
+        )
     else:
-        chart_type, x = "scatter", numeric[0]
-        y = numeric[1] if len(numeric) > 1 else numeric[0]
-        rationale = "Only numeric columns available — scatter plot."
+        # One measure over many rows: its distribution is the only thing there is
+        # to show. Reached when `row_count` is unknown too, because a histogram of
+        # one value is a single bar — wrong-looking, but not a lie the way a
+        # scatter of a column against itself is.
+        chart_type, x = "histogram", numeric[0]
+        rationale = (
+            f"One measure and nothing to break it down by — histogram of '{x}'."
+        )
 
     result: dict[str, Any] = {
         "chart_type": chart_type,
@@ -192,8 +308,15 @@ def retype_chart_spec(
     if chart_spec.get("type") == chart_type:
         return dict(chart_spec)
 
-    numeric, temporal, categorical = _split_columns(result_schema)
-    retyped = {k: v for k, v in chart_spec.items() if k not in ("x", "y", "color")}
+    # `ordered` is unused here: an ordinal is already in `categorical`, which is
+    # the pool a "dim" or "cat" role draws from.
+    numeric, temporal, categorical, _ordered = _split_columns(result_schema)
+    # Modifiers survive a retype wherever the new type can carry them — turning a
+    # horizontal bar into a horizontal box plot should stay on its side — and are
+    # dropped where it cannot, because a `stack` left on a scatter is a plan the
+    # validator rejects from a change the user made in one click.
+    kept = chart_modifiers.strip_unsupported(chart_spec, chart_type)
+    retyped = {k: v for k, v in kept.items() if k not in ("x", "y", "color")}
     retyped["type"] = chart_type
     used: set[str] = set()
     for channel, role in zip(("x", "y", "color"), roles):
@@ -216,7 +339,10 @@ def retype_chart_spec(
 
 def _encoding_type(values: list[Any], column_schema: dict[str, str] | None, name: str) -> str:
     if column_schema and name in column_schema:
-        return {"number": "quantitative", "datetime": "temporal"}.get(
+        # ORDINAL rather than nominal for an ordered dimension: a month axis
+        # sorted as text puts 10, 11, 12 before 2, and a nominal scale is exactly
+        # what would do that.
+        return {"number": "quantitative", "datetime": "temporal", ORDINAL: "ordinal"}.get(
             column_schema[name], "nominal"
         )
     non_null = [v for v in values if v is not None]
@@ -225,15 +351,44 @@ def _encoding_type(values: list[Any], column_schema: dict[str, str] | None, name
     return "nominal"
 
 
+def _mark_type(mark: Any) -> str:
+    if isinstance(mark, dict):
+        return str(mark.get("type", ""))
+    return str(mark or "")
+
+
+def chart_root(spec: dict[str, Any]) -> dict[str, Any]:
+    """The frame a generated spec actually draws in.
+
+    Faceted specs put the chart one level down under `spec`, so the top level
+    carries the facet definition and nothing else a reader of the encoding
+    wants. Everything looking for marks has to come through here first.
+    """
+    inner = spec.get("spec")
+    return inner if isinstance(inner, dict) else spec
+
+
 def primary_layer(spec: dict[str, Any]) -> dict[str, Any]:
     """The data layer of a generated spec — its `mark` and `encoding`.
 
     A spec that carries direct labels is layered, so `mark` and `encoding` sit
-    one level down. Anything reading a generated spec's encoding should go
-    through here rather than assuming a unit spec.
+    one level down; a faceted one puts them lower still. Anything reading a
+    generated spec's encoding should go through here rather than assuming a unit
+    spec.
+
+    Composite layers are skipped rather than counted. An error band is drawn
+    *under* its line, so with `error: "band"` the first layer is the composite —
+    and returning it would hand the caller the mark Vega-Lite refuses to attach
+    a selection param to, which is the one thing this accessor exists to find.
     """
-    layers = spec.get("layer")
-    return layers[0] if layers else spec
+    root = chart_root(spec)
+    layers = root.get("layer")
+    if not layers:
+        return root
+    for layer in layers:
+        if _mark_type(layer.get("mark")) not in COMPOSITE_MARKS:
+            return layer
+    return layers[0]
 
 
 def _mark_def(chart_type: str, row_count: int = 2) -> Any:
@@ -278,6 +433,25 @@ def generate_chart(
             "warnings": [f"chart type '{chart_type}' is not in the allow-list {sorted(CHART_TYPES)}"],
         }
 
+    # Sub-type modifiers are checked here as well as in plan validation, because
+    # generate_chart is reachable directly over MCP with a hand-written chart
+    # spec that no plan validator ever saw.
+    misapplied = chart_modifiers.unsupported_modifiers(chart_spec)
+    if misapplied:
+        return {
+            "vega_lite_spec": None,
+            "valid": False,
+            "warnings": [
+                f"chart type '{chart_type}' does not take modifier(s): "
+                f"{', '.join(misapplied)} (it accepts "
+                f"{', '.join(sorted(CHART_MODIFIERS[chart_type])) or 'none'})"
+            ],
+        }
+    conflicts = chart_modifiers.modifier_conflicts(chart_spec)
+    if conflicts:
+        return {"vega_lite_spec": None, "valid": False, "warnings": conflicts}
+
+    form = Form.of(chart_spec)
     columns = set(result_table[0].keys()) if result_table else set()
     warnings: list[str] = []
     # An empty result is not a chart error — the query ran and matched nothing,
@@ -298,7 +472,14 @@ def generate_chart(
                 detail={"row_count": 0},
             )
         )
-    channels = {k: chart_spec.get(k) for k in ("x", "y", "color") if chart_spec.get(k)}
+    # `size` and `facet` name columns too, so they are checked for existence and
+    # for nulls alongside the positional channels — a facet on a column with
+    # missing values would otherwise draw a silent "null" panel.
+    channels = {
+        k: chart_spec.get(k)
+        for k in ("x", "y", "color", "size", "facet")
+        if chart_spec.get(k)
+    }
     missing = [f"{ch} -> '{col}'" for ch, col in channels.items() if columns and col not in columns]
     if missing:
         return {
@@ -349,6 +530,20 @@ def generate_chart(
     def enc(col: str) -> dict[str, Any]:
         values = [row.get(col) for row in result_table]
         return {"field": col, "type": _encoding_type(values, schema_hint, col)}
+
+    def series_enc(col: str) -> dict[str, Any]:
+        """A colour or offset channel — a series, never a position.
+
+        Ordinal is right on an axis and wrong here: the theme's palette is
+        registered as `config.range.category`, which Vega-Lite applies to a
+        *nominal* colour scale only. An ordinal one falls through to Vega's own
+        ordered scheme, and the chart quietly stops using the app's colours —
+        the exact defect Docs/13 §5 already records for single-series charts.
+        """
+        field_def = enc(col)
+        if field_def["type"] == "ordinal":
+            return {**field_def, "type": "nominal"}
+        return field_def
 
     if chart_type == "histogram":
         if "y" in channels:
@@ -419,21 +614,16 @@ def generate_chart(
         }
     else:
         encoding = {"x": enc(channels["x"]), "y": enc(channels["y"])}
-        # A ranking is only a ranking once it is ordered. recommend_chart_type
-        # already promises "sorted bar chart"; this is what keeps that true.
-        # Scoped to a discrete axis — sorting a time axis by value destroys it.
-        if (
-            chart_spec.get("intent") == "ranking"
-            and chart_type == "bar"
-            and encoding["x"]["type"] == "nominal"
-        ):
-            encoding["x"]["sort"] = "-y"
+        # The ranking sort moved into chart_modifiers: which channel to sort, and
+        # what to sort it by, are both questions about orientation, and a
+        # horizontal ranking bar sorted on the wrong axis comes back unsorted
+        # while still claiming to be sorted.
         if "color" in channels:
-            encoding["color"] = enc(channels["color"])
+            encoding["color"] = series_enc(channels["color"])
             if chart_type == "grouped_bar":
                 # What separates grouped from stacked: without xOffset a bar with
                 # a colour channel stacks.
-                encoding["xOffset"] = enc(channels["color"])
+                encoding["xOffset"] = series_enc(channels["color"])
             n_colors = len({row.get(channels["color"]) for row in result_table})
             cap = (
                 MAX_SERIES_ALL_PAIRS
@@ -445,6 +635,19 @@ def generate_chart(
                     f"color channel has {n_colors} distinct values (> {cap} for "
                     f"'{chart_type}') — series will not be reliably distinguishable"
                 )
+
+    # Fold in the sub-type. Everything below sees the *final* channels, which is
+    # why this runs before the skew pass and the labels: a horizontal bar's
+    # measure is on x, and a skew notice naming the y axis of a chart whose y is
+    # the category would be describing a different chart.
+    mark, encoding, transforms, extra_layers, data_index = chart_modifiers.apply(
+        form, encoding, _mark_def(chart_type, len(result_table)), chart_spec.get("intent")
+    )
+    if form.facet:
+        panels = len({row.get(form.facet) for row in result_table})
+        facet_note = chart_modifiers.facet_warning(form, panels)
+        if facet_note:
+            warnings.append(facet_note)
 
     # One extreme value flattens every other mark against the baseline. Judged on
     # the values actually being plotted, because aggregation both creates and
@@ -469,30 +672,47 @@ def generate_chart(
         if notice:
             axis_notices.append(notice)
 
-    data_layer: dict[str, Any] = {
-        "mark": _mark_def(chart_type, len(result_table)),
-        "encoding": encoding,
-    }
-    label_layer = build_label_layer(chart_type, encoding, result_table)
+    data_layer: dict[str, Any] = {"mark": mark, "encoding": encoding}
+    if transforms:
+        data_layer["transform"] = transforms
+    label_layer = build_label_layer(form, encoding, result_table)
+
+    # Assemble the frame. A unit spec stays a unit spec — only a sub-type that
+    # needs a sibling (an error band, a jitter overlay) or a chart carrying
+    # direct labels becomes layered. `data_index` is where the primary mark
+    # landed: an error *band* draws under its line, so it goes first and the
+    # data layer is second.
+    layers: list[dict[str, Any]] = []
+    if extra_layers:
+        layers = (
+            [extra_layers[0], data_layer, *extra_layers[1:]]
+            if data_index == 1
+            else [data_layer, *extra_layers]
+        )
+    if label_layer is not None:
+        layers = (layers or [data_layer]) + [label_layer]
+
+    inner: dict[str, Any] = {"layer": layers} if layers else data_layer
 
     spec: dict[str, Any] = {
         "$schema": VEGA_LITE_SCHEMA,
         "data": {"values": result_table},
     }
-    if label_layer is None:
-        spec.update(data_layer)
+    if form.facet:
+        # Small multiples put the chart under `spec`, so the top level carries no
+        # `mark` and no `layer`. Consumers checking for a renderable top level
+        # have to accept `facet` as a third shape — see export.py.
+        spec.update(chart_modifiers.facet_wrapper(form, inner))
     else:
-        # Labels force a layered spec. Consumers that assume a top-level `mark`
-        # have to accept `layer` too — see export.py's spec check.
-        spec["layer"] = [data_layer, label_layer]
+        spec.update(inner)
 
     attach_theme(spec)
-    attach_interaction(spec, chart_type)
+    attach_interaction(spec, form)
     # Size from the container rather than Vega's 200px default, so a chart
     # reflows when the dashboard widget is resized instead of being re-embedded.
-    # Belongs to the spec as a whole, so it is set after any layering.
-    spec["width"] = "container"
-    spec["height"] = "container"
+    # Faceted sub-types cannot — Vega-Lite ignores container sizing on them — and
+    # take a per-panel size instead.
+    chart_modifiers.apply_sizing(form, spec)
     # The caveat rides on the spec as well as the reply. A saved dashboard has no
     # chat behind it, so an explanation that lives only in the conversation is one
     # a reader will not have tomorrow — and a log axis nobody mentions misleads.

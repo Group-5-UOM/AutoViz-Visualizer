@@ -54,23 +54,37 @@ def _value_text(field: str) -> dict[str, Any]:
     return {"field": field, "type": "quantitative", "format": LABEL_NUMBER_FORMAT}
 
 
-def _bar_values(encoding, table, *, offset_by=None, cap):
-    """Value above each bar."""
+def _bar_values(form, encoding, table, *, grouped=False, cap):
+    """Value at the end of each bar — above it, or beside it when horizontal."""
     if len(table) > cap:
         return None
+    measure, category = form.measure_channel, form.category_channel
+    if measure not in encoding or category not in encoding:
+        return None
     enc: dict[str, Any] = {
-        "x": encoding["x"],
-        "y": encoding["y"],
-        "text": _value_text(encoding["y"]["field"]),
+        category: encoding[category],
+        measure: encoding[measure],
+        "text": _value_text(encoding[measure]["field"]),
     }
-    if offset_by is not None:
+    if grouped:
         # Without the same offset the labels sit over the group's centre rather
         # than over their own bar.
-        enc["xOffset"] = offset_by
-    return {"mark": _text_mark(dy=-5, baseline="bottom"), "encoding": enc}
+        offset = encoding.get(form.offset_channel)
+        if offset is None:
+            return None
+        enc[form.offset_channel] = offset
+    # A horizontal bar grows rightwards, so its label sits off the end of the
+    # bar rather than on top of it. Reusing the vertical placement would park
+    # every value above the bar's own row, next to the wrong category.
+    mark = (
+        _text_mark(dx=5, align="left", baseline="middle")
+        if form.orientation == "horizontal"
+        else _text_mark(dy=-5, baseline="bottom")
+    )
+    return {"mark": mark, "encoding": enc}
 
 
-def _heatmap_values(encoding, table):
+def _heatmap_values(form, encoding, table):
     """Value inside each cell, flipped to white over the dark end of the ramp."""
     if len(table) > MAX_LABELLED_CELLS:
         return None
@@ -95,7 +109,7 @@ def _heatmap_values(encoding, table):
     }
 
 
-def _series_at_line_end(encoding, table):
+def _series_at_line_end(form, encoding, table):
     """Series name beside the last point of its own line."""
     color = encoding.get("color")
     if not isinstance(color, dict) or "field" not in color:
@@ -121,7 +135,7 @@ def _series_at_line_end(encoding, table):
     }
 
 
-def _slice_categories(encoding, table):
+def _slice_categories(form, encoding, table):
     """Category name outside its own arc."""
     category = encoding["color"]["field"]
     if len({row.get(category) for row in table}) > MAX_LABELLED_SLICES:
@@ -141,11 +155,11 @@ def _slice_categories(encoding, table):
 #   boxplot   — composite mark; its own tooltip carries the quartiles
 #   bar+color — stacked segments; labels inside them collide at realistic sizes
 _STRATEGIES = {
-    "bar": lambda e, t: (
-        None if "color" in e else _bar_values(e, t, cap=MAX_LABELLED_BARS)
+    "bar": lambda f, e, t: (
+        None if "color" in e else _bar_values(f, e, t, cap=MAX_LABELLED_BARS)
     ),
-    "grouped_bar": lambda e, t: _bar_values(
-        e, t, offset_by=e.get("xOffset"), cap=MAX_LABELLED_GROUPED_BARS
+    "grouped_bar": lambda f, e, t: _bar_values(
+        f, e, t, grouped=True, cap=MAX_LABELLED_GROUPED_BARS
     ),
     "heatmap": _heatmap_values,
     "line": _series_at_line_end,
@@ -156,10 +170,19 @@ _STRATEGIES = {
 
 
 def build_label_layer(
-    chart_type: str, encoding: dict[str, Any], result_table: list[dict[str, Any]]
+    form: Any, encoding: dict[str, Any], result_table: list[dict[str, Any]]
 ) -> dict[str, Any] | None:
-    """The text layer for this chart, or None if it should carry no labels."""
-    strategy = _STRATEGIES.get(chart_type)
-    if strategy is None or not result_table:
+    """The text layer for this chart, or None if it should carry no labels.
+
+    `form` is a `chart_modifiers.Form`: the sub-type decides this as much as the
+    family does. A stacked bar, a faceted anything, a density curve and an error
+    chart each have a family that labels and a sub-type that must not — the
+    reasoning for each is on `Form.draws_labels`, kept there so this module and
+    the interaction layer read the same answer.
+    """
+    if not result_table or not form.draws_labels:
         return None
-    return strategy(encoding, result_table)
+    strategy = _STRATEGIES.get(form.chart_type)
+    if strategy is None:
+        return None
+    return strategy(form, encoding, result_table)

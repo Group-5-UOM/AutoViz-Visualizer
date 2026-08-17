@@ -45,6 +45,83 @@ CHART_TYPES = frozenset(
     }
 )
 
+# --- chart modifiers ----------------------------------------------------------
+# Sub-types are modifiers on the ten types above, not eleventh and twelfth names.
+# A horizontal 100%-stacked bar is `bar` + two modifiers; naming it would need a
+# literal per orientation x stack x interpolate combination, and Docs/05 records
+# that widening the model's decision space is itself a measurable quality cost.
+#
+# Every value here maps onto a Vega-Lite property that already exists — these
+# widen the *plan* grammar to reach Vega-Lite's, they do not invent geometry.
+
+# Which axis carries the category. Bars, boxes and histograms can turn on their
+# side; a horizontal bar is the fix for long or numerous category labels, which
+# the vertical form truncates.
+ORIENTATIONS = frozenset({"vertical", "horizontal"})
+
+# What a series-bearing bar or area does with its segments. "zero" is the
+# Vega-Lite default (a plain stack), "normalize" makes every column sum to 100%,
+# "center" is the streamgraph offset, "none" overlays them.
+STACK_MODES = frozenset({"zero", "normalize", "center", "none"})
+
+# Path shape between points. "step" is the correct form for a value that holds
+# until it changes (a price, a headcount) rather than sliding between readings.
+INTERPOLATIONS = frozenset({"linear", "step", "monotone"})
+
+# Distribution forms over a category. All three answer the same question with
+# different amounts of summarising: box = quartiles, violin = the whole density,
+# strip = every value. Strip is the honest one at small n, where a box invents
+# structure out of four points.
+DISTRIBUTION_FORMS = frozenset({"box", "violin", "strip"})
+
+# Uncertainty marks layered under a line or bar. Both are Vega-Lite composites
+# that compute the interval from the raw rows, so both need an unaggregated plan.
+ERROR_FORMS = frozenset({"bar", "band"})
+
+# Vega-Lite timeUnit values worth exposing. Restricted to the ones that bucket a
+# date for a chart axis; the full list includes sub-second units that no result
+# table of ours carries.
+TIME_UNITS = frozenset(
+    {
+        "year", "quarter", "month", "week", "date", "day", "hours",
+        "yearquarter", "yearmonth", "yearmonthdate", "monthdate",
+    }
+)
+
+# Channels a timeUnit may be applied to.
+TIME_UNIT_CHANNELS = frozenset({"x", "y", "color"})
+
+# Which modifiers each chart type accepts. A modifier on a type that has no use
+# for it is a rejected plan, not a silently ignored field: `extra="forbid"` on
+# ChartSpec catches a *misspelled* modifier, and only this catches a well-formed
+# one aimed at the wrong chart. Both failures look identical to the user
+# otherwise — a chart that came back not doing what was asked.
+CHART_MODIFIERS: dict[str, frozenset[str]] = {
+    "bar": frozenset({"orientation", "stack", "facet", "error", "time_unit"}),
+    "grouped_bar": frozenset({"orientation", "facet", "time_unit"}),
+    "line": frozenset({"interpolate", "points", "facet", "error", "time_unit"}),
+    "area": frozenset({"interpolate", "stack", "points", "facet", "time_unit"}),
+    "scatter": frozenset({"size", "bin", "facet"}),
+    "histogram": frozenset({"orientation", "density", "cumulative", "facet"}),
+    "pie": frozenset({"facet"}),
+    "donut": frozenset({"facet"}),
+    "heatmap": frozenset({"facet", "time_unit"}),
+    "boxplot": frozenset({"orientation", "form", "points", "facet"}),
+}
+
+# Every modifier name, for the "which types accept this?" half of the error.
+ALL_CHART_MODIFIERS = frozenset().union(*CHART_MODIFIERS.values())
+
+# Small multiples: how many panels before the grid is unreadable, and how wide
+# the wrap is by default. Nine panels at ~180px is a legible page; past that the
+# principled answer is a filter, not a smaller panel.
+MAX_FACETS = 12
+DEFAULT_FACET_COLUMNS = 3
+# Faceted specs cannot use container sizing — Vega-Lite ignores "container" on a
+# faceted top level — so each panel gets a real size instead.
+FACET_PANEL_WIDTH = 180
+FACET_PANEL_HEIGHT = 140
+
 # Legible ceilings for the colour channel. Adjacent forms (bars, lines, stacked
 # segments) place series next to each other and can carry the full token set;
 # all-pairs forms (scatter) put every series beside every other, so any two hues
@@ -72,8 +149,18 @@ NUMERIC_ONLY_AGGS = frozenset({"sum", "mean", "min", "max", "median"})
 # and wrong for every trend, which is the commoner request.
 DATETIME_DERIVE_FNS = frozenset({"month_start", "quarter_start", "week_start", "year_start"})
 
+# Extraction: datetime -> a bare number (month gives 1-12, weekday 0-6).
+#
+# Named separately from the truncating fns above because the *result* is a
+# different kind of thing, and lumping the two together is what made a trend
+# over an extracted month come back as a scatter: a bare 1-12 was typed "number",
+# which emptied both the temporal and the categorical bucket and left the
+# recommender with nothing but measures. These are ordered discrete positions —
+# ORDINAL — not quantities to be summed.
+DATE_PART_DERIVE_FNS = frozenset({"month", "year", "day", "weekday"})
+
 # Every fn that reads a datetime column, whatever it returns.
-DATE_DERIVE_FNS = frozenset({"month", "year", "day", "weekday"}) | DATETIME_DERIVE_FNS
+DATE_DERIVE_FNS = DATE_PART_DERIVE_FNS | DATETIME_DERIVE_FNS
 STRING_DERIVE_FNS = frozenset({"lower", "upper", "trim"})
 NUMERIC_DERIVE_FNS = frozenset({"round", "abs"})
 STRING_ONLY_OPS = frozenset({"contains"})

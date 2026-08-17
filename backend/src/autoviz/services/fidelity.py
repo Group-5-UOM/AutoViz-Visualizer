@@ -131,6 +131,19 @@ _CHART_PHRASES: tuple[tuple[str, str], ...] = tuple(
             ("heat map", "heatmap"),
             ("box plot", "boxplot"),
             ("boxplot", "boxplot"),
+            # Sub-types name their family too, so a request for a violin that
+            # came back as a bar is caught here as well as by the modifier
+            # check below.
+            ("violin plot", "boxplot"),
+            ("violin chart", "boxplot"),
+            ("strip plot", "boxplot"),
+            ("bubble chart", "scatter"),
+            ("bubble plot", "scatter"),
+            ("streamgraph", "area"),
+            ("stream graph", "area"),
+            ("step chart", "line"),
+            ("step line", "line"),
+            ("density plot", "histogram"),
         ),
         key=lambda pair: -len(pair[0]),
     )
@@ -169,6 +182,67 @@ def _check_chart_type(request: str, outcome: ChartOutcome) -> Notice | None:
     )
 
 
+# --- an explicitly named sub-type ---------------------------------------------
+# A sub-type is invisible to `_check_chart_type`, which compares families: ask
+# for a violin and get a box plot and both are `boxplot`, so the check above sees
+# the request honoured. These compare the *modifier* instead.
+#
+# Phrases are kept narrow for the reason in the module docstring — "stacked" on
+# its own is not here, because a plain bar with a colour column already stacks
+# and disclosing a refusal that never happened is the louder failure.
+
+_ANY = object()  # the modifier names a column, so any value counts as honoured
+
+_SUBTYPE_PHRASES: tuple[tuple[tuple[str, ...], str, Any, str], ...] = (
+    (("horizontal bar", "sideways bar", "bar chart on its side", "horizontal bars"),
+     "orientation", "horizontal", "a horizontal bar chart"),
+    (("100% stacked", "100 % stacked", "fully stacked", "normalised stacked",
+      "normalized stacked", "percentage stacked"),
+     "stack", "normalize", "a 100% stacked chart"),
+    (("streamgraph", "stream graph"), "stack", "center", "a streamgraph"),
+    (("step chart", "step line", "stepped line", "step plot"),
+     "interpolate", "step", "a step line"),
+    (("bubble chart", "bubble plot"), "size", _ANY, "a bubble chart"),
+    (("violin plot", "violin chart"), "form", "violin", "a violin plot"),
+    (("strip plot", "strip chart", "jitter plot"), "form", "strip", "a strip plot"),
+    (("small multiples", "faceted", "facet by", "trellis"),
+     "facet", _ANY, "small multiples"),
+    (("density plot", "density curve", "kde"), "density", True, "a density plot"),
+    (("cumulative distribution", "cumulative chart", "cdf"),
+     "cumulative", True, "a cumulative distribution"),
+    (("error bars", "error bar"), "error", "bar", "error bars"),
+    (("error band", "confidence band", "confidence interval"),
+     "error", "band", "a confidence band"),
+    # "density heatmap" is deliberately absent: it contains "heatmap", so the
+    # family check would fire too and the user would be told twice about one
+    # thing, in two different words.
+    (("hexbin", "binned scatter"), "bin", True, "a binned density plot"),
+)
+
+
+def _check_chart_subtype(request: str, outcome: ChartOutcome) -> Notice | None:
+    chart = outcome.plan.get("chart") or {}
+    for phrases, field, expected, label in _SUBTYPE_PHRASES:
+        if not _mentions(request, phrases):
+            continue
+        actual = chart.get(field)
+        honoured = actual is not None if expected is _ANY else actual == expected
+        if honoured:
+            continue
+        return Notice(
+            kind="request_not_applied",
+            severity=ADVISORY,
+            note=(
+                f"This is not {label}, which is what was asked for — the columns in "
+                "this result could not carry that form, so the plain chart was drawn "
+                "instead."
+            ),
+            technique=f"none — {field} not applied",
+            detail={"requested": label, "modifier": field, "produced": actual},
+        )
+    return None
+
+
 # --- an explicitly requested ordering -----------------------------------------
 
 _SORT_PHRASES = (
@@ -201,6 +275,7 @@ def _check_sort(request: str, outcome: ChartOutcome) -> Notice | None:
 _CHECKS: tuple[Callable[[str, ChartOutcome], Notice | None], ...] = (
     _check_log_scale,
     _check_chart_type,
+    _check_chart_subtype,
     _check_sort,
 )
 
