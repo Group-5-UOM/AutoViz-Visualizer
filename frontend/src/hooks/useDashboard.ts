@@ -23,6 +23,7 @@ const FALLBACK_QUESTION: Record<string, string> = {
   confirmation: 'Please confirm before I continue.',
 };
 import { applyAgentCharts } from '../lib/chartWidgets';
+import { withWidgetRemoved } from '../lib/dashboardState';
 import { classifyError, errorMessage, isRetryable } from '../lib/api';
 
 const WELCOME =
@@ -190,10 +191,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     const removed = dashboardRef.current.widgets[at];
     const wasSelected = dashboardRef.current.selectedWidgetId === id;
 
-    setDashboard((prev) => ({
-      widgets: prev.widgets.filter((w) => w.id !== id),
-      selectedWidgetId: prev.selectedWidgetId === id ? null : prev.selectedWidgetId,
-    }));
+    setDashboard((prev) => withWidgetRemoved(prev, id));
     // An attachment pointing at a chart that no longer exists would send a
     // chart_id the backend cannot resolve, and quietly behave as if unattached.
     setReferencedWidgetId((prev) => (prev === id ? null : prev));
