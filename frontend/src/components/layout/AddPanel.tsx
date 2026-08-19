@@ -20,9 +20,8 @@ export function AddPanel({
   onCsvSelected,
 }: AddPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
   useEscapeToClose(onClose, open);
-
-  if (!open) return null;
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -30,8 +29,6 @@ export function AddPanel({
     void onCsvSelected(file);
     e.target.value = '';
   };
-
-  const [isDragging, setIsDragging] = useState(false);
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -54,6 +51,8 @@ export function AddPanel({
       void onCsvSelected(file);
     }
   };
+
+  if (!open) return null;
 
   return (
     <section className="tool-panel" aria-label="Add dataset">
