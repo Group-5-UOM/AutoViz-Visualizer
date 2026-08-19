@@ -387,6 +387,21 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       setBrowseOpen(true);
       return;
     }
+    if (id === 'dashboards') {
+      setDashboardsOpen(true);
+      return;
+    }
+
+    // Clicking the tool that is already showing puts it away. Checked before
+    // the per-tool branches below so every icon toggles the same way — the
+    // chat's own branch used to hand `activeItem` straight back to itself,
+    // and `edit-data` returned before ever reaching the toggle.
+    if (activeItem === id) {
+      if (id === 'ai-chat') setChatOpen(false);
+      setActiveItem(null);
+      return;
+    }
+
     if (id === 'edit-data') {
       if (!dataset) {
         setBrowseOpen(true);
@@ -394,14 +409,6 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
       }
       setActiveItem('edit-data');
       setChatOpen(false);
-      return;
-    }
-    if (id === 'dashboards') {
-      setDashboardsOpen(true);
-      return;
-    }
-    if (activeItem === id) {
-      setActiveItem(chatOpen ? 'ai-chat' : null);
       return;
     }
     setActiveItem(id);
