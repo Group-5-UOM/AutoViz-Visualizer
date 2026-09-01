@@ -12,7 +12,7 @@ from langgraph.types import interrupt
 from pydantic import ValidationError
 
 from autoviz import observability
-from autoviz.agent.ambiguity import detect_ambiguities
+from autoviz.agent.ambiguity import detect_ambiguities, ground_ambiguity
 from autoviz.agent.state import (
     MAX_CLEANING_PROMPTS,
     MAX_TASKS,
@@ -56,6 +56,15 @@ def load_context(state: AutoVizState, *, registry: DatasetRegistry = REGISTRY) -
 
 
 def classify_intent(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, Any]:
+    """Route the request, and give the LLM its turn at finding an ambiguity.
+
+    The deterministic detectors have already run (`detect_ambiguity`) and found
+    nothing, or this node would not have been reached. What is left is the half
+    they cannot see: a word the schema does not use, a threshold nobody stated, a
+    pronoun with no referent. The model proposes; `ground_ambiguity` decides
+    whether the proposal survives contact with the real dataset.
+    """
+    resolved = state.get("resolved_slots") or {}
     try:
         decision = planner.classify(
             request=state["user_request"],
@@ -63,19 +72,34 @@ def classify_intent(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, An
             profile=state["profile"],
             history=state.get("history", []),
             clarification_answer=state.get("clarification_answer"),
+            resolved_slots=resolved,
         )
     except PlannerError:
-        # Degrade: treat the raw request as a single analysis task.
+        # Degrade: treat the raw request as a single analysis task. The detectors
+        # have already had their say, so a dead planner costs recall, not safety.
         decision = IntentDecision(intent="analysis", tasks=[state["user_request"]])
     tasks = [t.strip() for t in decision.tasks if t.strip()][:MAX_TASKS]
-    if decision.intent != "clarification" and not tasks:
+
+    grounded = ground_ambiguity(
+        decision.ambiguity.model_dump() if decision.ambiguity else None,
+        state.get("schema") or [],
+        state.get("profile") or {},
+        request=state["user_request"],
+        resolved=resolved,
+    )
+    # A proposal that did not survive is not a reason to stall. The model said
+    # "clarification" and emitted no answerable question, so fall back to the
+    # request itself rather than fanning out zero tasks.
+    if not tasks and grounded is None:
         tasks = [state["user_request"]]
+
     return {
         "intent": decision.intent,
         "tasks": tasks,
-        "clarification": (
-            decision.clarification.model_dump() if decision.clarification else None
-        ),
+        # Same queue the detectors write to. Everything downstream — the question,
+        # the binding, the constraint folded into the task — is then identical for
+        # both layers, which is the point: the LLM gets no weaker path to the user.
+        "pending_ambiguities": [grounded.model_dump()] if grounded else [],
     }
 
 
@@ -96,44 +120,42 @@ def detect_ambiguity(state: AutoVizState) -> dict[str, Any]:
 
 
 def clarify(state: AutoVizState) -> dict[str, Any]:
-    """Ask one clarifying question and bind the answer.
+    """Ask one clarifying question and bind the answer to its slot.
 
-    Prefers a deterministic ambiguity (grounded options, answer bound to its slot);
-    falls back to an LLM-authored clarification when the detectors found nothing.
+    There is one path here, whichever layer raised the question. That is the
+    whole design: a detector's ambiguity and an LLM's both arrive as a grounded
+    `Ambiguity` on `pending_ambiguities`, so both get real options, deterministic
+    binding, and a constraint folded into the task. The LLM used to have its own
+    branch that asked a question and then threw the answer at the planner as
+    prose — the user chose, and the system guessed anyway.
     """
     pending = state.get("pending_ambiguities") or []
-    if pending:
-        amb = Ambiguity.model_validate(pending[0])
-        # pause_kind lets an MCP host tell a clarification apart from a preprocessing
-        # confirmation — both surface as status "waiting_for_user".
-        answer = interrupt(  # pause; resumes here with the user's answer
-            {**amb.to_wire(), "pause_kind": "clarification"}
-        )
-        resolution = bind_answer(amb, str(answer))
-        observability.log_event(
-            "clarification", source="detector", amb_type=amb.type, slot=amb.slot,
-            n_options=len(amb.options), resolution=resolution.source,
-            round=state.get("clarification_count", 0) + 1,
-        )
-        return {
-            "resolved_slots": {**(state.get("resolved_slots") or {}), resolution.slot: resolution.value},
-            "clarification_count": state.get("clarification_count", 0) + 1,
-            "clarify_source": "detector",
-            "clarification_answer": str(answer),
-        }
+    if not pending:  # nothing to ask; routing should not have sent us here
+        return {}
 
-    # LLM-authored clarification (detectors found nothing structural).
-    payload = state.get("clarification") or {"question": "Could you clarify your request?", "options": []}
-    answer = interrupt({**payload, "pause_kind": "clarification"})
+    amb = Ambiguity.model_validate(pending[0])
+    # pause_kind lets an MCP host tell a clarification apart from a preprocessing
+    # confirmation — both surface as status "waiting_for_user".
+    answer = interrupt(  # pause; resumes here with the user's answer
+        {**amb.to_wire(), "pause_kind": "clarification"}
+    )
+    resolution = bind_answer(amb, str(answer))
     observability.log_event(
-        "clarification", source="llm", n_options=len(payload.get("options", [])),
+        "clarification", source=amb.origin, amb_type=amb.type, slot=amb.slot,
+        n_options=len(amb.options), resolution=resolution.source,
         round=state.get("clarification_count", 0) + 1,
     )
     return {
-        "clarification_answer": str(answer),
+        "resolved_slots": {
+            **(state.get("resolved_slots") or {}),
+            resolution.slot: resolution.value,
+        },
         "clarification_count": state.get("clarification_count", 0) + 1,
-        "clarify_source": "llm",
-        "clarification": None,
+        "clarify_source": amb.origin,
+        "clarification_answer": str(answer),
+        # Consumed. detect_ambiguity refills this from scratch on the way round,
+        # and leaving a stale entry would re-ask the slot just answered.
+        "pending_ambiguities": [],
     }
 
 

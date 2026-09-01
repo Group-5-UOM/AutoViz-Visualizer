@@ -68,7 +68,7 @@ def _whose(pause):
 def test_parallel_gates_resume_without_an_interrupt_id(registry, nulls_id):
     """The original bug: two concurrent gates used to make resume() raise."""
     agent = _two_worker_agent(registry, DROP_TWO, DROP_TWO)
-    out = agent.run("fare and age by class, dropping missing", dataset_id=nulls_id)
+    out = agent.run("fare and age by cls, dropping missing", dataset_id=nulls_id)
     assert out["status"] == "waiting_for_user"
 
     resumed = agent.resume(out["thread_id"], "Proceed with cleaning")
@@ -82,7 +82,7 @@ def test_parallel_gates_resume_without_an_interrupt_id(registry, nulls_id):
 def test_one_decision_is_asked_once_for_both_workers(registry, nulls_id):
     """Identical preprocessing -> identical hash -> a single question."""
     agent = _two_worker_agent(registry, DROP_TWO, DROP_TWO)
-    out = agent.run("fare and age by class, dropping missing", dataset_id=nulls_id)
+    out = agent.run("fare and age by cls, dropping missing", dataset_id=nulls_id)
 
     assert out["pending_count"] == 1
     assert out["interrupt_id"]
@@ -99,7 +99,7 @@ def test_one_decision_is_asked_once_for_both_workers(registry, nulls_id):
 
 def test_skip_reaches_every_worker_in_the_group(registry, nulls_id):
     agent = _two_worker_agent(registry, DROP_TWO, DROP_TWO)
-    out = agent.run("fare and age by class, dropping missing", dataset_id=nulls_id)
+    out = agent.run("fare and age by cls, dropping missing", dataset_id=nulls_id)
 
     resumed = agent.resume(out["thread_id"], "Skip cleaning (keep all rows)")
 
@@ -115,7 +115,7 @@ def test_skip_reaches_every_worker_in_the_group(registry, nulls_id):
 def test_different_decisions_queue_and_do_not_cross_apply(registry, nulls_id):
     """Distinct blocks are distinct questions; each answer binds to its own."""
     agent = _two_worker_agent(registry, DROP_TWO, DROP_THREE)
-    first = agent.run("fare and age by class, dropping missing", dataset_id=nulls_id)
+    first = agent.run("fare and age by cls, dropping missing", dataset_id=nulls_id)
 
     assert first["status"] == "waiting_for_user"
     assert first["pending_count"] == 2
@@ -206,7 +206,7 @@ def test_cleaning_choices_on_different_columns_queue_separately(registry, tmp_pa
 def test_a_stale_interrupt_id_re_asks_instead_of_consuming_the_answer(registry, nulls_id):
     """An answer to a resolved question must not land on the next one."""
     agent = _two_worker_agent(registry, DROP_TWO, DROP_THREE)
-    first = agent.run("fare and age by class, dropping missing", dataset_id=nulls_id)
+    first = agent.run("fare and age by cls, dropping missing", dataset_id=nulls_id)
     stale = first["interrupt_id"]
     second = agent.resume(first["thread_id"], "Proceed with cleaning", stale)
     assert second["status"] == "waiting_for_user"
@@ -237,7 +237,7 @@ def test_snapshot_interrupts_keeps_answered_entries(registry, nulls_id):
     filter in _live_from_snapshot becomes dead code and should be revisited.
     """
     agent = _two_worker_agent(registry, DROP_TWO, DROP_THREE)
-    first = agent.run("fare and age by class, dropping missing", dataset_id=nulls_id)
+    first = agent.run("fare and age by cls, dropping missing", dataset_id=nulls_id)
     agent.resume(first["thread_id"], "Proceed with cleaning", first["interrupt_id"])
 
     snapshot = agent._graph.get_state({"configurable": {"thread_id": first["thread_id"]}})

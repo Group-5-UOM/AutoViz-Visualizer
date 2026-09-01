@@ -12,6 +12,17 @@
   z-index: 15;
 }
 
+/* A fixed header above the scrolling body, so the close control does not slide
+   out of reach once the options run past the panel's height. */
+.style-panel-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
 .style-panel-body {
   flex: 1;
   min-height: 0;
@@ -24,11 +35,43 @@
 
 .style-panel-subject {
   margin: 0;
+  /* min-width:0 is what lets the ellipsis actually engage — a flex item's
+     default min-width is auto, so without it the title pushes the close button
+     off the edge instead of truncating. */
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Shaped like .modal-close-btn but restated here rather than borrowed: that
+   class lives in DashboardsModal.css, and depending on another component's
+   stylesheet having been loaded is an invisible coupling to break later.
+   The tokens differ from that one deliberately — it reaches for
+   `--text-tertiary` and `--surface-hover`, neither of which is defined
+   anywhere in the app, so its colour and its hover are both inert. */
+.style-panel-close {
+  flex: none;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.style-panel-close:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .style-field {

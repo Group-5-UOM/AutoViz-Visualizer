@@ -10,9 +10,15 @@ Day 2 covers `time_column` and `missing_metric`. Day 3 adds `column_reference` /
 """
 
 import re
-from typing import Any
+import unicodedata
+from typing import Any, get_args
 
-from autoviz.schema.clarification import Ambiguity, ClarificationOption
+from autoviz.schema.clarification import (
+    Ambiguity,
+    AmbiguityType,
+    ClarificationOption,
+    Slot,
+)
 
 # Words that signal the user wants something over time — used to decide whether a
 # clash of date columns actually matters for this request.
@@ -38,6 +44,11 @@ _TEMPORAL_HINTS = (
 _RANKING_WORDS = (
     "best", "worst", "top", "bottom", "most", "least",
     "greatest", "largest", "smallest", "biggest",
+    # Verbs that request an ordering outright. Unlike the adjectives above these
+    # cannot be read as naming a quantity, so they need no substantive test.
+    # "order" is deliberately absent: it is a noun in half the schemas there are
+    # (`order_date`, `order_id`) and an adverbial in the other half ("in order").
+    "rank", "ranked", "ranking",
 )
 # _MEASURE_ADJECTIVES far more often name a quantity than request an ordering —
 # "maximum temperature", "minimum wage", "highest recorded rainfall". They count
@@ -132,6 +143,11 @@ def detect_ambiguities(
 
     found: list[Ambiguity] = []
     for detector in (
+        # First of the ordinary detectors for the same reason the capability
+        # check runs before all of them: if the request names something the
+        # dataset has not got, "which of these did you mean?" about some other
+        # part of the sentence is not the question worth asking.
+        _detect_unknown_reference(request, schema, profile),
         _detect_time_column(request, schema),
         _detect_column_reference(request, schema),
         _detect_value_reference(request, profile),
@@ -186,6 +202,13 @@ def apply_resolutions(task: str, resolved: dict[str, Any]) -> str:
                 clauses.append(f"measure by {val.get('fn', 'mean')} of `{val['column']}`")
         elif slot == "dimension" and val.get("column"):
             clauses.append(f"group by `{val['column']}`")
+        elif slot == "aggregation" and val.get("fn"):
+            if val.get("column"):
+                clauses.append(f"aggregate using {val['fn']} of `{val['column']}`")
+            else:
+                clauses.append(f"aggregate using {val['fn']}")
+        elif slot == "time_grain" and val.get("grain"):
+            clauses.append(f"group the time axis by {val['grain']}")
         elif slot == "filter_value" and val.get("column"):
             clauses.append(f"filter where `{val['column']}` = '{val.get('value')}'")
         elif slot == "capability":
@@ -196,6 +219,193 @@ def apply_resolutions(task: str, resolved: dict[str, Any]) -> str:
     if not clauses:
         return task
     return f"{task}  [Resolved constraints: {'; '.join(clauses)}]"
+
+
+# --- the LLM proposal gate ----------------------------------------------------
+#
+# Everything above this line decides *for itself* whether to ask, using only the
+# schema and the request. This section handles the other source: an ambiguity
+# proposed by the classifier LLM, which can see meaning the lexical rules cannot
+# ("revenue" is `total_bill`) and can also invent columns wholesale.
+#
+# The split is deliberate, and it mirrors how composed prose is already handled
+# in `compose_response`: the model writes, and a deterministic check decides
+# whether what it wrote survives. A proposal that clears this gate is
+# indistinguishable downstream from a detector's — same queue, same
+# `bind_answer`, same `apply_resolutions` — so the LLM never gets a weaker path
+# to the user than the detectors have.
+
+# Aggregate functions and time grains an option may bind to. Anything else is a
+# fabrication, however plausible it reads.
+_VALID_FNS = frozenset({"count", "sum", "mean", "median", "min", "max"})
+_VALID_GRAINS = frozenset({"day", "month", "year"})
+
+# Long enough for a real question, short enough that a runaway generation cannot
+# fill the panel. Question text is model output rendered verbatim to the user.
+_MAX_QUESTION_CHARS = 240
+
+_AMBIGUITY_TYPES = frozenset(get_args(AmbiguityType))
+_SLOTS = frozenset(get_args(Slot))
+
+
+def ground_ambiguity(
+    proposed: dict[str, Any] | None,
+    schema: list[dict[str, str]],
+    profile: dict[str, Any],
+    *,
+    request: str = "",
+    resolved: dict[str, Any] | None = None,
+) -> Ambiguity | None:
+    """Validate an LLM-proposed ambiguity against the real dataset, or drop it.
+
+    Returns a grounded `Ambiguity` whose every option references a column, value,
+    function or grain that exists — or None, meaning do not ask. None is the safe
+    outcome throughout: the request proceeds to the planner, which is exactly what
+    happened before this layer existed.
+    """
+    if not isinstance(proposed, dict):
+        return None
+    resolved = resolved or {}
+
+    amb_type = proposed.get("type")
+    slot = proposed.get("slot")
+    if amb_type not in _AMBIGUITY_TYPES or slot not in _SLOTS:
+        return None
+
+    # The loop guard. Without it the classifier re-proposes the slot the user has
+    # just answered, and the round budget — not the logic — is what stops it.
+    if slot in resolved:
+        return None
+
+    question = _clean_text(proposed.get("question"))
+    if question is None:
+        return None
+
+    options = _ground_options(proposed.get("options"), schema, profile)
+    # One option is not a choice, and none is a hallucination. Either way the
+    # honest move is to let the planner proceed rather than stage a question.
+    if len(options) < 2:
+        return None
+
+    if _already_disambiguated(request, options):
+        return None
+
+    return Ambiguity(
+        type=amb_type,
+        slot=slot,
+        question=question,
+        options=options[:_MAX_METRIC_OPTIONS],
+        origin="llm",
+        detail={"proposed_options": len(proposed.get("options") or [])},
+    )
+
+
+def _clean_text(raw: Any) -> str | None:
+    """Collapse to a single printable line, or None if nothing usable is left.
+
+    Control and format characters go first — the format class includes the bidi
+    overrides, which let a string render differently from how it reads in the
+    source. Request text reaches this function's inputs, so it is hostile until
+    proven otherwise.
+    """
+    if not isinstance(raw, str):
+        return None
+    stripped = "".join(c for c in raw if unicodedata.category(c) not in ("Cc", "Cf"))
+    collapsed = " ".join(stripped.split())
+    if not collapsed:
+        return None
+    if len(collapsed) > _MAX_QUESTION_CHARS:
+        collapsed = collapsed[: _MAX_QUESTION_CHARS - 1].rstrip() + "\u2026"
+    return collapsed
+
+
+def _ground_options(
+    raw: Any, schema: list[dict[str, str]], profile: dict[str, Any]
+) -> list[ClarificationOption]:
+    """Keep the options that bind to something real; drop the rest silently."""
+    if not isinstance(raw, list):
+        return []
+    names = {c.get("name") for c in schema}
+    samples: dict[str, list[str]] = profile.get("sample_values", {}) or {}
+    kept: list[ClarificationOption] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        label = _clean_text(item.get("label"))
+        if label is None:
+            continue
+        bound = _ground_resolves_to(item.get("resolves_to"), names, samples)
+        # An option bound to nothing cannot steer the plan, so choosing it would
+        # change nothing the user could see — the silent no-op this gate exists
+        # to catch.
+        if not bound:
+            continue
+        key = repr(sorted(bound.items()))
+        if key in seen:  # two labels for one binding is not a choice
+            continue
+        seen.add(key)
+        kept.append(ClarificationOption(label=label, resolves_to=bound))
+    return kept
+
+
+def _ground_resolves_to(
+    raw: Any, names: set[Any], samples: dict[str, list[str]]
+) -> dict[str, Any]:
+    """The subset of a proposed binding that actually exists in this dataset.
+
+    Any single bad key voids the whole option rather than being dropped from it.
+    A half-kept binding is the dangerous outcome: "average of `waiter`" with the
+    column quietly removed becomes "average", which the planner will happily
+    apply to some other column entirely.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    bound: dict[str, Any] = {}
+    column = raw.get("column")
+    if isinstance(column, str):
+        if column not in names:
+            return {}
+        bound["column"] = column
+    value = raw.get("value")
+    if value is not None:
+        # A value with no column cannot be filtered on, and a value the column
+        # does not contain filters to an empty chart.
+        if "column" not in bound or str(value) not in (samples.get(bound["column"]) or []):
+            return {}
+        bound["value"] = str(value)
+    fn = raw.get("fn")
+    if fn is not None:
+        if fn not in _VALID_FNS:
+            return {}
+        bound["fn"] = fn
+    grain = raw.get("grain")
+    if grain is not None:
+        if grain not in _VALID_GRAINS:
+            return {}
+        bound["grain"] = grain
+    fallback = raw.get("fallback")
+    if fallback is not None:
+        if fallback not in _CAPABILITY_CLAUSE:
+            return {}
+        bound["fallback"] = fallback
+    return bound
+
+
+def _already_disambiguated(request: str, options: list[ClarificationOption]) -> bool:
+    """Did the request already name exactly one of the columns being offered?
+
+    This is the over-ask guard. The classifier sees `pickup_borough` and
+    `dropoff_borough` in the schema and can propose the clash even when the user
+    wrote "by pickup borough". Deciding that from the request text is cheap and
+    certain, and does not need a model's opinion of its own confidence.
+    """
+    candidates = [
+        o.resolves_to["column"] for o in options if isinstance(o.resolves_to.get("column"), str)
+    ]
+    if len(candidates) < 2:
+        return False
+    return len(_mentioned_columns(request, candidates)) == 1
 
 
 # --- capability detector ------------------------------------------------------
@@ -384,6 +594,213 @@ def _detect_value_reference(request: str, profile: dict[str, Any]) -> Ambiguity 
                 detail={"value": nv, "candidates": [c for c, _ in entries]},
             )
     return None
+
+
+# --- unknown-reference detector -----------------------------------------------
+#
+# Added after the first ambiguity benchmark showed the original five detectors
+# leaving a whole category untouched: a request that groups by something the
+# dataset simply has not got. It belongs here rather than in the LLM layer
+# because it is decidable from the request and the schema alone.
+
+# Prepositions that introduce a grouping. Deliberately not "of": "the
+# distribution of petal widths" is a measure, not a grouping, and reading it as
+# one turns a well-specified request into a question.
+_GROUPING_PREPS = ("grouped by", "broken down by", "for each", "across", "by", "per")
+
+# Determiners and quantities, which carry no reference and are passed over.
+# "across the three classes" groups by `class`; the count is not part of the name.
+_GROUPING_SKIP = frozenset({
+    "the", "a", "an", "each", "every", "their", "its", "all", "both",
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "first", "last", "several", "many", "few", "top", "bottom",
+})
+
+# Words that END a grouping phrase rather than joining it. Without these, "by
+# day, and separately the count by sex" reads "and separately" as the name of a
+# column, and "top region by total" reads the aggregate as one.
+_PHRASE_STOP = frozenset({
+    "and", "or", "but", "then", "also", "plus", "versus", "vs", "while", "where",
+    "using", "with", "from", "over", "during", "only", "just", "excluding",
+    "including", "sorted", "ordered", "separately",
+    # Aggregates name what to compute, never what to group by.
+    "average", "avg", "mean", "median", "sum", "total", "count", "number",
+})
+
+# Time buckets a date column supports. There is no `month` column in any of these
+# datasets and there does not need to be one: "by month" is a grain, and every
+# dataset with a date can be grouped by it. Treated as known rather than skipped,
+# so that a dataset which *does* have a `day` column still matches it normally.
+_TIME_UNITS = frozenset({
+    "day", "days", "date", "dates", "week", "weeks", "weekday", "weekdays",
+    "month", "months", "quarter", "quarters", "year", "years", "hour", "hours",
+    "minute", "minutes", "time", "season", "seasons", "decade", "decades",
+})
+
+# How many words after the preposition can belong to the grouping phrase.
+# "by pickup borough" is two; "by average fare paid last year" is not a grouping
+# phrase at all, and reading further only invents matches.
+_GROUPING_PHRASE_WORDS = 2
+
+# Distinct values below which a grouping column is a category rather than a key.
+# Used to pick fallback options for an unknown reference: offering `name` as a
+# thing to group 900 rows by is not help.
+_MAX_GROUPABLE_CARDINALITY = 50
+
+
+def _grouping_phrases(request: str) -> list[list[str]]:
+    """The word groups that follow a grouping preposition, noise removed.
+
+    "show average tip by waiter name" -> [["waiter", "name"]].
+
+    Phrases, not loose words, because the question "is this a column we have?"
+    is only answerable about the whole phrase. "for each passenger class" names
+    `class` and modifies it with "passenger"; asked word by word, the modifier
+    looks like a column the dataset is missing, and five ordinary requests in
+    the benchmark were interrupted on exactly that mistake.
+    """
+    hay = _norm(request)
+    phrases: list[list[str]] = []
+    for prep in _GROUPING_PREPS:
+        for match in re.finditer(rf"\b{re.escape(prep)}\b(?P<rest>.*)", hay):
+            phrase: list[str] = []
+            for word in re.findall(r"[a-z0-9_]+", match.group("rest")):
+                if word in _GROUPING_SKIP:
+                    continue
+                if word in _PHRASE_STOP or len(word) < 3:
+                    break  # a function word or an aggregate ends the phrase
+                phrase.append(word)
+                if len(phrase) >= _GROUPING_PHRASE_WORDS:
+                    break
+            if phrase:
+                phrases.append(phrase)
+    return phrases
+
+
+def _forms(word: str) -> set[str]:
+    """`word` and its plausible singulars: "towns" -> {towns, town}."""
+    forms = {word}
+    if len(word) > 3:
+        if word.endswith("es"):
+            forms.add(word[:-2])
+        if word.endswith("s"):
+            forms.add(word[:-1])
+    return forms
+
+
+def _same_thing(word: str, target: str) -> bool:
+    """Do these two words name the same thing, allowing for how people write?
+
+    Two liberties, both earned by a false positive on the frozen benchmark:
+
+    * plurals — "across embarkation *towns*" is `embark_town`;
+    * a longer derived form — "*embarkation*" is `embark`.
+
+    Only a prefix counts for the second, and only from four characters, so
+    `day`/`daytime` and `tip`/`tipping` stay out of it. Being too generous here
+    costs a missed question; being too strict interrupts a request that named
+    its column perfectly well, which is what both of these did.
+    """
+    for w in _forms(word):
+        for t in _forms(target):
+            if w == t:
+                return True
+            if len(t) >= 4 and w.startswith(t):
+                return True
+            if len(w) >= 4 and t.startswith(w):
+                return True
+    return False
+
+
+def _is_known(word: str, schema: list[dict[str, str]], profile: dict[str, Any]) -> bool:
+    """Does this word name a column, part of one, a value, or a time bucket?"""
+    if word in _TIME_UNITS:
+        return True
+    for col in schema:
+        name = col.get("name", "")
+        if any(_same_thing(word, part) for part in _col_words(name)):
+            return True
+        if _same_thing(word, _norm(name)):
+            return True
+    for values in (profile.get("sample_values") or {}).values():
+        if any(_same_thing(word, _norm(v)) for v in values):
+            return True
+    return False
+
+
+def _detect_unknown_reference(
+    request: str, schema: list[dict[str, str]], profile: dict[str, Any]
+) -> Ambiguity | None:
+    """The request groups by something this dataset does not have.
+
+    The failure this prevents is not a crash — it is the planner picking the
+    nearest column it does have and presenting the result as the answer. Asked
+    for "average tip by waiter name", a tool that charts tip by `sex` has not
+    answered the question; it has answered a different one silently.
+    """
+    unknown = [
+        phrase
+        for phrase in _grouping_phrases(request)
+        if not any(_is_known(w, schema, profile) for w in phrase)
+    ]
+    if not unknown:
+        return None
+    term = " ".join(unknown[0])
+    options = [
+        ClarificationOption(label=_pretty(c), resolves_to={"column": c})
+        for c in _groupable_columns(schema, profile)
+    ]
+    if not options:
+        return None  # nothing to offer instead; let the planner fail honestly
+    options.append(
+        ClarificationOption(
+            # Says what actually happens, rather than implying the run stops.
+            label="None of these — answer without it",
+            resolves_to={},
+        )
+    )
+    return Ambiguity(
+        type="unknown_reference",
+        slot="dimension",
+        question=f'There is no "{term}" in this dataset. What should I group by instead?',
+        options=options,
+        detail={"term": term, "unknown": [" ".join(p) for p in unknown]},
+    )
+
+
+def _groupable_columns(
+    schema: list[dict[str, str]], profile: dict[str, Any]
+) -> list[str]:
+    """Columns worth offering as a grouping: categories, fewest values first."""
+    card = profile.get("cardinality", {})
+    usable = [
+        c["name"]
+        for c in schema
+        if c.get("type") in ("string", "boolean")
+        and card.get(c["name"], 0) <= _MAX_GROUPABLE_CARDINALITY
+    ]
+    return sorted(usable, key=lambda c: card.get(c, 0))[:_MAX_METRIC_OPTIONS - 1]
+
+
+# Two further detectors were built here and removed, and the reason is worth
+# keeping: **aggregation** ("show the fare by payment type" — total, average or
+# count?) and **time granularity** ("show how precipitation changed over time" —
+# by day, month or year?). Both are real ambiguities. Neither is decidable from
+# the words.
+#
+# The benchmark is what settled it. Every rule that fired on "show the bill by
+# day" also fired on "tips by smoker", and every rule that fired on "how
+# precipitation changed over time" also fired on "the trend in wind speed over
+# time" — structurally identical requests where asking is friction rather than
+# care. Over-asking went from 0% to 25% of the negative set, and no tightening
+# of the trigger separated the pairs, because there is nothing lexical to
+# separate: the difference lives in how much the phrasing implies a default.
+#
+# So they are the LLM layer's, not this one's — which is the whole point of
+# having two layers. `aggregation` and `time_grain` remain in the Slot taxonomy
+# and in `apply_resolutions`, and `ground_ambiguity` validates the `fn` and
+# `grain` an LLM proposal binds to, so a question of either kind still arrives
+# grounded and still binds.
 
 
 # --- helpers ------------------------------------------------------------------

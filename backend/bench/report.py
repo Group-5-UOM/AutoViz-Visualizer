@@ -250,11 +250,60 @@ def chart_tables(d: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def ambiguity_tables(d: dict[str, Any]) -> str:
+    """Recall and over-ask, side by side, because neither means anything alone.
+
+    Either number is trivial to max out on its own — never ask, or always ask —
+    so the pair is the result and a single figure would be a way of hiding half
+    of it.
+    """
+    s = d["summary"]
+    meta = d["meta"]
+    layer = "detectors only" if meta.get("mode") == "detectors" else "detectors + LLM layer"
+    parts = [
+        f"*{s['cases']} labelled prompts ({s['positives']} ambiguous, {s['negatives']} clear), "
+        f"{layer}, run {meta['generated_at']}.*\n"
+    ]
+    rec, det, llm = s["recall"], s["recall_detector_reachable"], s["recall_llm_reachable"]
+    parts.append(_table(
+        ["Measure", "Result", "Meaning"],
+        [
+            ["Recall", f"{rec['asked']}/{s['positives']} ({rec['recall_pct']}%)",
+             "underspecified requests that were questioned, not guessed at"],
+            ["  lexically reachable",
+             f"{det['asked']}/{det['cases']} ({det['recall_pct']}%)",
+             "decidable from the words and the schema alone"],
+            ["  meaning-dependent",
+             f"{llm['asked']}/{llm['cases']} ({llm['recall_pct']}%)",
+             "needs to know that 'revenue' is a column under another name"],
+            ["**Over-asked**", f"{s['over_asked']}/{s['negatives']} ({s['over_ask_pct']}%)",
+             "clear requests interrupted anyway — the cost side of recall"],
+            ["Slot accuracy", f"{s['slot_accuracy_pct']}%",
+             "asked about the right thing, not merely asked"],
+            ["Option accuracy", f"{s['offer_accuracy_pct']}%",
+             "put the columns a correct answer needs on the table"],
+            ["Bind rate", f"{s['bind_rate_pct']}%",
+             "answers that resolve a plan slot instead of being re-guessed"],
+            ["**Ungrounded options**", str(s["grounding_violations"]),
+             "options naming a column or value the dataset lacks — must be 0"],
+        ],
+    ))
+    if s["grounding_violations"]:
+        parts.append(
+            "\n**Ungrounded options were released.** Every one is a question that "
+            "offered the user something the data does not contain:\n"
+        )
+        parts.extend(f"- {v}\n" for v in s["grounding_violation_detail"])
+    return "\n".join(parts)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--perf", default="bench/results/perf.json")
     ap.add_argument("--nl", default="bench/results/nl.json")
     ap.add_argument("--chart", default="bench/results/chart_quality.json")
+    ap.add_argument("--ambiguity", default="bench/results/ambiguity-full.json")
+    ap.add_argument("--ambiguity-detectors", default="bench/results/ambiguity-detectors.json")
     ap.add_argument("--out", default=None, help="write here (UTF-8) instead of stdout")
     args = ap.parse_args()
 
@@ -263,6 +312,11 @@ def main() -> None:
         ("Performance", args.perf, perf_tables),
         ("Natural-language accuracy", args.nl, nl_tables),
         ("Chart quality", args.chart, chart_tables),
+        # Both layers, because the split is the finding: what the deterministic
+        # rules reach on their own, and what asking a model adds on top.
+        ("Ambiguity detection (deterministic layer)",
+         args.ambiguity_detectors, ambiguity_tables),
+        ("Ambiguity detection (with the LLM layer)", args.ambiguity, ambiguity_tables),
     ):
         data = _load(path)
         chunks.append(f"\n## {title}\n")

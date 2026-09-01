@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import type { ChartFont, ChartStyle, ChartWidget } from '../../types/dashboard';
 import { specSeries } from '../../lib/specData';
@@ -257,10 +258,24 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
       // moment anyone reached for a control in it.
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <div className="style-panel-body">
+      {/* Outside the scrolling body on purpose: the close control has to stay
+          reachable at the top of a panel whose contents run past its height. */}
+      <header className="style-panel-header">
         <p className="style-panel-subject" title={widget.title}>
           {widget.title}
         </p>
+        <button
+          type="button"
+          className="style-panel-close"
+          onClick={onClose}
+          aria-label="Close style options"
+          title="Close"
+        >
+          <X size={16} />
+        </button>
+      </header>
+
+      <div className="style-panel-body">
 
         {error && (
           <p className="style-error" role="alert">

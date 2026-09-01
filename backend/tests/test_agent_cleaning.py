@@ -48,7 +48,7 @@ def test_safe_repairs_are_applied_silently(registry, tmp_path):
     """
     ds = _register(registry, tmp_path, "messy.csv", MESSY)
     agent = AgentService(planner=FakePlanner(plans=[_group_plan()]), registry=registry)
-    out = agent.run("average salary by department", dataset_id=ds)
+    out = agent.run("average salary by dept", dataset_id=ds)
 
     # It pauses once — but for the null group key, not for the spelling.
     assert out["status"] == "waiting_for_user"
@@ -67,7 +67,7 @@ def test_safe_repairs_are_applied_silently(registry, tmp_path):
 def test_applied_repairs_are_recorded_in_provenance(registry, tmp_path):
     ds = _register(registry, tmp_path, "prov.csv", MESSY)
     agent = AgentService(planner=FakePlanner(plans=[_group_plan()]), registry=registry)
-    out = agent.run("average salary by department", dataset_id=ds)
+    out = agent.run("average salary by dept", dataset_id=ds)
     resumed = agent.resume(out["thread_id"], "Exclude those rows")
 
     steps = resumed["charts"][0]["result"]["provenance"]["preprocessing"]
@@ -85,7 +85,7 @@ def test_a_null_dimension_is_asked_about(registry, tmp_path):
     real decision rather than a detail."""
     ds = _register(registry, tmp_path, "nulldim.csv", "dept,salary\neng,100\n,200\nsales,300\n")
     agent = AgentService(planner=FakePlanner(plans=[_group_plan()]), registry=registry)
-    out = agent.run("average salary by department", dataset_id=ds)
+    out = agent.run("average salary by dept", dataset_id=ds)
     assert out["pause_kind"] == "cleaning_choice"
     assert out["issue"]["kind"] == "missing_values"
     assert out["issue"]["column"] == "dept"
@@ -96,7 +96,7 @@ def test_a_null_measure_is_not_asked_about(registry, tmp_path):
     the default is correct and disclosed, so a question would add only friction."""
     ds = _register(registry, tmp_path, "nullmeasure.csv", "dept,salary\neng,100\neng,\nsales,300\n")
     agent = AgentService(planner=FakePlanner(plans=[_group_plan()]), registry=registry)
-    out = agent.run("average salary by department", dataset_id=ds)
+    out = agent.run("average salary by dept", dataset_id=ds)
 
     assert out["status"] == "completed", out
     prov = out["charts"][0]["result"]["provenance"]
@@ -130,7 +130,7 @@ def test_a_messy_unused_column_does_not_interrupt(registry, tmp_path):
         "dept,salary,notes\neng,100,  a  \neng,200,\nsales,300,   \n",
     )
     agent = AgentService(planner=FakePlanner(plans=[_group_plan()]), registry=registry)
-    out = agent.run("average salary by department", dataset_id=ds)
+    out = agent.run("average salary by dept", dataset_id=ds)
     assert out["status"] == "completed", out
     operations = [
         s["operation"]
@@ -145,7 +145,7 @@ def test_a_messy_unused_column_does_not_interrupt(registry, tmp_path):
 def test_choosing_to_keep_the_nulls_applies_nothing(registry, tmp_path):
     ds = _register(registry, tmp_path, "keep.csv", "dept,salary\neng,100\n,200\nsales,300\n")
     agent = AgentService(planner=FakePlanner(plans=[_group_plan()]), registry=registry)
-    out = agent.run("average salary by department", dataset_id=ds)
+    out = agent.run("average salary by dept", dataset_id=ds)
     resumed = agent.resume(out["thread_id"], "Keep them as they are")
 
     assert resumed["status"] == "completed", resumed
@@ -161,7 +161,7 @@ def test_an_unreadable_answer_changes_nothing(registry, tmp_path):
     """
     ds = _register(registry, tmp_path, "gibberish.csv", "dept,salary\neng,100\n,200\nsales,300\n")
     agent = AgentService(planner=FakePlanner(plans=[_group_plan()]), registry=registry)
-    out = agent.run("average salary by department", dataset_id=ds)
+    out = agent.run("average salary by dept", dataset_id=ds)
     resumed = agent.resume(out["thread_id"], "asdfghjkl")
 
     assert resumed["status"] == "completed", resumed
@@ -171,7 +171,7 @@ def test_an_unreadable_answer_changes_nothing(registry, tmp_path):
 def test_options_carry_counts_and_one_recommendation(registry, tmp_path):
     ds = _register(registry, tmp_path, "opts.csv", "dept,salary\neng,100\n,200\nsales,300\n")
     agent = AgentService(planner=FakePlanner(plans=[_group_plan()]), registry=registry)
-    out = agent.run("average salary by department", dataset_id=ds)
+    out = agent.run("average salary by dept", dataset_id=ds)
 
     options = out["options"]
     assert sum(1 for o in options if o["recommended"]) == 1
@@ -195,7 +195,7 @@ def test_a_plan_that_already_handles_the_column_is_not_questioned(registry, tmp_
         "preprocessing": [{"op": "drop_nulls", "columns": ["dept"], "how": "any"}],
     }
     agent = AgentService(planner=FakePlanner(plans=[plan]), registry=registry)
-    out = agent.run("average salary by department, ignoring rows with no dept", dataset_id=ds)
+    out = agent.run("average salary by dept, ignoring rows with no dept", dataset_id=ds)
 
     assert out["status"] == "completed", out
     assert None not in {r["dept"] for r in out["charts"][0]["result"]["result_table"]}
@@ -243,7 +243,7 @@ def test_a_clean_run_discloses_nothing_extra(registry, tmp_path):
     """The control: these advisories must not fire on an ordinary dataset."""
     ds = _register(registry, tmp_path, "tidy.csv", "dept,salary\nEng,100\nSales,200\n")
     agent = AgentService(planner=FakePlanner(plans=[_group_plan()]), registry=registry)
-    out = agent.run("average salary by department", dataset_id=ds)
+    out = agent.run("average salary by dept", dataset_id=ds)
 
     assert out["status"] == "completed", out
     kinds = {n["kind"] for n in _notices_of(out)}

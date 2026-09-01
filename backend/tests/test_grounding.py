@@ -222,7 +222,9 @@ class _Composer:
     def __init__(self, answer: str):
         self.answer = answer
 
-    def classify(self, request, schema, profile, history, clarification_answer=None):
+    def classify(
+        self, request, schema, profile, history, clarification_answer=None, resolved_slots=None
+    ):
         return IntentDecision(intent="analysis", tasks=[request])
 
     def generate_plan(self, task, dataset_id, schema, profile, **kw):

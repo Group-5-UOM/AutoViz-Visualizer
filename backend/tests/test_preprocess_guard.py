@@ -18,7 +18,7 @@ def test_guard_interrupts_over_threshold_then_proceeds(registry, nulls_id):
     fake = FakePlanner(plans=[dict(DROP_PLAN)])
     agent = AgentService(planner=fake, registry=registry)
 
-    out = agent.run("avg fare by class dropping missing", dataset_id=nulls_id)
+    out = agent.run("avg fare by cls dropping missing", dataset_id=nulls_id)
     assert out["status"] == "waiting_for_user"
     assert "remove 4 of 10 rows" in out["question"]
 
@@ -72,7 +72,7 @@ def test_guard_emits_observability_event(registry, nulls_id, monkeypatch):
     )
     fake = FakePlanner(plans=[dict(DROP_PLAN)])
     agent = AgentService(planner=fake, registry=registry)
-    out = agent.run("avg fare by class dropping missing", dataset_id=nulls_id)
+    out = agent.run("avg fare by cls dropping missing", dataset_id=nulls_id)
     agent.resume(out["thread_id"], "Proceed with cleaning")
 
     conf = [e for e in events if e["event"] == "preprocessing_confirmation"]

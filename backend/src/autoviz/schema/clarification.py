@@ -27,10 +27,22 @@ AmbiguityType = Literal[
     # question about *which* of several readings was meant; it is a statement
     # that none of them exist, paired with the nearest thing that does.
     "unsupported_capability",
+    "unknown_reference",  # the request names a column/concept the dataset has not got
+    "aggregation",        # several rows per group and no aggregate named: sum? mean? count?
+    "time_granularity",   # a trend was asked for, but at what grain — day, month, year?
+    # Meaning-level ambiguity: a word the schema does not use ("revenue"), a
+    # threshold left unstated ("recent", "large"), a pronoun with no referent.
+    # No lexical rule reaches these; they arrive from the LLM layer and are
+    # grounded by `ambiguity.ground_ambiguity` before they are ever asked.
+    "semantic",
 ]
 
 # The plan slot a resolution fills. Kept small and explicit so binding is total.
-Slot = Literal["time_column", "metric", "dimension", "filter_value", "capability"]
+Slot = Literal[
+    "time_column", "metric", "dimension", "filter_value", "capability",
+    "aggregation",  # which aggregate function to apply
+    "time_grain",   # the bucket a time axis is grouped into
+]
 
 
 class _Strict(BaseModel):
@@ -60,12 +72,26 @@ class Ambiguity(_Strict):
     question: str
     options: list[ClarificationOption] = Field(default_factory=list)
     allow_free_text: bool = True
+    # Which layer raised this. Both layers now feed the same queue and are asked
+    # the same way, so the distinction survives only for observability — "how
+    # often does the LLM layer earn its place" is not answerable without it.
+    origin: Literal["detector", "llm"] = "detector"
     # Optional machine detail for observability/tests (e.g. the candidate columns).
     detail: dict[str, Any] = Field(default_factory=dict)
 
     def to_wire(self) -> dict[str, Any]:
-        """Reduce to the existing API/interrupt shape: {question, options:[str]}."""
-        return {"question": self.question, "options": [o.label for o in self.options]}
+        """Reduce to the API/interrupt shape: {question, options:[str], slot}.
+
+        `slot` rides along because two things downstream need it and neither can
+        recover it from the prose: `service._group_key` dedupes concurrent pauses
+        by slot before falling back to exact question text, and a host showing
+        the question has no other way to label what is being decided.
+        """
+        return {
+            "question": self.question,
+            "options": [o.label for o in self.options],
+            "slot": self.slot,
+        }
 
 
 class Resolution(_Strict):

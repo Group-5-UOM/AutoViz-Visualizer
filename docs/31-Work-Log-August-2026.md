@@ -1,0 +1,293 @@
+# Work Log — August 2026 (H. Daishika, 230112C)
+
+Entries follow the logbook form's fields. Every entry is reconstructed from real
+artifacts: non-merge commits in `AutoViz-Visualizer` and `AutoViz-Planner-Model`,
+document timestamps under `Docs/`, and the deployment notes.
+
+**Hours are estimates** derived from the first and last commit timestamp of each
+working session — adjust them to what you actually spent. **Tools Used** is my
+inference (VS Code for all coding days, Claude Code as the AI assistant, Gemini
+where the hosted planner itself was in the loop); correct any that are wrong.
+**Type of Work** values below are descriptive — map them onto whatever the
+dropdown actually offers.
+
+Days not listed (2, 4, 5, 11, 12, 13, 20, 21, 23–30 August) had no commits,
+document edits, or other artifacts I could find.
+
+---
+
+## 1 August 2026
+
+**Task Description**
+Closed out the cleaning-disclosure branch: fixed a chart-category disclosure defect and a Docker layer-caching regression that was inflating image size on every rebuild.
+
+**Task Details / Reflections**
+Fixed the disclosure path so that when a chart hides low-frequency categories, the categories the chart is actually about are kept, and the omission is stated in the answer's prose instead of being dropped silently.
+Fixed the backend Dockerfile: the ownership `chown` was being applied across the whole virtualenv, which invalidated the dependency layer on every build. Narrowed it to the three directories that actually need to be writable.
+Reflection: the Docker issue is a good example of a change that is functionally correct but operationally expensive — nothing failed, the build just got slower and fatter each time until someone measured it.
+
+**Type of Work** — Development / Bug fixing
+**Tools Used** — VS Code and Extensions; Other AI tool (Claude Code); Other tool (nonAI) — Docker
+**Tool Purpose** — VS Code for editing and running the backend test suite; Claude Code for tracing the disclosure path through the notices service; Docker for reproducing and verifying the layer-cache fix.
+**Hours** — 2
+**Tags** — disclosure, docker, backend, bug-fix
+
+---
+
+## 2 August 2026
+
+**Task Description**
+Integration day: merged `main` into the cleaning-disclosure branch, resolved conflicts against teammates' backend and OAuth work, and merged PR #30.
+
+**Task Details / Reflections**
+Reconciled my disclosure changes with the OAuth and docker-compose work that had landed on `main` in parallel, re-ran the backend suite after the merge, and merged the branch.
+Reflection: with four people committing to the same repository, the merge is a real unit of work rather than a formality — most of the time went to confirming that nothing in the preprocessing path had been silently reverted by the conflict resolution.
+
+**Type of Work** — Integration / Code review
+**Tools Used** — VS Code and Extensions; Other AI tool (Claude Code)
+**Tool Purpose** — VS Code and Git for conflict resolution; Claude Code to check that the merged result preserved both sides' behaviour rather than one overwriting the other.
+**Hours** — 1
+**Tags** — merge, integration, pull-request
+
+---
+
+## 3 August 2026
+
+**Task Description**
+Documentation correction — fixed the repository clone URL in the project README to point at the correct `Group-5-UOM` organisation link.
+
+**Task Details / Reflections**
+Small but blocking for anyone following the setup instructions: the documented clone URL still pointed at a personal fork, so a new team member following the README would have cloned the wrong repository.
+
+**Type of Work** — Documentation
+**Tools Used** — VS Code and Extensions
+**Tool Purpose** — Editing project documentation.
+**Hours** — 0.5
+**Tags** — documentation, readme
+
+---
+
+## 6 August 2026
+
+**Task Description**
+Three features — user-selectable chart types, charts that resize with their card, and server-side conversation history per dataset — plus scaffolding of the separate planner fine-tuning repository.
+
+**Task Details / Reflections**
+Added support for a user-chosen chart type end to end, so a request can override the recommender's choice instead of being stuck with it.
+Fixed the canvas so a chart re-renders at the card's new size when the card is dragged to resize, rather than staying at its original render dimensions.
+Implemented server-side chat history keyed by dataset, replacing client-only conversation state that was lost on refresh.
+Scaffolded `AutoViz-Planner-Model`, the second repository for the research track that will fine-tune an open-weight planner to replace the hosted Gemini model.
+Reflection: the resize fix looked cosmetic but was really about who owns render dimensions — the fix was to stop the chart from caching a size the container no longer has.
+
+**Type of Work** — Development (full-stack)
+**Tools Used** — VS Code and Extensions; Other AI tool (Claude Code); Gemini
+**Tool Purpose** — VS Code for React/FastAPI implementation; Claude Code for tracing chart-type selection through the agent pipeline; Gemini as the hosted planner the chart-type override had to be threaded through.
+**Hours** — 4
+**Tags** — charts, frontend, conversations, planner-model
+
+---
+
+## 7 August 2026
+
+**Task Description**
+Extended chart styling with typography controls, and made the style panel report rejected style updates instead of failing silently.
+
+**Task Details / Reflections**
+Added typography settings (font family, size, weight for titles and labels) to the chart styling options, applied server-side into the Vega-Lite spec so an exported or MCP-served chart carries the same styling with no frontend present.
+Fixed the style panel to surface the backend's error message when a style update is rejected by validation — previously the panel simply reverted with no explanation.
+Reflection: styling belongs in the spec, not in the browser. Keeping it server-side is what makes the export and MCP paths consistent with what the user sees on the board.
+
+**Type of Work** — Development (full-stack)
+**Tools Used** — VS Code and Extensions; Other AI tool (Claude Code)
+**Tool Purpose** — VS Code for implementation and testing; Claude Code for locating every place the chart spec is built, so typography applied uniformly.
+**Hours** — 3
+**Tags** — charts, styling, frontend, validation
+
+---
+
+## 8 August 2026
+
+**Task Description**
+Major correctness day on data ingestion and the analysis plan grammar: rewrote file ingestion to probe a file rather than assume defaults, closed three plan-grammar gaps that each produced a plausible-looking wrong answer, and added disclosure for work the pipeline was silently dropping.
+
+**Task Details / Reflections**
+Rewrote `services/ingest.py` to probe encoding, delimiter, header row and decimal separator rather than assuming UTF-8 / comma / row 0 / period, and to disclose every assumption it had to make. Verified against all 40 files in the real test corpus.
+Closed three plan-grammar defects. Date derivation only extracted date *parts* (a bare 1–12 for month), so a two-year trend collapsed into twelve overlapping points — added `month_start`/`quarter_start` truncations that stay datetimes. Currency-formatted numeric columns, the commonest real financial CSV shape, could not be cast at all — added `parse_number`, which deliberately refuses ambiguous cases such as percentages rather than guessing. And a scan bug meant a column with both case-variant spellings *and* high cardinality could only ever report one finding, so a user could get 300 unreadable chart categories with no warning.
+Added notices for three places that dropped work silently: steps cut for exceeding a cap, clarifying questions never asked, and results truncated at the row ceiling.
+Added Markdown rendering for chat messages and a verification script.
+Reflection: all three grammar bugs shared a shape — the system produced an answer that looked entirely reasonable and was wrong. That is the class of defect a green test suite is worst at catching, and it is what pushed me toward building a measurement harness later in the month.
+
+**Type of Work** — Development / Bug fixing (correctness-critical)
+**Tools Used** — VS Code and Extensions; Other AI tool (Claude Code)
+**Tool Purpose** — VS Code for backend implementation and pytest runs; Claude Code for reasoning through the plan grammar's validation rules and generating the awkward-file fixtures used to verify the ingest probe.
+**Hours** — 8
+**Tags** — ingestion, plan-grammar, disclosure, correctness, backend
+
+---
+
+## 9 August 2026
+
+**Task Description**
+Preprocessing hardening: reshape operations for wide-format spreadsheets, placeholder-code and data-role detection with group-wise imputation, and cleaning-recipe replay on a new upload.
+
+**Task Details / Reflections**
+Extended the plan grammar with `pivot_longer` and `split_column` for wide-format spreadsheets, replacing an ad-hoc type-override field with a proper evolving-schema model that validates each operation against the table state the prior operations left. That caught two real bugs no existing test was positioned to see: a chart encoder holding a stale copy of the type map, and over-eager datetime promotion turning values like "2026-Q3" into dates.
+Added detection for placeholder sentinel codes (999 meaning "not recorded", which corrupts an average silently) and data roles (a 96%-email column is an email column with 4% broken rows), plus group-wise median imputation so a global fill no longer flattens the per-group variance the chart exists to show.
+Added recipe replay: a stored cleaning block can be reapplied to a new upload of the same report without rescanning — with consent explicitly *not* carried over, because a recipe that removed 1 of 5 rows last month must re-gate against a file where the same rule removes 4 of 5.
+Reflection: the consent decision was the interesting one. Carrying approval forward would have been more convenient and would have quietly defeated the whole point of the gate.
+
+**Type of Work** — Development (correctness-critical)
+**Tools Used** — VS Code and Extensions; Other AI tool (Claude Code)
+**Tool Purpose** — VS Code for backend implementation and testing; Claude Code for designing the evolving-schema validation model and drafting the seeded synthetic CSVs used to test skew and placeholder codes.
+**Hours** — 7
+**Tags** — preprocessing, data-quality, reshape, consent, backend
+
+---
+
+## 10 August 2026
+
+**Task Description**
+Merged the preprocessing-hardening branch into `main` (PR #41) after reconciling it with the backend work that had landed in parallel.
+
+**Task Details / Reflections**
+Merged `origin/main` into the branch, resolved conflicts across the preprocessing and conversation code, re-ran the full backend suite, and merged the pull request.
+
+**Type of Work** — Integration / Code review
+**Tools Used** — VS Code and Extensions; Other AI tool (Claude Code)
+**Tool Purpose** — Git conflict resolution in VS Code; Claude Code to confirm the merged preprocessing gate still behaved as tested.
+**Hours** — 1
+**Tags** — merge, integration, preprocessing, pull-request
+
+---
+
+## 14 August 2026
+
+**Task Description**
+Research track: literature review with automated citation snowballing, an eight-gap analysis of NL2VIS evaluation, and a benchmark proposal ("PlanJudge") with scoring guidelines for LLM-judged chart quality.
+
+**Task Details / Reflections**
+Ran a literature review across 51 papers, extended by automated backward and forward snowballing over the Semantic Scholar citation graph via a script I wrote (`research/snowball.py`), plus a probe of Draco's constraint-based chart-quality model.
+Produced an eight-gap analysis. The recurring gap across VisEval, Text2Vis and VegaChat is that all of them judge the rendered *pixels* with a closed API model whose reliability is asserted rather than measured — nobody evaluates the judge itself, and nobody judges below the pixel layer at the level of the plan.
+Wrote the benchmark proposal from that gap: a plan-level intermediate representation with a defined semantic-equivalence relation (so channel swaps and faceting variants do not register as disagreement), an open-weight judge intended to run offline, and a meta-evaluation protocol for establishing when such a judge's verdicts can be trusted. Also wrote the scoring guidelines that turn "is this chart correct" into a gradable rubric, plus a verification pass over my own cited numbers and a gap analysis against the application repository.
+Reflection: this is the validation methodology the planner fine-tuning needs *before* a fine-tuned model can be trusted to replace Gemini in production — building the model first and asking how to evaluate it afterwards is the mistake the literature itself keeps making.
+
+**Type of Work** — Research / Literature review
+**Tools Used** — Other AI tool (Claude Code); VS Code and Extensions; Other tool (nonAI) — Semantic Scholar API
+**Tool Purpose** — Claude Code for synthesising papers into the gap analysis and drafting the benchmark protocol; VS Code for writing the snowballing script and research documents; the Semantic Scholar API as the citation-graph data source for automated snowballing.
+**Hours** — 6
+**Tags** — research, literature-review, benchmark, llm-judge, planner-model
+
+---
+
+## 15 August 2026
+
+**Task Description**
+Dashboard PDF export with a full FR-19 error and loading state audit, and closure of six findings from a heuristic usability evaluation.
+
+**Task Details / Reflections**
+Implemented client-side PDF export of a dashboard, and audited every error and loading path in the board against FR-19, replacing ad-hoc alerts with a consistent notice-stack component.
+Closed six usability findings from a heuristic evaluation — unfocused modals, missing confirmation on destructive actions, and unlabelled controls — adding a reusable focus-trap hook and a shared confirmation dialog now used across the app.
+Reflection: the FR-19 audit was worth more than the export feature itself. Going path by path through every failure branch surfaced several states that had no user-visible handling at all, only a console error.
+
+**Type of Work** — Development / Usability evaluation
+**Tools Used** — VS Code and Extensions; Other AI tool (Claude Code)
+**Tool Purpose** — VS Code for the React implementation; Claude Code for enumerating the error and loading branches to audit against FR-19 and for the heuristic evaluation walkthrough.
+**Hours** — 6
+**Tags** — export, FR-19, usability, accessibility, frontend
+
+---
+
+## 16 August 2026
+
+**Task Description**
+Built the benchmark measurement harness (finding and fixing seven defects including a 26× performance regression), built the grounding checker for composed answers, implemented per-user MCP connection keys, and verified the live EC2 deployment from outside the tree.
+
+**Task Details / Reflections**
+Built `backend/bench/`: a harness that runs a frozen natural-language prompt set end to end, scores the resulting chart specs, and measures latency and payload size — because nothing in the test suite had ever run the system against real prompts and measured what came back. The first run surfaced seven concrete defects, including a 26× execution-time regression traced to an unnecessary DataFrame round-trip instead of using Arrow natively. Fixed all seven and covered each with a permanent regression test.
+Built `grounding.py`. Of the planner's four LLM jobs, `compose` (turning result tables into prose) was the only one nothing downstream validated, and its "ground every number in the results" instruction is a request, not a guarantee — it had let a forecast be answered with an invented historical trend. The checker deterministically extracts every number and date the answer claims and verifies each traces to an actual result cell; tuned against 32 real answers to eliminate three false positives, each now a named rule with its own regression test.
+Implemented per-user MCP connection keys: a database-backed key model and migration, an ASGI authentication middleware resolving a URL segment to a scoped caller and failing closed at every branch, and per-key rate limiting.
+Verified the production deployment over SSH — nginx/TLS layout, container topology, and `https://autoviz.duckdns.org/health` responding — which closed a milestone criterion that had been marked met but never checked from outside the repository.
+Reflection: measurement before optimisation. Every one of the seven defects was invisible to type-checking and unit tests, and only appeared once the system was run end to end against real data.
+
+**Type of Work** — Development / Testing / Performance measurement
+**Tools Used** — VS Code and Extensions; Other AI tool (Claude Code); Gemini; Other tool (nonAI) — AWS EC2, nginx, Docker
+**Tool Purpose** — VS Code for the harness, grounding checker and MCP middleware; Claude Code for designing the grounding rules and diagnosing the Arrow round-trip regression; Gemini as the hosted planner under measurement; AWS, nginx and Docker for verifying the live deployment.
+**Hours** — 8
+**Tags** — benchmarking, performance, grounding, mcp, deployment, security
+
+---
+
+## 17 August 2026
+
+**Task Description**
+Heaviest day of the month: MCP Connections panel and settings refactor, multi-table file ingestion, composable chart sub-types, awkward-data renderer stress tests, palette contrast tests, and repository hygiene.
+
+**Task Details / Reflections**
+Built the frontend Connections panel for generating and revoking MCP links, then folded it into a consolidated Settings page and removed the dead settings modal.
+Extended ingestion to files holding more than one table — a multi-sheet Excel workbook or a CSV with stacked tables previously had no path into the system at all — by rewriting the detection layer to scan for sheet and block boundaries and adding a sheet-selection step to the upload flow, with 475 lines of new tests. Also widened accepted upload formats with clearer per-format user feedback.
+Extended the chart grammar so each of the ten chart families carries composable modifiers (orientation, stacking, normalisation) instead of needing a new type name per combination, since a wider decision space measurably degrades the planner's plan quality — 747 lines of logic, 628 lines of tests.
+Stress-tested the renderer against deliberately awkward data (all-null columns, single-category groups, extreme outliers) and fixed the four bugs it surfaced. Wrote automated contrast tests verifying the chart theme's palette actually meets its claimed accessibility ratios rather than only asserting them in documentation.
+Repository hygiene: removed an unused agent-playground demo (486 lines) and added real screenshots and a banner to the README.
+Reflection: the sub-type work is the clearest case this month of a design decision driven by model behaviour rather than taste — fewer type names with modifiers means a smaller decision space for the planner, and plan quality is measurably sensitive to that.
+
+**Type of Work** — Development / Testing
+**Tools Used** — VS Code and Extensions; Other AI tool (Claude Code); Gemini
+**Tool Purpose** — VS Code for implementation across backend and frontend; Claude Code for generating the awkward-data fixtures, the multi-table detection tests and the contrast assertions; Gemini as the planner whose decision space the sub-type refactor was designed around.
+**Hours** — 10
+**Tags** — mcp, ingestion, charts, testing, accessibility, refactor
+
+---
+
+## 18 August 2026
+
+**Task Description**
+Fixed a chart-recommendation defect around numeric-coded categoricals and extracted date parts, fixed a dashboard data-loss bug, and merged three feature branches into `main`.
+
+**Task Details / Reflections**
+Fixed the recommender: numeric-coded categorical columns (a `survived` column stored as 0/1) and date parts extracted from a timestamp were both misclassified as continuous, driving the recommender to a scatter plot where a categorical chart was correct. Covered with a 315-line regression suite.
+Fixed a data-loss bug where deleting a chart silently dropped the dashboard's id — the reducer rebuilt state as a fresh object instead of spreading it — so the next autosave wrote the canvas into a brand-new board. Fixed by extracting the reducer into a pure, independently testable function with six regression tests.
+Merged PRs #47 (multi-table ingest), #48 (chart sub-types) and #49 (the dashboard fix) into `main`.
+Reflection: the dashboard bug is the most serious defect I shipped this month — it destroyed user work rather than displaying something wrong. Extracting the reducer to a pure function was the real fix; the missing spread was only the symptom.
+
+**Type of Work** — Bug fixing / Integration
+**Tools Used** — VS Code and Extensions; Other AI tool (Claude Code)
+**Tool Purpose** — VS Code for the fixes and test runs; Claude Code for tracing the autosave path that reproduced the lost board id, and for building the recommendation regression suite.
+**Hours** — 5
+**Tags** — chart-recommendation, data-loss, dashboard, regression-tests, pull-request
+
+---
+
+## 19 August 2026
+
+**Task Description**
+Frontend stability fixes, a synthetic demo dataset and generator, the mid-evaluation presentation script, and an nginx caching fix that had been serving blank pages after every deploy.
+
+**Task Details / Reflections**
+Fixed a crash where the Add panel called a hook after an early return, so opening it unmounted the whole board; and a sidebar toggle where two icons' close logic sat below branches that returned first, so clicking an already-open tool reopened it instead of closing it.
+Built a synthetic demo dataset (`test-data/demo/`) — a generator script and an ~845 KB global retail orders CSV with deliberately realistic flaws — plus a walkthrough document for the demo.
+Wrote the mid-evaluation presentation script (slides 1–7, and the full script).
+Fixed a production deployment defect: `/assets/` and `index.html` had no cache rules of their own, so every deploy deleted the old hashed bundles while browsers held a stale `index.html`, and the SPA fallback answered the missing bundle with a 200 of `text/html` — a completely blank page with no error at all. Assets are now immutable with a hard 404 fallback, and `index.html` is `no-cache`.
+Reflection: the two React fixes are the same bug twice — logic placed after a branch that returns. Worth an ESLint rule rather than manual review.
+
+**Type of Work** — Bug fixing / Deployment / Presentation preparation
+**Tools Used** — VS Code and Extensions; Other AI tool (Claude Code); Other tool (nonAI) — nginx, AWS EC2
+**Tool Purpose** — VS Code for the React fixes and the dataset generator; Claude Code for diagnosing the blank-page deploy failure and drafting the presentation script; nginx and EC2 for applying and verifying the cache configuration on the live host.
+**Hours** — 5
+**Tags** — frontend, hooks, deployment, nginx, demo-data, presentation
+
+---
+
+## 22 August 2026
+
+**Task Description**
+Wrote the individual contribution report for the progress evaluation — a week-by-week account of the seven-week project span, mapped onto the SRS commitments, with shortcomings and testing and validation plans.
+
+**Task Details / Reflections**
+Compiled the report in LaTeX (`Docs/Individual-Contribution-230112C.tex`, exported to PDF): objectives, SRS mapping, seven weekly task sections with the significance of each, DSE fundamentals demonstrated, remaining shortcomings, plans for testing and for validating the AI/ML components, and overall progress against the schedule — 79 non-merge commits across both repositories over the span.
+Reflection: writing it forced the recurring themes into the open — that instruction-following is not verification, that silent work is a correctness bug even when the decision behind it is right, and that measurement has to come before optimisation. Section 5 (shortcomings) was the most useful to write: the in-process MCP rate limiter, the un-applied nginx key-stripping, the orphaned `saved_charts` rows and the unaudited dashboard reducers are all still open.
+
+**Type of Work** — Documentation / Reporting
+**Tools Used** — VS Code and Extensions; Other AI tool (Claude Code); Other tool (nonAI) — LaTeX
+**Tool Purpose** — VS Code and LaTeX for authoring and compiling the report; Claude Code for reconstructing the week-by-week history from the commit record and checking the claims against the actual code.
+**Hours** — 3
+**Tags** — documentation, progress-evaluation, individual-contribution, reporting

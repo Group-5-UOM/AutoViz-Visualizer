@@ -106,11 +106,15 @@ def test_bind_short_answer_does_not_trigger_substring():
 
 # --- wire shape --------------------------------------------------------------
 
-def test_to_wire_reduces_to_question_and_labels():
+def test_to_wire_reduces_to_question_labels_and_slot():
     wire = _time_ambiguity().to_wire()
     assert wire == {
         "question": "Which date column should I use for the trend?",
         "options": ["Signup date", "Order date"],
+        # The binding itself stays server-side, but the slot travels: it is what
+        # service._group_key dedupes concurrent pauses on, and the only way a
+        # host can say what is being decided rather than just quoting the prose.
+        "slot": "time_column",
     }
 
 

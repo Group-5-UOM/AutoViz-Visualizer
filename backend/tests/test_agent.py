@@ -3,7 +3,12 @@
 from typing import Any
 
 from autoviz.agent.service import AgentService
-from autoviz.llm.client import Clarification, IntentDecision, PlannerError
+from autoviz.llm.client import (
+    IntentDecision,
+    PlannerError,
+    ProposedAmbiguity,
+    ProposedOption,
+)
 from autoviz.services.charts import primary_layer
 
 
@@ -17,9 +22,16 @@ class FakePlanner:
         self.classify_calls: list[dict[str, Any]] = []
         self.plan_calls: list[dict[str, Any]] = []
 
-    def classify(self, request, schema, profile, history, clarification_answer=None):
+    def classify(
+        self, request, schema, profile, history, clarification_answer=None, resolved_slots=None
+    ):
         self.classify_calls.append(
-            {"request": request, "history": history, "clarification_answer": clarification_answer}
+            {
+                "request": request,
+                "history": history,
+                "clarification_answer": clarification_answer,
+                "resolved_slots": resolved_slots,
+            }
         )
         if self.decisions:
             return self.decisions.pop(0)
@@ -115,8 +127,20 @@ def test_multi_chart_fan_out(registry, titanic_id):
 def test_clarification_interrupt_round_trip(registry, weather_id):
     ask = IntentDecision(
         intent="clarification",
-        clarification=Clarification(
-            question="Which measure?", options=["precipitation", "temp_max"]
+        ambiguity=ProposedAmbiguity(
+            type="semantic",
+            slot="metric",
+            question="Which measure?",
+            options=[
+                ProposedOption(
+                    label="Total precipitation",
+                    resolves_to={"column": "precipitation", "fn": "sum"},
+                ),
+                ProposedOption(
+                    label="Maximum temperature",
+                    resolves_to={"column": "temp_max", "fn": "max"},
+                ),
+            ],
         ),
     )
     proceed = IntentDecision(intent="analysis", tasks=["total precipitation by month"])
@@ -132,13 +156,63 @@ def test_clarification_interrupt_round_trip(registry, weather_id):
     out = agent.run("show me the monthly weather", dataset_id=weather_id)
     assert out["status"] == "waiting_for_user", out
     assert out["question"] == "Which measure?"
-    assert out["options"] == ["precipitation", "temp_max"]
+    assert out["options"] == ["Total precipitation", "Maximum temperature"]
+    # The slot rides on the wire so a host can label what is being decided.
+    assert out["slot"] == "metric"
 
+    # Answered by naming the column rather than the label: `bind_answer` matches
+    # a scalar inside `resolves_to`, so a typed answer binds like a clicked one.
     resumed = agent.resume(out["thread_id"], "precipitation")
     assert resumed["status"] == "completed", resumed
     assert resumed["charts"][0]["result"]["row_count"] == 12
-    # The second classify call saw the user's answer.
+    # The second classify call saw the user's answer *and* the bound slot.
     assert fake.classify_calls[-1]["clarification_answer"] == "precipitation"
+    assert fake.classify_calls[-1]["resolved_slots"] == {
+        "metric": {"column": "precipitation", "fn": "sum"}
+    }
+
+
+def test_llm_clarification_answer_reaches_the_planner_as_a_constraint(registry, weather_id):
+    """The defect this layer was built to fix.
+
+    An LLM-authored clarification used to offer bare strings, so the answer could
+    only be carried as free text and the planner re-guessed what the user had
+    already chosen. Now the same question binds to a slot and the choice arrives
+    at the planner spelled out in the task.
+    """
+    ask = IntentDecision(
+        intent="clarification",
+        ambiguity=ProposedAmbiguity(
+            type="semantic",
+            slot="metric",
+            question="Which measure did you mean?",
+            options=[
+                ProposedOption(
+                    label="Total precipitation",
+                    resolves_to={"column": "precipitation", "fn": "sum"},
+                ),
+                ProposedOption(
+                    label="Maximum temperature",
+                    resolves_to={"column": "temp_max", "fn": "max"},
+                ),
+            ],
+        ),
+    )
+    proceed = IntentDecision(intent="analysis", tasks=["show the monthly weather"])
+    plan = {
+        "intent": "trend",
+        "derive": [{"name": "month", "from": "date", "fn": "month"}],
+        "group_by": ["month"],
+        "aggregations": [{"column": "temp_max", "fn": "max", "as": "hottest"}],
+    }
+    fake = FakePlanner(decisions=[ask, proceed], plans=[plan])
+    agent = AgentService(planner=fake, registry=registry)
+
+    out = agent.run("show me the monthly weather", dataset_id=weather_id)
+    agent.resume(out["thread_id"], "Maximum temperature")
+
+    task = fake.plan_calls[-1]["task"]
+    assert "measure by max of `temp_max`" in task, task
 
 
 def test_resume_without_paused_run_is_structured_error(registry):

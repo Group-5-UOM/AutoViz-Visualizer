@@ -88,7 +88,6 @@ class AutoVizState(TypedDict, total=False):
     # natural-language question.
     preferred_chart_type: str | None
     tasks: list[str]
-    clarification: dict[str, Any] | None
     clarification_answer: str | None
     clarification_count: int
     # Ambiguity resolution (Direction B): deterministic detectors queue ambiguities

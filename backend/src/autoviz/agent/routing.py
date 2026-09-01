@@ -28,8 +28,15 @@ def route_after_detect(state: AutoVizState) -> str:
 
 
 def route_after_clarify(state: AutoVizState) -> str:
-    """A deterministic answer re-detects (queue may shrink); an LLM answer re-classifies."""
-    return "classify_intent" if state.get("clarify_source") == "llm" else "detect_ambiguity"
+    """Every answer goes back through detection, whoever asked the question.
+
+    Both layers now write to the same queue, so both answers deserve the same
+    treatment: re-detect against the resolved slots (the queue shrinks, and a
+    second distinct ambiguity can surface), then classify with the answer in
+    hand. Routing an LLM answer straight to the classifier used to skip the
+    detectors entirely on the second round.
+    """
+    return "detect_ambiguity"
 
 
 def _chart_in_history(history: list[dict], chart_id: str) -> dict | None:
@@ -63,8 +70,12 @@ def _most_recent_chart(history: list[dict]) -> tuple[dict | None, dict | None]:
 
 
 def route_after_classify(state: AutoVizState) -> str | list[Send]:
-    wants_clarification = state.get("intent") == "clarification" or state.get("clarification")
-    if wants_clarification and state.get("clarification_count", 0) < MAX_CLARIFICATIONS:
+    # An ambiguity the classifier proposed only counts once it has survived
+    # grounding. "The model said clarification" is not on its own a reason to
+    # stop: without an answerable, grounded question there is nothing to ask.
+    if state.get("pending_ambiguities") and (
+        state.get("clarification_count", 0) < MAX_CLARIFICATIONS
+    ):
         return "clarify"
     tasks = state.get("tasks") or [state["user_request"]]
     resolved = state.get("resolved_slots") or {}
