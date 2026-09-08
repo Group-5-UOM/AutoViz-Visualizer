@@ -24,6 +24,8 @@ interface DashboardCanvasProps {
   onEditStyle: (id: string, request: string) => Promise<string | null>;
   /** Open the direct style controls for one chart. */
   onOpenStyle: (id: string) => void;
+  /** Open the analysis_plan editor for one chart. */
+  onOpenPlan: (id: string) => void;
   /** Attach one chart to the next chat message. */
   onReference: (id: string) => void;
   referencedWidgetId: string | null;
@@ -44,6 +46,7 @@ export function DashboardCanvas({
   onUpdate,
   onEditStyle,
   onOpenStyle,
+  onOpenPlan,
   onReference,
   referencedWidgetId,
   onDelete,
@@ -198,6 +201,7 @@ export function DashboardCanvas({
             onSelect={() => !readOnly && onSelect(widget.id)}
             onEditStyle={(request) => onEditStyle(widget.id, request)}
             onOpenStyle={() => onOpenStyle(widget.id)}
+            onOpenPlan={() => onOpenPlan(widget.id)}
             onReference={() => onReference(widget.id)}
             referenced={referencedWidgetId === widget.id}
             onDelete={() => onDelete(widget.id)}

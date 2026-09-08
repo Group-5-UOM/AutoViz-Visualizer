@@ -105,6 +105,12 @@ export interface ChartWidget {
   chartType?: string;
   style?: ChartStyle;
   /**
+   * The analysis_plan JSON the planner (or the user) used to build this chart.
+   * Kept so the user can inspect and edit the structured plan, then re-run the
+   * deterministic pipeline without going through the LLM again.
+   */
+  plan?: Record<string, unknown> | null;
+  /**
    * Bumped on every in-place change to `vegaLiteSpec` — a style edit or a
    * refinement swapping the spec. This is what `persistSignature` watches:
    * hashing the spec itself is not an option, since it carries every result row

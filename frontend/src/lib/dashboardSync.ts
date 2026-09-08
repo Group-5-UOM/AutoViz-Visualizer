@@ -60,11 +60,17 @@ export interface SyncResult {
   syncedSpecVersions: Record<string, number>;
 }
 
-/** What a chart row holds beyond the spec. The style block is stored so a
- *  reopened dashboard can keep editing from where the user left off, rather than
- *  showing the styled render with no idea how it got that way. */
+/** What a chart row holds beyond the Vega-Lite spec.
+ *
+ * Style is stored so a reopened dashboard can keep editing presentation.
+ * Plan is stored so the user can reopen the analysis_plan JSON they (or the
+ * LLM) used, rather than losing the editable structure when the board reloads.
+ */
 function chartSpecOf(widget: ChartWidget): Record<string, unknown> | null {
-  return widget.style ? { style: widget.style } : null;
+  const out: Record<string, unknown> = {};
+  if (widget.style) out.style = widget.style;
+  if (widget.plan) out.plan = widget.plan;
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 /**
