@@ -80,6 +80,7 @@ export function SharedBoardPage() {
           onUpdate={() => {}}
           onEditStyle={async () => null}
           onOpenStyle={() => {}}
+          onOpenPlan={() => {}}
           onReference={() => {}}
           referencedWidgetId={null}
           onDelete={() => {}}

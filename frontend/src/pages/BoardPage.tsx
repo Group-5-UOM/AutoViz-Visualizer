@@ -10,6 +10,7 @@ import { ChatPanel } from '../components/chat/ChatPanel';
 import { DashboardCanvas } from '../components/canvas/DashboardCanvas';
 import { DatasetSheet } from '../components/canvas/DatasetSheet';
 import { StylePanel } from '../components/canvas/StylePanel';
+import { PlanPanel } from '../components/canvas/PlanPanel';
 import {
   DashboardsModal,
   type SavedDatasetEntry,
@@ -81,6 +82,12 @@ async function widgetsFromDashboard(selected: DashboardResult): Promise<ChartWid
         backendChartId: w.chart_id,
         chartType,
         style: (chartData.chart_spec?.style as ChartStyle | undefined) ?? undefined,
+        plan:
+          chartData.chart_spec?.plan &&
+          typeof chartData.chart_spec.plan === 'object' &&
+          !Array.isArray(chartData.chart_spec.plan)
+            ? (chartData.chart_spec.plan as Record<string, unknown>)
+            : undefined,
         specVersion: 0,
         syncedSpecVersion: 0,
       };
@@ -102,6 +109,8 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const [hasPassword, setHasPassword] = useState(true);
   const [styleWidgetId, setStyleWidgetId] = useState<string | null>(null);
   const [styleBusy, setStyleBusy] = useState(false);
+  const [planWidgetId, setPlanWidgetId] = useState<string | null>(null);
+  const [planBusy, setPlanBusy] = useState(false);
   const [chartTypeFilter, setChartTypeFilter] = useState<ChartType[]>([]);
   const [browseOpen, setBrowseOpen] = useState(false);
   const [dashboardsOpen, setDashboardsOpen] = useState(false);
@@ -151,6 +160,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     selectWidget,
     updateWidget,
     editWidgetStyle,
+    applyPlanEdit,
     deleteWidget,
     sendMessage,
     saveNow,
@@ -285,6 +295,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   }, [dashboard.widgets, chartTypeFilter]);
 
   const styleWidget = dashboard.widgets.find((w) => w.id === styleWidgetId) ?? null;
+  const planWidget = dashboard.widgets.find((w) => w.id === planWidgetId) ?? null;
 
   const applyLoadedCanvas = async (
     selected: DashboardResult,
@@ -701,6 +712,11 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
               // Toggles, so the palette button that opened the panel also closes
               // it — the panel's own close button was removed with its header.
               setStyleWidgetId((current) => (current === id ? null : id));
+              setPlanWidgetId(null);
+            }}
+            onOpenPlan={(id) => {
+              setPlanWidgetId((current) => (current === id ? null : id));
+              setStyleWidgetId(null);
             }}
             onReference={(id) => {
               referenceWidget(referencedWidgetId === id ? null : id);
@@ -711,6 +727,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             referencedWidgetId={referencedWidgetId}
             onDelete={(id) => {
               if (styleWidgetId === id) setStyleWidgetId(null);
+              if (planWidgetId === id) setPlanWidgetId(null);
               const title = dashboard.widgets.find((w) => w.id === id)?.title;
               const restore = deleteWidget(id);
               if (!restore) return;
@@ -757,6 +774,21 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
               return error;
             }}
             onClose={() => setStyleWidgetId(null)}
+          />
+        )}
+
+        {planWidget && (
+          <PlanPanel
+            widget={planWidget}
+            datasetId={dataset?.datasetId ?? null}
+            busy={planBusy}
+            onApply={async (plan) => {
+              setPlanBusy(true);
+              const error = await applyPlanEdit(planWidget.id, plan);
+              setPlanBusy(false);
+              return error;
+            }}
+            onClose={() => setPlanWidgetId(null)}
           />
         )}
 

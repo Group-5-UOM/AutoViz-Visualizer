@@ -18,6 +18,8 @@ export interface AgentChartResult {
    */
   chart_id?: string;
   status: 'ok' | 'partial' | 'error';
+  /** The LLM analysis_plan that produced this chart — editable and re-runnable. */
+  plan?: Record<string, unknown> | null;
   result?: {
     result_table?: Record<string, unknown>[];
     row_count?: number;

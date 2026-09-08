@@ -9,6 +9,7 @@ import {
 import embed from 'vega-embed';
 import {
   AtSign,
+  Braces,
   Palette,
   Trash2,
   WandSparkles,
@@ -42,6 +43,8 @@ interface ChartWidgetCardProps {
   onEditStyle: (request: string) => Promise<string | null>;
   /** Open the direct controls for the same styling. */
   onOpenStyle: () => void;
+  /** Open the analysis_plan JSON editor for this chart. */
+  onOpenPlan: () => void;
   /** Attach this chart to the next chat message. */
   onReference: () => void;
   /** This chart is the one currently attached to the composer. */
@@ -58,6 +61,7 @@ export function ChartWidgetCard({
   onSelect,
   onEditStyle,
   onOpenStyle,
+  onOpenPlan,
   onReference,
   referenced,
   onDelete,
@@ -276,6 +280,21 @@ export function ChartWidgetCard({
                 <AtSign size={14} />
               </button>
             )}
+
+            <button
+              type="button"
+              className="chart-header-btn"
+              title="View / edit analysis plan"
+              aria-label="View / edit analysis plan"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect();
+                setEditing(false);
+                onOpenPlan();
+              }}
+            >
+              <Braces size={14} />
+            </button>
 
             <button
               type="button"

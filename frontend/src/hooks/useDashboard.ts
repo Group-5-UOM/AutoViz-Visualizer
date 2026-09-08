@@ -8,6 +8,7 @@ import type {
   SaveStatus,
 } from '../types/dashboard';
 import { styleChart } from '../lib/chartStyle';
+import { runPipeline } from '../lib/analysis';
 import {
   analyze,
   answerClarification,
@@ -172,6 +173,61 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
       }
     },
     [],
+  );
+
+  /**
+   * Re-run a chart from an edited analysis_plan (no LLM).
+   *
+   * Uses the same deterministic pipeline the agent worker uses after planning.
+   * On success the widget keeps its place and identity; only the computed
+   * chart, plan, and explanation change.
+   */
+  const applyPlanEdit = useCallback(
+    async (id: string, plan: Record<string, unknown>): Promise<string | null> => {
+      if (!datasetId) return 'Add a dataset to the board before running a plan.';
+      const widget = dashboardRef.current.widgets.find((w) => w.id === id);
+      if (!widget) return null;
+      try {
+        const res = await runPipeline(datasetId, { ...plan, dataset_id: datasetId });
+        if (res.status !== 'ok' || !res.vega_lite_spec) {
+          const detail =
+            (Array.isArray(res.errors) && res.errors.length > 0
+              ? res.errors.join('; ')
+              : null) ||
+            res.error ||
+            (res.status === 'confirmation_required'
+              ? 'This plan would drop many rows — approve that cleaning step in chat first.'
+              : `Plan did not produce a chart (status=${res.status}).`);
+          return detail;
+        }
+        const rows = res.result?.row_count;
+        const type = res.chart_spec?.type;
+        const explanation =
+          typeof rows === 'number' && type
+            ? `${rows.toLocaleString()} row${rows === 1 ? '' : 's'} • ${type} chart — re-run from edited plan`
+            : 'Re-run from edited plan.';
+        setDashboard((prev) => ({
+          ...prev,
+          widgets: prev.widgets.map((w) =>
+            w.id === id
+              ? {
+                  ...w,
+                  plan,
+                  vegaLiteSpec: res.vega_lite_spec as Record<string, unknown>,
+                  chartType:
+                    typeof res.chart_spec?.type === 'string' ? res.chart_spec.type : w.chartType,
+                  explanation,
+                  specVersion: (w.specVersion ?? 0) + 1,
+                }
+              : w,
+          ),
+        }));
+        return null;
+      } catch (err) {
+        return errorMessage(err);
+      }
+    },
+    [datasetId],
   );
 
   /**
@@ -636,6 +692,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     selectWidget,
     updateWidget,
     editWidgetStyle,
+    applyPlanEdit,
     deleteWidget,
     sendMessage,
     retryLastMessage,
