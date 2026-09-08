@@ -116,7 +116,10 @@ def test_multi_chart_fan_out(registry, titanic_id):
         age_task: {"intent": "distribution", "select": ["age"]},
     }
     agent = AgentService(planner=FakePlanner(decisions=[decision], plans=plans), registry=registry)
-    out = agent.run("average fare by class and the age distribution", dataset_id=titanic_id)
+    out = agent.run(
+        "average fare by class, and separately the age distribution",
+        dataset_id=titanic_id,
+    )
     assert out["status"] == "completed", out
     assert len(out["charts"]) == 2
     assert all(c["status"] == "ok" for c in out["charts"])
@@ -293,7 +296,11 @@ def test_multi_task_refinement_does_not_replace(registry, iris_id):
     agent = AgentService(planner=fake, registry=registry)
 
     out1 = agent.run("avg sepal length by species", dataset_id=iris_id)
-    out2 = agent.run("split it up", dataset_id=iris_id, thread_id=out1["thread_id"])
+    out2 = agent.run(
+        "as a pie chart and also as a line chart",
+        dataset_id=iris_id,
+        thread_id=out1["thread_id"],
+    )
     ids = {c["chart_id"] for c in out2["charts"]}
     assert len(ids) == 2
     assert out1["charts"][0]["chart_id"] not in ids
@@ -500,7 +507,9 @@ def test_chosen_chart_type_reaches_every_fanned_out_worker(registry, titanic_id)
     }
     agent = AgentService(planner=FakePlanner(decisions=[decision], plans=plans), registry=registry)
     out = agent.run(
-        "average fare and average age by class", dataset_id=titanic_id, chart_type="line"
+        "average fare by class, and separately average age by class",
+        dataset_id=titanic_id,
+        chart_type="line",
     )
     assert out["status"] == "completed", out
     assert {c["chart_spec"]["type"] for c in out["charts"]} == {"line"}

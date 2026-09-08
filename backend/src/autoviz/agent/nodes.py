@@ -4,6 +4,7 @@ Deterministic nodes call the shared services unchanged — run_pipeline() stays
 the single source of truth for validate -> execute -> chart.
 """
 
+import re
 import time
 import uuid
 from typing import Any
@@ -43,6 +44,39 @@ CHART_FALLBACK_STEPS = {"recommend_chart_type", "generate_chart"}
 MAX_EXEC_RETRIES = 1
 EXEC_RETRY_BACKOFF_S = 0.25
 
+# Clear multi-part cues only. Without one of these, a single request must not
+# fan out into several charts (e.g. avg + median + min + max of the same ask).
+_MULTI_PART_REQUEST = re.compile(
+    r"(?is)"
+    r"(?:"
+    r"\band\s+separately\b|"
+    r"\bseparately\b|"
+    r"\band\s+also\b|"
+    r"\balso\s+(?:show|plot|chart|compare|display|compute)\b|"
+    r"\bas\s+well\s+as\b|"
+    r"\b(?:two|three|four|five|six|multiple)\s+charts?\b|"
+    r"(?:^|\n)\s*\d+[.)]\s|"
+    r";\s*(?:and\s+)?(?:show|plot|chart|compare|display)\b"
+    r")"
+)
+
+
+def looks_multipart(request: str) -> bool:
+    """True when the user clearly asked for more than one independent analysis."""
+    return bool(_MULTI_PART_REQUEST.search(request or ""))
+
+
+def collapse_tasks(request: str, tasks: list[str]) -> list[str]:
+    """Keep parallel tasks only for explicit multi-part requests; else one task."""
+    cleaned = [t.strip() for t in tasks if t and t.strip()]
+    if len(cleaned) <= 1:
+        return cleaned
+    if looks_multipart(request):
+        return cleaned[:MAX_TASKS]
+    # Prefer the original wording so the planner sees the whole ask, not one
+    # of several invented sub-statistics.
+    return [request.strip() or cleaned[0]]
+
 
 # --- main-graph nodes ---------------------------------------------------------
 
@@ -78,7 +112,7 @@ def classify_intent(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, An
         # Degrade: treat the raw request as a single analysis task. The detectors
         # have already had their say, so a dead planner costs recall, not safety.
         decision = IntentDecision(intent="analysis", tasks=[state["user_request"]])
-    tasks = [t.strip() for t in decision.tasks if t.strip()][:MAX_TASKS]
+    tasks = collapse_tasks(state["user_request"], decision.tasks)[:MAX_TASKS]
 
     grounded = ground_ambiguity(
         decision.ambiguity.model_dump() if decision.ambiguity else None,

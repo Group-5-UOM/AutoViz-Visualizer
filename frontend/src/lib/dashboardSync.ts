@@ -68,8 +68,10 @@ export interface SyncResult {
  */
 function chartSpecOf(widget: ChartWidget): Record<string, unknown> | null {
   const out: Record<string, unknown> = {};
+  if (widget.chartType) out.type = widget.chartType;
   if (widget.style) out.style = widget.style;
   if (widget.plan) out.plan = widget.plan;
+  if (widget.description) out.description = widget.description;
   return Object.keys(out).length > 0 ? out : null;
 }
 

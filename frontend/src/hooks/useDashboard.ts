@@ -9,6 +9,7 @@ import type {
 } from '../types/dashboard';
 import { styleChart } from '../lib/chartStyle';
 import { runPipeline } from '../lib/analysis';
+import { describeChart } from '../lib/chartDescription';
 import {
   analyze,
   answerClarification,
@@ -201,11 +202,17 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
           return detail;
         }
         const rows = res.result?.row_count;
-        const type = res.chart_spec?.type;
+        const type = typeof res.chart_spec?.type === 'string' ? res.chart_spec.type : undefined;
         const explanation =
           typeof rows === 'number' && type
             ? `${rows.toLocaleString()} row${rows === 1 ? '' : 's'} • ${type} chart — re-run from edited plan`
             : 'Re-run from edited plan.';
+        const description = describeChart({
+          task: widget.title,
+          chartType: type,
+          plan,
+          rowCount: typeof rows === 'number' ? rows : null,
+        });
         setDashboard((prev) => ({
           ...prev,
           widgets: prev.widgets.map((w) =>
@@ -214,9 +221,9 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
                   ...w,
                   plan,
                   vegaLiteSpec: res.vega_lite_spec as Record<string, unknown>,
-                  chartType:
-                    typeof res.chart_spec?.type === 'string' ? res.chart_spec.type : w.chartType,
+                  chartType: type ?? w.chartType,
                   explanation,
+                  description,
                   specVersion: (w.specVersion ?? 0) + 1,
                 }
               : w,
