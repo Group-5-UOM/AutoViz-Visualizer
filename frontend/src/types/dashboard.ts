@@ -105,6 +105,11 @@ export interface ChartWidget {
   chartType?: string;
   style?: ChartStyle;
   /**
+   * Short paragraph describing what the chart shows — shown in the info popup.
+   * Built when the chart is generated (or the plan is re-run).
+   */
+  description?: string;
+  /**
    * The analysis_plan JSON the planner (or the user) used to build this chart.
    * Kept so the user can inspect and edit the structured plan, then re-run the
    * deterministic pipeline without going through the LLM again.

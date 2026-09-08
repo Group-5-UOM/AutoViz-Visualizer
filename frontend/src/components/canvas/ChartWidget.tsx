@@ -10,11 +10,14 @@ import embed from 'vega-embed';
 import {
   AtSign,
   Braces,
+  Info,
   Palette,
   Trash2,
   WandSparkles,
+  X,
 } from 'lucide-react';
 import type { ChartWidget } from '../../types/dashboard';
+import { describeChart } from '../../lib/chartDescription';
 import {
   BRUSH_SIGNAL,
   hasBrush,
@@ -79,8 +82,27 @@ export function ChartWidgetCard({
   const [editText, setEditText] = useState('');
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [infoOpen, setInfoOpen] = useState(false);
   const rows = useMemo(() => specRows(widget.vegaLiteSpec), [widget.vegaLiteSpec]);
   const tableRows = useMemo(() => rowsInBrush(rows ?? [], brush), [rows, brush]);
+  const aboutText = useMemo(() => {
+    if (widget.description?.trim()) return widget.description.trim();
+    if (widget.explanation?.trim()) return widget.explanation.trim();
+    return describeChart({
+      task: widget.title,
+      chartType: widget.chartType,
+      plan: widget.plan,
+    });
+  }, [widget.description, widget.explanation, widget.title, widget.chartType, widget.plan]);
+
+  useEffect(() => {
+    if (!infoOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setInfoOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [infoOpen]);
   const dragRef = useRef<{
     mode: 'move' | 'resize';
     startX: number;
@@ -101,6 +123,7 @@ export function ChartWidgetCard({
     const run = async () => {
       try {
         const result = await embed(el, widget.vegaLiteSpec as never, {
+          // Per-chart Save as PNG / SVG via Vega's ⋮ menu.
           actions: { export: true, source: false, compiled: false, editor: false },
           renderer: 'svg',
           tooltip: true,
@@ -262,91 +285,137 @@ export function ChartWidgetCard({
         }}
       >
         <h3 title={widget.title}>{widget.title}</h3>
-        {!readOnly && (
-          <div className="chart-widget-actions" onPointerDown={stopActionPointer}>
-            {widget.agentChartId && (
+        <div className="chart-widget-actions" onPointerDown={stopActionPointer}>
+          {!readOnly && widget.agentChartId && (
+            <button
+              type="button"
+              className="chart-header-btn"
+              title={referenced ? 'Attached to the chat' : 'Ask the chat about this chart'}
+              aria-label={referenced ? 'Attached to the chat' : 'Ask the chat about this chart'}
+              aria-pressed={referenced}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect();
+                onReference();
+              }}
+            >
+              <AtSign size={14} />
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="chart-header-btn"
+            title="About this chart"
+            aria-label="About this chart"
+            aria-pressed={infoOpen}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect();
+              setEditing(false);
+              setInfoOpen((on) => !on);
+            }}
+          >
+            <Info size={14} />
+          </button>
+
+          {!readOnly && (
+            <>
               <button
                 type="button"
                 className="chart-header-btn"
-                title={referenced ? 'Attached to the chat' : 'Ask the chat about this chart'}
-                aria-label={referenced ? 'Attached to the chat' : 'Ask the chat about this chart'}
-                aria-pressed={referenced}
+                title="View / edit analysis plan"
+                aria-label="View / edit analysis plan"
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelect();
-                  onReference();
+                  setEditing(false);
+                  setInfoOpen(false);
+                  onOpenPlan();
                 }}
               >
-                <AtSign size={14} />
+                <Braces size={14} />
               </button>
-            )}
 
-            <button
-              type="button"
-              className="chart-header-btn"
-              title="View / edit analysis plan"
-              aria-label="View / edit analysis plan"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect();
-                setEditing(false);
-                onOpenPlan();
-              }}
-            >
-              <Braces size={14} />
-            </button>
+              <button
+                type="button"
+                className="chart-header-btn"
+                title="Style options"
+                aria-label="Style options"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect();
+                  setEditing(false);
+                  setInfoOpen(false);
+                  onOpenStyle();
+                }}
+              >
+                <Palette size={14} />
+              </button>
 
-            <button
-              type="button"
-              className="chart-header-btn"
-              title="Style options"
-              aria-label="Style options"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect();
-                setEditing(false);
-                onOpenStyle();
-              }}
-            >
-              <Palette size={14} />
-            </button>
+              <button
+                type="button"
+                className="chart-header-btn"
+                title="Change how this chart looks"
+                aria-label="Change how this chart looks"
+                aria-pressed={editing}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect();
+                  setInfoOpen(false);
+                  setEditing((on) => !on);
+                  setEditError(null);
+                }}
+              >
+                <WandSparkles size={14} />
+              </button>
 
-            <button
-              type="button"
-              className="chart-header-btn"
-              title="Change how this chart looks"
-              aria-label="Change how this chart looks"
-              aria-pressed={editing}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect();
-                setEditing((on) => !on);
-                setEditError(null);
-              }}
-            >
-              <WandSparkles size={14} />
-            </button>
-
-            <button
-              type="button"
-              className="chart-header-btn is-danger"
-              title="Delete chart"
-              aria-label="Delete chart"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        )}
+              <button
+                type="button"
+                className="chart-header-btn is-danger"
+                title="Delete chart"
+                aria-label="Delete chart"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </>
+          )}
+        </div>
       </header>
 
-      <div
-        className={`chart-widget-body ${editing ? 'is-editing' : ''}`}
-        ref={chartRef}
-      />
+      <div className="chart-widget-main">
+        {infoOpen && (
+          <div
+            className="chart-info-popup"
+            role="dialog"
+            aria-label="About this chart"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="chart-info-popup-header">
+              <strong>About this chart</strong>
+              <button
+                type="button"
+                className="chart-header-btn"
+                title="Close"
+                aria-label="Close about this chart"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setInfoOpen(false);
+                }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <p className="chart-info-popup-body">{aboutText}</p>
+          </div>
+        )}
+
+        <div className="chart-widget-body" ref={chartRef} />
+      </div>
 
       {hasBrush(brush) && rows && (
         <p className="chart-brush-status">

@@ -1,5 +1,6 @@
 import type { AgentChartResult } from './agent';
 import type { ChartWidget } from '../types/dashboard';
+import { describeChart } from './chartDescription';
 
 /** Canvas layout for newly-placed widgets — two columns, flowing downward. */
 const COLUMNS = 2;
@@ -69,6 +70,15 @@ function explanationFor(chart: AgentChartResult): string {
   return parts.join(' — ') || 'Generated from your request.';
 }
 
+function descriptionFor(chart: AgentChartResult): string {
+  return describeChart({
+    task: chart.task,
+    chartType: typeof chart.chart_spec?.type === 'string' ? chart.chart_spec.type : undefined,
+    plan: chart.plan,
+    rowCount: chart.result?.row_count,
+  });
+}
+
 export interface AppliedCharts {
   /** The canvas, with replacements applied in place and new charts appended. */
   widgets: ChartWidget[];
@@ -116,6 +126,7 @@ export function applyAgentCharts(
       ...widget,
       title: titleFor(chart.task),
       explanation: explanationFor(chart),
+      description: descriptionFor(chart),
       vegaLiteSpec: chart.vega_lite_spec as Record<string, unknown>,
       chartType: typeof chart.chart_spec?.type === 'string' ? chart.chart_spec.type : widget.chartType,
       plan: chart.plan ?? widget.plan ?? null,
@@ -130,6 +141,7 @@ export function applyAgentCharts(
     agentChartId: chart.chart_id,
     title: titleFor(chart.task),
     explanation: explanationFor(chart),
+    description: descriptionFor(chart),
     chartType: typeof chart.chart_spec?.type === 'string' ? chart.chart_spec.type : undefined,
     plan: chart.plan ?? null,
     // The backend already sizes specs with width/height "container", so the

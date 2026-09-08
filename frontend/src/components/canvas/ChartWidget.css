@@ -79,6 +79,52 @@
   color: var(--danger);
 }
 
+/* Covers the chart body so the about paragraph stays readable without a portal. */
+.chart-widget-main {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-info-popup {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  background: color-mix(in srgb, var(--bg-surface) 97%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.chart-info-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: none;
+}
+
+.chart-info-popup-header strong {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chart-info-popup-body {
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
 /* The spec sizes itself from this box (width/height: "container"), so it needs a
    definite height and a child that stretches to fill rather than centring. */
 .chart-widget-body {
@@ -101,8 +147,45 @@
   height: 100%;
 }
 
+/* Per-chart export (PNG / SVG). Always visible — Vega defaults to a faint
+   control that only solidifies on hover, which made it look like it "changed"
+   when the wand editor opened. */
+.chart-widget-body .vega-embed.has-actions {
+  /* Room for the ⋮ without squeezing the plot into the header buttons. */
+  padding-right: 36px;
+}
+
 .chart-widget-body .vega-embed summary {
-  display: none;
+  display: grid;
+  place-items: center;
+  top: 2px;
+  right: 2px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  opacity: 1 !important;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  line-height: 0;
+}
+
+.chart-widget-body .vega-embed summary:hover,
+.chart-widget-body .vega-embed details[open] summary {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.chart-widget-body .vega-embed summary svg {
+  width: 14px;
+  height: 14px;
+}
+
+.chart-widget-body .vega-embed .vega-actions {
+  top: 32px;
+  right: 0;
 }
 
 .chart-error {
@@ -190,15 +273,6 @@
 .chart-edit-bar button:disabled {
   opacity: 0.5;
   cursor: default;
-}
-
-/* Reserve space for the pinned edit bar so the chart never hides under it —
-   only while that bar is actually mounted. Reserving it unconditionally left a
-   56px dead strip under every chart, which on an arc chart also pushed the
-   centre off, since the mark centres in whatever plot box is left. The chart
-   reflows when the bar opens; the ResizeObserver above already handles that. */
-.chart-widget-body.is-editing {
-  padding-bottom: 56px;
 }
 
 .chart-edit-error {

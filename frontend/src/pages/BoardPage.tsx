@@ -88,6 +88,10 @@ async function widgetsFromDashboard(selected: DashboardResult): Promise<ChartWid
           !Array.isArray(chartData.chart_spec.plan)
             ? (chartData.chart_spec.plan as Record<string, unknown>)
             : undefined,
+        description:
+          typeof chartData.chart_spec?.description === 'string'
+            ? chartData.chart_spec.description
+            : undefined,
         specVersion: 0,
         syncedSpecVersion: 0,
       };
