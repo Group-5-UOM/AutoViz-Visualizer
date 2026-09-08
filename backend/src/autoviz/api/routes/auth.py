@@ -15,7 +15,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from autoviz.api.deps import get_current_user, get_db
+from autoviz.api.deps import get_current_user, get_db, get_registry
 from autoviz.api.oauth import (
     exchange_github_code,
     exchange_google_code,
@@ -59,6 +59,20 @@ class OAuthRegisterRequest(BaseModel):
 class SetPasswordRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     confirm_password: str = Field(min_length=8, max_length=128)
+    # Required when the account already has a password (FR-15 re-auth).
+    current_password: str | None = Field(default=None, max_length=128)
+
+
+class PasswordConfirm(BaseModel):
+    """Re-authentication for sensitive account actions."""
+
+    password: str = Field(min_length=1, max_length=128)
+
+
+class McpKeyReissue(PasswordConfirm):
+    """Rotate an MCP key; requires the account password."""
+
+    expires_in_days: int | None = Field(default=90, ge=1, le=3650)
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -162,6 +176,21 @@ def _finish_oauth_login_or_register(
     return _frontend_oauth_redirect(pending_token=pending, email=email)
 
 
+def _require_password(user: User, password: str | None) -> None:
+    """Re-authenticate with the account password, or refuse.
+
+    OAuth-only accounts must set an AutoViz password before sensitive actions
+    (password change is the exception: first-time set needs no current password).
+    """
+    if not user.password_hash:
+        raise HTTPException(
+            status_code=400,
+            detail="Set an AutoViz password first, then try again.",
+        )
+    if not password or not verify_password(password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+
 @router.post("/register", status_code=201)
 def register(body: RegisterRequest, db: Session = Depends(get_db)):
     username = body.username.strip()
@@ -243,7 +272,16 @@ def set_password(
         raise HTTPException(status_code=422, detail="Passwords do not match")
     if len(body.password) < 8:
         raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
+    had_password = bool(user.password_hash)
+    # Changing an existing password requires re-entering the current one (FR-15).
+    if had_password:
+        _require_password(user, body.current_password)
     repository.set_user_password(db, user, hash_password(body.password))
+    if had_password:
+        # Force other browsers/devices to sign in again after a password change.
+        repository.delete_all_tokens_for_user(db, user.id)
+        token = repository.create_token(db, user.id)
+        return {"password_set": True, **_session_payload(user, token, db)}
     return {"password_set": True}
 
 
@@ -487,3 +525,70 @@ def revoke_mcp_key(
     """Revoke a key. Scoped to the owner, and idempotent."""
     if not repository.revoke_mcp_key(db, user.id, key_id):
         raise HTTPException(status_code=404, detail="No such connection key")
+
+
+@router.post("/mcp-keys/{key_id}/reissue", response_model=McpKeyCreated)
+def reissue_mcp_key(
+    key_id: str,
+    body: McpKeyReissue,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Rotate a connection key after re-authentication (FR-15).
+
+    Revokes the old key and mints a replacement with the same label/profile.
+    The new plaintext is returned once, same as create.
+    """
+    _require_password(user, body.password)
+    old = repository.get_mcp_key(db, user.id, key_id)
+    if old is None or old.revoked_at is not None:
+        raise HTTPException(status_code=404, detail="No such connection key")
+    label = old.label
+    profile = old.profile
+    repository.revoke_mcp_key(db, user.id, key_id)
+    expires_at = None
+    if body.expires_in_days is not None:
+        expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+            days=body.expires_in_days
+        )
+    row, plaintext = repository.create_mcp_key(
+        db, user.id, label=label, profile=profile, expires_at=expires_at
+    )
+    return {**_key_out(row), "key": plaintext, "url": _connection_url(plaintext)}
+
+
+@router.delete("/me", status_code=204)
+def delete_account(
+    body: PasswordConfirm,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    registry=Depends(get_registry),
+):
+    """Delete this account and every dataset/dashboard/history it owns (FR-13)."""
+    from autoviz.storage import blobs
+
+    _require_password(user, body.password)
+    pairs = repository.clear_oauth_access_tokens(db, user.id)
+    for provider, token in pairs:
+        if provider == "github":
+            revoke_github_token(token)
+        elif provider == "google":
+            revoke_google_token(token)
+
+    # Clear blob/file copies before CASCADE removes metadata rows.
+    for meta in list(repository.list_dataset_meta(db, user.id)):
+        try:
+            registry.remove(meta.dataset_id)
+        except Exception:
+            pass
+        blobs.delete(db, meta.dataset_id)
+        if meta.file_path:
+            from pathlib import Path
+
+            Path(meta.file_path).unlink(missing_ok=True)
+        repository.delete_dataset_meta(db, meta.dataset_id)
+
+    repository.delete_all_tokens_for_user(db, user.id)
+    db.delete(user)
+    db.commit()
+    return None

@@ -16,6 +16,7 @@ export function AccountPasswordModal({
   onClose,
   onSaved,
 }: AccountPasswordModalProps) {
+  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
@@ -26,6 +27,10 @@ export function AccountPasswordModal({
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    if (hasPassword && !currentPassword) {
+      setError('Enter your current password.');
+      return;
+    }
     if (password.length < 8) {
       setError('Password must be at least 8 characters.');
       return;
@@ -36,7 +41,8 @@ export function AccountPasswordModal({
     }
     setSaving(true);
     try {
-      await setAccountPassword(password, confirm);
+      await setAccountPassword(password, confirm, hasPassword ? currentPassword : undefined);
+      setCurrentPassword('');
       setPassword('');
       setConfirm('');
       onSaved();
@@ -65,10 +71,22 @@ export function AccountPasswordModal({
         <h2 id="pwd-modal-title">{hasPassword ? 'Change password' : 'Set a password'}</h2>
         <p className="pwd-modal-copy">
           {hasPassword
-            ? 'Update the password you use with email sign-in.'
+            ? 'Update the password you use with email sign-in. Other sessions will be signed out.'
             : 'Add an AutoViz password so you can also sign in with email — Google/GitHub will keep working.'}
         </p>
         <form onSubmit={handleSubmit}>
+          {hasPassword && (
+            <label className="pwd-field">
+              <span>Current password</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+              />
+            </label>
+          )}
           <label className="pwd-field">
             <span>New password</span>
             <input

@@ -8,6 +8,7 @@ Run: `uv --directory backend run uvicorn autoviz.api.main:app --reload`.
 import json
 import logging
 import os
+import uuid
 from urllib.parse import urlparse
 import time
 from contextlib import asynccontextmanager
@@ -24,7 +25,7 @@ from autoviz.api.routes import (
     dashboards,
     datasets,
 )
-from autoviz.observability import configure_logging
+from autoviz.observability import configure_logging, set_request_id
 
 _log = logging.getLogger("autoviz.observability")
 
@@ -92,18 +93,26 @@ def create_app() -> FastAPI:
         # One structured line per HTTP call — the transport-level companion to the
         # @observed decorator on MCP tools. No bodies/headers logged (no secrets).
         started = time.perf_counter()
-        response = await call_next(request)
-        _log.info(
-            json.dumps(
-                {
-                    "http": request.method,
-                    "path": request.url.path,
-                    "status": response.status_code,
-                    "ms": round((time.perf_counter() - started) * 1000, 2),
-                }
+        incoming = request.headers.get("x-request-id", "").strip()
+        request_id = incoming or str(uuid.uuid4())
+        set_request_id(request_id)
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            _log.info(
+                json.dumps(
+                    {
+                        "http": request.method,
+                        "path": request.url.path,
+                        "status": response.status_code,
+                        "ms": round((time.perf_counter() - started) * 1000, 2),
+                        "request_id": request_id,
+                    }
+                )
             )
-        )
-        return response
+            return response
+        finally:
+            set_request_id(None)
 
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
     app.include_router(datasets.router, prefix="/datasets", tags=["datasets"])

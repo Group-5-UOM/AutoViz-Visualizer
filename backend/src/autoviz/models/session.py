@@ -21,5 +21,11 @@ class UserSession(Base):
     created_at = Column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    # Sliding idle timeout (FR-14). Absolute expiry remains on expires_at.
+    last_active_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=True,
+    )
 
     user = relationship("User", back_populates="sessions")

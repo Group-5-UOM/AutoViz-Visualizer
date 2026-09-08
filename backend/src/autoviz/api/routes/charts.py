@@ -22,12 +22,15 @@ from sqlalchemy.orm import Session
 
 from autoviz.api.deps import get_current_user, get_db, get_planner
 from autoviz.api.errors import respond
+from autoviz.api.rate_limit import is_rate_limited
 from autoviz.api.schemas import (
     ExportChartRequest,
     GenerateChartRequest,
     RecommendChartRequest,
 )
+from autoviz.core.config import settings
 from autoviz.llm.client import PlannerError
+from autoviz import observability
 from autoviz.models import SavedChart, User
 from autoviz.schema.chart_style import ChartStyle
 from autoviz.services import chart_style
@@ -81,6 +84,21 @@ def style_chart(
     # never partially styled — the chart on screen stays exactly as it was.
     def refuse(message: str):
         return respond({"valid": False, "error": message, "warnings": [message]})
+
+    if body.request:
+        if is_rate_limited(
+            f"llm:{user.id}",
+            limit=settings.AUTOVIZ_LLM_RATE_LIMIT,
+            window_s=settings.AUTOVIZ_LLM_RATE_WINDOW_S,
+        ):
+            observability.log_event("llm_rate_limited", user_id=user.id)
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "You have reached the analysis request limit for now. "
+                    "Try again later — your datasets and dashboards are still available."
+                ),
+            )
 
     try:
         current = ChartStyle.model_validate(body.style or {})
@@ -138,6 +156,7 @@ class UpdateChartRequest(BaseModel):
     name: str | None = None
     vega_lite_spec: dict[str, Any] | None = None
     chart_spec: dict[str, Any] | None = None
+    provenance: dict[str, Any] | None = None
 
 
 def _chart_dict(c: SavedChart) -> dict[str, Any]:

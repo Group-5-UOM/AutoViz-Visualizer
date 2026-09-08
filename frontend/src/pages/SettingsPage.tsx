@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, KeyRound, Link2, User as UserIcon } from 'lucide-react';
-import { ApiError } from '../lib/api';
-import { fetchMe } from '../lib/auth';
+import { ArrowLeft, KeyRound, Link2, Trash2, User as UserIcon } from 'lucide-react';
+import { ApiError, clearSession } from '../lib/api';
+import { deleteAccount, fetchMe } from '../lib/auth';
 import { AccountPasswordModal } from '../components/layout/AccountPasswordModal';
 import { ConnectionsSection } from '../components/settings/ConnectionsSection';
 import './SettingsPage.css';
@@ -39,6 +39,11 @@ export function SettingsPage({ userEmail, username }: SettingsPageProps) {
   const [providers, setProviders] = useState<string[]>([]);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -58,6 +63,35 @@ export function SettingsPage({ userEmail, username }: SettingsPageProps) {
     // Keep the address bar honest so a refresh or a shared link returns here.
     window.history.replaceState(null, '', `/settings#${section}`);
   }, [section]);
+
+  const handleDelete = async (e: FormEvent) => {
+    e.preventDefault();
+    setDeleteError('');
+    if (deleteConfirm.trim().toUpperCase() !== 'DELETE') {
+      setDeleteError('Type DELETE to confirm.');
+      return;
+    }
+    if (!deletePassword) {
+      setDeleteError('Enter your password to confirm.');
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteAccount(deletePassword);
+      clearSession();
+      navigate('/login', { replace: true });
+    } catch (err) {
+      setDeleteError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Could not delete the account.',
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="set-page">
@@ -132,6 +166,78 @@ export function SettingsPage({ userEmail, username }: SettingsPageProps) {
                 <KeyRound size={15} aria-hidden="true" />
                 {hasPassword ? 'Change password' : 'Set a password'}
               </button>
+
+              <div className="set-danger">
+                <h3>Delete account</h3>
+                <p>
+                  Permanently removes your account, datasets, dashboards, and chat history.
+                  This cannot be undone.
+                </p>
+                {!deleteOpen ? (
+                  <button
+                    type="button"
+                    className="set-btn set-btn--danger"
+                    onClick={() => setDeleteOpen(true)}
+                    disabled={!hasPassword}
+                    title={
+                      hasPassword
+                        ? undefined
+                        : 'Set an AutoViz password first so this action can be re-authenticated.'
+                    }
+                  >
+                    <Trash2 size={15} aria-hidden="true" />
+                    Delete account…
+                  </button>
+                ) : (
+                  <form className="set-danger-form" onSubmit={handleDelete}>
+                    <label className="set-field">
+                      <span>Type DELETE to confirm</span>
+                      <input
+                        value={deleteConfirm}
+                        onChange={(e) => setDeleteConfirm(e.target.value)}
+                        autoComplete="off"
+                        required
+                      />
+                    </label>
+                    <label className="set-field">
+                      <span>Password</span>
+                      <input
+                        type="password"
+                        autoComplete="current-password"
+                        value={deletePassword}
+                        onChange={(e) => setDeletePassword(e.target.value)}
+                        required
+                      />
+                    </label>
+                    {deleteError && (
+                      <p className="set-error" role="alert">
+                        {deleteError}
+                      </p>
+                    )}
+                    <div className="set-danger-actions">
+                      <button
+                        type="button"
+                        className="set-btn"
+                        onClick={() => {
+                          setDeleteOpen(false);
+                          setDeleteConfirm('');
+                          setDeletePassword('');
+                          setDeleteError('');
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="set-btn set-btn--danger"
+                        disabled={deleting}
+                      >
+                        {deleting ? 'Deleting…' : 'Delete forever'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
             </section>
           )}
 

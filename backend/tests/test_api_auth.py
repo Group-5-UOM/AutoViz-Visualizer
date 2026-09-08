@@ -194,3 +194,129 @@ def test_me_includes_has_password(api_db):
     assert me.json()["has_password"] is True
     assert me.json()["email_verified"] is False
     assert me.json()["oauth_providers"] == []
+
+
+def test_change_password_requires_current_password(api_db):
+    client = _client()
+    creds = {"email": "chg@example.com", "password": "oldpassword1", "username": "chguser"}
+    client.post("/auth/register", json=creds)
+    token = client.post("/auth/login", json=creds).json()["access_token"]
+    auth = {"Authorization": f"Bearer {token}"}
+
+    wrong = client.post(
+        "/auth/password",
+        headers=auth,
+        json={
+            "password": "newpassword9",
+            "confirm_password": "newpassword9",
+            "current_password": "nope-wrong",
+        },
+    )
+    assert wrong.status_code == 401
+
+    ok = client.post(
+        "/auth/password",
+        headers=auth,
+        json={
+            "password": "newpassword9",
+            "confirm_password": "newpassword9",
+            "current_password": "oldpassword1",
+        },
+    )
+    assert ok.status_code == 200
+    assert ok.json()["access_token"]
+    # Old session is dead after a password change.
+    assert client.get("/auth/me", headers=auth).status_code == 401
+    new_auth = {"Authorization": f"Bearer {ok.json()['access_token']}"}
+    assert client.get("/auth/me", headers=new_auth).status_code == 200
+    assert (
+        client.post(
+            "/auth/login",
+            json={"email": "chg@example.com", "password": "newpassword9"},
+        ).status_code
+        == 200
+    )
+
+
+def test_delete_account_removes_owned_data(api_db):
+    client = _client()
+    creds = {"email": "gone@example.com", "password": "pw12345678", "username": "goneuser"}
+    client.post("/auth/register", json=creds)
+    token = client.post("/auth/login", json=creds).json()["access_token"]
+    auth = {"Authorization": f"Bearer {token}"}
+
+    up = client.post(
+        "/datasets/upload",
+        headers=auth,
+        files={"file": ("tiny.csv", b"a,b\n1,2\n3,4\n", "text/csv")},
+    )
+    assert up.status_code == 201
+    dataset_id = up.json()["dataset_id"]
+
+    other = {"email": "keep@example.com", "password": "pw12345678", "username": "keepuser"}
+    client.post("/auth/register", json=other)
+    other_token = client.post("/auth/login", json=other).json()["access_token"]
+    other_auth = {"Authorization": f"Bearer {other_token}"}
+
+    deleted = client.request(
+        "DELETE",
+        "/auth/me",
+        headers=auth,
+        json={"password": "pw12345678"},
+    )
+    assert deleted.status_code == 204
+    assert client.get("/auth/me", headers=auth).status_code == 401
+    assert client.get(f"/datasets/{dataset_id}/schema", headers=other_auth).status_code in (
+        403,
+        404,
+    )
+    # Other user still works.
+    assert client.get("/auth/me", headers=other_auth).status_code == 200
+
+
+def test_idle_session_is_rejected(api_db, monkeypatch):
+    import datetime
+
+    from autoviz.core import config as config_mod
+    from autoviz.core.database import get_sessionmaker
+    from autoviz.models import UserSession
+    from sqlalchemy import select
+
+    monkeypatch.setattr(config_mod.settings, "AUTOVIZ_IDLE_TIMEOUT_MINUTES", 30)
+    client = _client()
+    creds = {"email": "idle@example.com", "password": "pw12345678", "username": "idleuser"}
+    client.post("/auth/register", json=creds)
+    token = client.post("/auth/login", json=creds).json()["access_token"]
+    auth = {"Authorization": f"Bearer {token}"}
+
+    db = get_sessionmaker()()
+    try:
+        row = db.scalar(select(UserSession).where(UserSession.token == token))
+        assert row is not None
+        row.last_active_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+            minutes=31
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    assert client.get("/auth/me", headers=auth).status_code == 401
+
+
+def test_request_id_echoed_on_response(api_db):
+    client = _client()
+    r = client.get("/health", headers={"X-Request-ID": "test-corr-123"})
+    assert r.status_code == 200
+    assert r.headers.get("X-Request-ID") == "test-corr-123"
+
+
+def test_dataset_retention_policy(api_db):
+    client = _client()
+    creds = {"email": "ret@example.com", "password": "pw12345678", "username": "retuser"}
+    client.post("/auth/register", json=creds)
+    token = client.post("/auth/login", json=creds).json()["access_token"]
+    auth = {"Authorization": f"Bearer {token}"}
+    r = client.get("/datasets/retention", headers=auth)
+    assert r.status_code == 200
+    assert r.json()["retention_days"] == 90
+    assert "days" in r.json()["message"]

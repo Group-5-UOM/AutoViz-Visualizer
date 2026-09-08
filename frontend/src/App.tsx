@@ -12,6 +12,7 @@ import {
   getAccessToken,
   getStoredEmail,
   getStoredUsername,
+  startIdleWatch,
 } from './lib/api';
 import { logoutUser } from './lib/auth';
 
@@ -65,6 +66,16 @@ function App() {
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    return startIdleWatch(() => {
+      void logoutUser().finally(() => {
+        clearSession();
+        setUser(null);
+      });
+    });
+  }, [user]);
 
   const handleLogout = async () => {
     await logoutUser();

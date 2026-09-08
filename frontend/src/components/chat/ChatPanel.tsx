@@ -37,6 +37,8 @@ const SUGGESTIONS = [
   'How do the two most related columns compare?',
 ];
 
+const LLM_CONSENT_KEY = 'autoviz:llm-consent';
+
 export function ChatPanel({
   open,
   messages,
@@ -54,6 +56,9 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [draft, setDraft] = useState('');
   const [picking, setPicking] = useState(false);
+  const [llmConsented, setLlmConsented] = useState(
+    () => typeof window !== 'undefined' && localStorage.getItem(LLM_CONSENT_KEY) === '1',
+  );
   const listRef = useRef<HTMLDivElement>(null);
   const referenced = referenceable.find((w) => w.id === referencedWidgetId) ?? null;
 
@@ -67,7 +72,13 @@ export function ChatPanel({
 
   if (!open) return null;
 
-  const canSend = (text: string) => Boolean(text.trim()) && !isThinking && !disabled;
+  const acceptLlmConsent = () => {
+    localStorage.setItem(LLM_CONSENT_KEY, '1');
+    setLlmConsented(true);
+  };
+
+  const canSend = (text: string) =>
+    Boolean(text.trim()) && !isThinking && !disabled && llmConsented;
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -84,6 +95,27 @@ export function ChatPanel({
   return (
     <section className="chat-panel" aria-label="AI chat">
       <div className="chat-messages" ref={listRef}>
+        {!llmConsented && !disabled && (
+          <div className="chat-llm-disclosure" role="note">
+            <p>
+              <Info size={14} aria-hidden="true" /> Before your first analysis request, please
+              know what is sent to the external language model:
+            </p>
+            <ul>
+              <li>Your question text</li>
+              <li>Column names and inferred types (schema)</li>
+              <li>A short dataset profile summary</li>
+              <li>Bounded sample values from low-cardinality categories, when needed</li>
+            </ul>
+            <p>
+              Full data rows, the uploaded file, passwords, and API keys are <strong>not</strong>{' '}
+              sent.
+            </p>
+            <button type="button" className="suggestion-chip" onClick={acceptLlmConsent}>
+              I understand — continue
+            </button>
+          </div>
+        )}
         {messages.map((msg, index) => (
           <article
             key={msg.id}
@@ -171,7 +203,7 @@ export function ChatPanel({
           </article>
         )}
 
-        {messages.length <= 1 && !isThinking && !disabled && (
+        {messages.length <= 1 && !isThinking && !disabled && llmConsented && (
           <div className="chat-suggestions">
             {SUGGESTIONS.map((s) => (
               <button
@@ -190,6 +222,12 @@ export function ChatPanel({
       {disabled && (
         <div className="chat-disabled-note" role="note">
           {disabledReason}
+        </div>
+      )}
+
+      {!disabled && !llmConsented && (
+        <div className="chat-disabled-note" role="note">
+          Accept the language-model notice above to start chatting.
         </div>
       )}
 

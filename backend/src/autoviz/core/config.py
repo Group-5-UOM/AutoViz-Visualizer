@@ -40,6 +40,19 @@ class Settings(BaseSettings):
     # When true, forgot-password responses include the reset token/URL (local only).
     AUTOVIZ_EXPOSE_RESET_TOKENS: bool = True
 
+    # Idle session timeout in minutes (FR-14). Absolute token TTL still applies.
+    AUTOVIZ_IDLE_TIMEOUT_MINUTES: int = 30
+
+    # Dataset retention notice / remaining-days calculation (FR-35).
+    AUTOVIZ_DATASET_RETENTION_DAYS: int = 90
+
+    # Per-user LLM request budget (FR-81). Process-local sliding window.
+    AUTOVIZ_LLM_RATE_LIMIT: int = 60
+    AUTOVIZ_LLM_RATE_WINDOW_S: float = 3600.0
+
+    # Planner identity recorded on chart provenance (FR-146).
+    AUTOVIZ_PLANNER_PROVIDER: str = "google"
+
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[3] / ".env",
         env_file_encoding="utf-8",

@@ -237,6 +237,13 @@ export function DatasetModal({ currentDatasetId, onClose, onSelect, onCsvSelecte
                               <Calendar size={12} />
                               {formatDate(dataset.created_at)}
                             </span>
+                            {typeof dataset.days_remaining === 'number' && (
+                              <span title="Retention remaining">
+                                {dataset.expired
+                                  ? 'Expired'
+                                  : `${dataset.days_remaining}d left`}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="dataset-item-actions">

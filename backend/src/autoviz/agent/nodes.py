@@ -566,7 +566,7 @@ def _notices_of(executed: dict[str, Any] | None) -> list[dict[str, Any]]:
     return ((executed or {}).get("provenance") or {}).get("notices") or []
 
 
-def finalize_worker(state: WorkerState) -> dict[str, Any]:
+def finalize_worker(state: WorkerState, *, planner: PlannerLLM | None = None) -> dict[str, Any]:
     out = state.get("pipeline_output")
     # Disclosures about cleaning that did *not* happen. They belong to the run
     # whatever became of it — a plan that failed at the chart step still skipped
@@ -581,6 +581,7 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
         "plan": state.get("analysis_plan"),
         "attempts": state.get("plan_attempts", 0),
     }
+    model_meta = _planner_model_meta(planner)
     if out is None:  # planner never produced a parseable plan
         result.update(
             {
@@ -607,10 +608,15 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
                 ),
             )
         )
+        executed = out.get("result")
+        if isinstance(executed, dict) and model_meta:
+            prov = dict(executed.get("provenance") or {})
+            prov.update(model_meta)
+            executed = {**executed, "provenance": prov}
         result.update(
             {
                 "status": "ok",
-                "result": out["result"],
+                "result": executed,
                 "chart_spec": out["chart_spec"],
                 "vega_lite_spec": out["vega_lite_spec"],
                 "warnings": out.get("warnings", []),
@@ -622,6 +628,10 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
         )
     else:
         executed = out.get("result")  # partial results are never discarded
+        if isinstance(executed, dict) and model_meta:
+            prov = dict(executed.get("provenance") or {})
+            prov.update(model_meta)
+            executed = {**executed, "provenance": prov}
         fallback = state.get("fallback_chart")
         result.update(
             {
@@ -645,3 +655,17 @@ def finalize_worker(state: WorkerState) -> dict[str, Any]:
                 }
             )
     return {"chart_results": [result]}
+
+
+def _planner_model_meta(planner: PlannerLLM | None) -> dict[str, str]:
+    """Provider + model id for chart provenance (FR-146)."""
+    import os
+
+    from autoviz.core.config import settings
+    from autoviz.llm.client import DEFAULT_MODEL
+
+    model_id = getattr(planner, "_model_id", None) or os.environ.get(
+        "AUTOVIZ_PLANNER_MODEL", DEFAULT_MODEL
+    )
+    provider = settings.AUTOVIZ_PLANNER_PROVIDER or "google"
+    return {"model_provider": provider, "model_id": str(model_id)}

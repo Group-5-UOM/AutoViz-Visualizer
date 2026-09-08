@@ -52,6 +52,27 @@ export function clearSession() {
  */
 export const SESSION_EXPIRED_EVENT = 'autoviz:session-expired';
 
+/** Idle logout after this many ms without pointer/keyboard activity (FR-14). */
+export const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+
+/**
+ * Call `onIdle` after `IDLE_TIMEOUT_MS` without user activity. Returns a cleanup
+ * function. Used while a session is active.
+ */
+export function startIdleWatch(onIdle: () => void, timeoutMs = IDLE_TIMEOUT_MS): () => void {
+  let timer = window.setTimeout(onIdle, timeoutMs);
+  const bump = () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(onIdle, timeoutMs);
+  };
+  const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'mousemove', 'scroll'];
+  for (const ev of events) window.addEventListener(ev, bump, { passive: true });
+  return () => {
+    window.clearTimeout(timer);
+    for (const ev of events) window.removeEventListener(ev, bump);
+  };
+}
+
 function formatDetail(data: unknown, status: number): string {
   if (data && typeof data === 'object') {
     const obj = data as Record<string, unknown>;
@@ -97,7 +118,9 @@ export async function apiRequest<T>(
   } = {},
 ): Promise<T> {
   const { method = 'GET', body, form, auth = true } = options;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    'X-Request-ID': crypto.randomUUID(),
+  };
 
   if (auth) {
     const token = getAccessToken();

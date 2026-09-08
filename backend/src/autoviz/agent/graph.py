@@ -32,7 +32,7 @@ def build_graph(
     worker.add_node("execute", partial(nodes.execute_node, registry=registry))
     worker.add_node("confirm_preprocessing", nodes.confirm_preprocessing)
     worker.add_node("chart_fallback", nodes.chart_fallback)
-    worker.add_node("finalize", nodes.finalize_worker)
+    worker.add_node("finalize", partial(nodes.finalize_worker, planner=planner))
     worker.add_edge(START, "plan")
     worker.add_conditional_edges(
         "plan",

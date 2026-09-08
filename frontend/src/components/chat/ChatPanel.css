@@ -152,6 +152,33 @@
   margin-top: 4px;
 }
 
+.chat-llm-disclosure {
+  margin: 4px 0 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.chat-llm-disclosure p {
+  margin: 0 0 8px;
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.chat-llm-disclosure ul {
+  margin: 0 0 10px;
+  padding-left: 1.2rem;
+}
+
+.chat-llm-disclosure li {
+  margin: 2px 0;
+}
+
 .suggestion-chip {
   text-align: left;
   padding: 10px 12px;

@@ -116,6 +116,11 @@ export interface ChartWidget {
    */
   plan?: Record<string, unknown> | null;
   /**
+   * Execution + planner provenance (filters, SQL, model id). Persisted with the
+   * saved chart so dashboards keep FR-146 data across reloads.
+   */
+  provenance?: Record<string, unknown> | null;
+  /**
    * Bumped on every in-place change to `vegaLiteSpec` — a style edit or a
    * refinement swapping the spec. This is what `persistSignature` watches:
    * hashing the spec itself is not an option, since it carries every result row

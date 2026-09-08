@@ -163,25 +163,45 @@ def get_password_reset_token(session: Session, token: str) -> PasswordResetToken
 
 
 def create_token(session: Session, user_id: str, ttl_hours: int = 24 * 7) -> UserSession:
+    now = _now()
     token = UserSession(
         token=secrets.token_urlsafe(32),
         user_id=user_id,
-        expires_at=_now() + datetime.timedelta(hours=ttl_hours),
+        expires_at=now + datetime.timedelta(hours=ttl_hours),
+        last_active_at=now,
     )
     session.add(token)
     session.commit()
     return token
 
 
-def get_user_for_token(session: Session, token: str) -> User | None:
+def get_user_for_token(
+    session: Session,
+    token: str,
+    *,
+    idle_timeout_minutes: int | None = None,
+    touch: bool = True,
+) -> User | None:
     row = session.scalar(select(UserSession).where(UserSession.token == token))
     if row is None:
         return None
+    now = _now()
     expires = row.expires_at
     if expires.tzinfo is None:  # SQLite returns naive; treat stored time as UTC
         expires = expires.replace(tzinfo=datetime.timezone.utc)
-    if expires <= _now():
+    if expires <= now:
         return None
+
+    last = row.last_active_at or row.created_at
+    if last is not None and last.tzinfo is None:
+        last = last.replace(tzinfo=datetime.timezone.utc)
+    if idle_timeout_minutes is not None and last is not None:
+        if now - last > datetime.timedelta(minutes=idle_timeout_minutes):
+            return None
+
+    if touch:
+        row.last_active_at = now
+        session.commit()
     return session.get(User, row.user_id)
 
 
@@ -497,6 +517,12 @@ def revoke_mcp_key(session: Session, user_id: str, key_id: str) -> bool:
         session.commit()
     return True
 
+
+def get_mcp_key(session: Session, user_id: str, key_id: str) -> McpKey | None:
+    """Owned key row by id, or None."""
+    return session.scalar(
+        select(McpKey).where(McpKey.id == key_id, McpKey.user_id == user_id)
+    )
 
 # How stale `last_used_at` may get. A write per tool call would turn a read-only
 # analysis into a stream of UPDATEs; a minute is precise enough for "is this old

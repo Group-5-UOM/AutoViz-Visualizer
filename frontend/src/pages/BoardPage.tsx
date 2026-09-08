@@ -92,6 +92,7 @@ async function widgetsFromDashboard(selected: DashboardResult): Promise<ChartWid
           typeof chartData.chart_spec?.description === 'string'
             ? chartData.chart_spec.description
             : undefined,
+        provenance: chartData.provenance ?? undefined,
         specVersion: 0,
         syncedSpecVersion: 0,
       };
