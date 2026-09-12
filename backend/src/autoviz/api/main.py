@@ -113,8 +113,17 @@ def create_app() -> FastAPI:
     app.include_router(conversations.router, prefix="/conversations", tags=["conversations"])
     app.include_router(agent.router, prefix="/agent", tags=["agent"])
 
+    from sqlalchemy.orm import Session
+    from sqlalchemy import text
+    from autoviz.api.deps import get_db
+    from fastapi import Depends, HTTPException
+    
     @app.get("/health", tags=["meta"])
-    def health() -> dict[str, str]:
+    def health(db: Session = Depends(get_db)) -> dict[str, str]:
+        try:
+            db.execute(text("SELECT 1"))
+        except Exception:
+            raise HTTPException(status_code=503, detail="Database is unreachable")
         return {"status": "ok"}
 
     _mount_remote_mcp(app)
