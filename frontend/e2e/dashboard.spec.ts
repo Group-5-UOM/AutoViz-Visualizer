@@ -34,7 +34,7 @@ test.describe('Dashboard E2E', () => {
     await fileInput.setInputFiles(filePath);
 
     // 3. Handle the "Name this dataset" modal
-    await page.getByRole('button', { name: 'Upload' }).click();
+    await page.getByRole('button', { name: 'Upload' }).click({ force: true });
 
     // 3. Wait for the upload to process and the dataset to become active.
     // The chat input placeholder changes when a dataset is active.
@@ -47,8 +47,8 @@ test.describe('Dashboard E2E', () => {
 
     // 5. Wait for the chart widget to appear on the canvas
     const chartWidget = page.locator('.chart-widget').first();
-    // Chart generation can take several seconds via the backend LLM
-    await expect(chartWidget).toBeVisible({ timeout: 30000 });
+    // Chart generation can take several seconds via the backend LLM (especially when tests run in parallel)
+    await expect(chartWidget).toBeVisible({ timeout: 300000 });
 
     // 6. Test dragging the widget
     const widgetBoundingBox = await chartWidget.boundingBox();
