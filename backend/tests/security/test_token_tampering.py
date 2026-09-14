@@ -27,7 +27,7 @@ def test_expired_token(api_db):
         "sub": "1",
         "exp": datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
     }
-    bad_token = jwt.encode(payload, "secret", algorithm="HS256")
+    bad_token = jwt.encode(payload, "insecure_dummy_test_secret_key_32bytes", algorithm="HS256")
     
     res = client.get("/dashboards", headers={"Authorization": f"Bearer {bad_token}"})
     assert res.status_code == 401

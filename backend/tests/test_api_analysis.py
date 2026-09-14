@@ -18,7 +18,7 @@ def _client_with_iris():
     return TestClient(app), dataset_id
 
 
-def test_health():
+def test_health(api_db):
     client = TestClient(create_app())
     assert client.get("/health").json() == {"status": "ok"}
 

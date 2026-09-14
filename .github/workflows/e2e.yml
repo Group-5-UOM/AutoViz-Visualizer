@@ -31,14 +31,23 @@ jobs:
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps
 
+    - name: Build frontend
+      run: npm run build
+
     - name: Start Docker Compose environment
       working-directory: .
       run: |
+        touch .env
         docker compose -f docker-compose.local.yml up -d --build
-        # Wait for the frontend Nginx router and backend API to become healthy
         echo "Waiting for services to start..."
-        sleep 20
-        # Optional: wait-on could be used here to strictly poll localhost:80
+        for i in {1..30}; do
+          if curl -s -f http://localhost/api/health > /dev/null 2>&1; then
+            echo "Services are up and healthy!"
+            break
+          fi
+          echo "Waiting for backend API & database to be ready... ($i/30)"
+          sleep 2
+        done
 
     - name: Run Playwright tests
       run: npm run test:e2e
