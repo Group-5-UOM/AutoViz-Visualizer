@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileSpreadsheet, Loader2, X } from 'lucide-react';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { shouldInspect, uploadFilename } from '../../lib/uploads';
-import { inspectFile, type SheetInfo } from '../../lib/datasets';
+import { fetchRetentionPolicy, inspectFile, type SheetInfo } from '../../lib/datasets';
 import './SaveDashboardModal.css';
 import './NameUploadModal.css';
 
@@ -30,6 +30,9 @@ export function NameUploadModal({ file, onCancel, onConfirm }: NameUploadModalPr
   const [sheets, setSheets] = useState<SheetInfo[] | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [looking, setLooking] = useState(shouldInspect(file));
+  const [retentionNote, setRetentionNote] = useState(
+    'Datasets are kept for 90 days unless you delete them earlier.',
+  );
   const overlayRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -39,6 +42,18 @@ export function NameUploadModal({ file, onCancel, onConfirm }: NameUploadModalPr
   useFocusTrap(dialogRef, true, inputRef);
   useEffect(() => {
     inputRef.current?.select();
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    fetchRetentionPolicy()
+      .then((policy) => {
+        if (live && policy.message) setRetentionNote(policy.message);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
   }, []);
 
   // Ask what tables are in the file while the user is typing a name — the one
@@ -141,6 +156,9 @@ export function NameUploadModal({ file, onCancel, onConfirm }: NameUploadModalPr
           <p className="save-dashboard-hint">
             This name is saved with the file and shown as the board title
             (AutoViz AI / {trimmed || '…'}).
+          </p>
+          <p className="save-dashboard-hint" role="note">
+            {retentionNote}
           </p>
 
           {looking && (

@@ -23,6 +23,7 @@ export interface AgentChartResult {
   result?: {
     result_table?: Record<string, unknown>[];
     row_count?: number;
+    provenance?: Record<string, unknown>;
   } | null;
   chart_spec?: { type?: string; x?: string; y?: string } | null;
   vega_lite_spec?: Record<string, unknown> | null;

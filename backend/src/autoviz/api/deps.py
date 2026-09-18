@@ -11,6 +11,7 @@ back to a `User` on every protected route.
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
+from autoviz.core.config import settings
 from autoviz.core.database import get_db
 from autoviz.models import User
 from autoviz.services.registry import REGISTRY, DatasetRegistry
@@ -70,7 +71,12 @@ def get_current_user(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
     token = authorization.split(" ", 1)[1]
-    user = repository.get_user_for_token(db, token)
+    user = repository.get_user_for_token(
+        db,
+        token,
+        idle_timeout_minutes=settings.AUTOVIZ_IDLE_TIMEOUT_MINUTES,
+        touch=True,
+    )
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     return user

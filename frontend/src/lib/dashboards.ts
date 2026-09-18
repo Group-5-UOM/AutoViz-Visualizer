@@ -80,7 +80,7 @@ export async function getChart(chartId: string): Promise<SavedChartResult> {
  */
 export async function updateChart(
   chartId: string,
-  fields: Partial<Pick<SaveChartPayload, 'name' | 'vega_lite_spec' | 'chart_spec'>>
+  fields: Partial<Pick<SaveChartPayload, 'name' | 'vega_lite_spec' | 'chart_spec' | 'provenance'>>
 ): Promise<SavedChartResult> {
   return apiRequest<SavedChartResult>(`/charts/${chartId}`, {
     method: 'PUT',

@@ -17,6 +17,7 @@ import json
 import logging
 import sys
 import time
+from contextvars import ContextVar
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Callable
@@ -26,9 +27,20 @@ from autoviz.errors import is_failure
 LOGGER_NAME = "autoviz.observability"
 _logger = logging.getLogger(LOGGER_NAME)
 
+# Correlation id for the current HTTP (or MCP) request (FR-192).
+_request_id: ContextVar[str | None] = ContextVar("autoviz_request_id", default=None)
+
 # observability.py is at backend/src/autoviz/observability.py -> parents[2] = backend/
 LOG_DIR = Path(__file__).resolve().parents[2] / "logs"
 LOG_FILE = LOG_DIR / "autoviz.log"
+
+
+def set_request_id(request_id: str | None) -> None:
+    _request_id.set(request_id)
+
+
+def get_request_id() -> str | None:
+    return _request_id.get()
 
 
 def configure_logging(level: int = logging.INFO) -> None:
@@ -114,23 +126,27 @@ def log_event(event: str, **fields: Any) -> None:
     log stays free of user cell contents (same discipline as `observed`).
     """
     try:
-        _logger.info(json.dumps({"event": event, **fields}, default=str))
+        rid = get_request_id()
+        payload = {"event": event, **fields}
+        if rid:
+            payload["request_id"] = rid
+        _logger.info(json.dumps(payload, default=str))
     except Exception:  # logging must never break the workflow
         pass
 
 
 def _record(fn: Callable, args: tuple, kwargs: dict, started: float, result: Any, outcome: dict) -> None:
-    _logger.info(
-        json.dumps(
-            {
-                "tool": fn.__name__,
-                "input_hash": _input_hash(args, kwargs),
-                "ms": round((time.perf_counter() - started) * 1000, 2),
-                "out_bytes": _output_size(result),
-                **outcome,
-            }
-        )
-    )
+    payload = {
+        "tool": fn.__name__,
+        "input_hash": _input_hash(args, kwargs),
+        "ms": round((time.perf_counter() - started) * 1000, 2),
+        "out_bytes": _output_size(result),
+        **outcome,
+    }
+    rid = get_request_id()
+    if rid:
+        payload["request_id"] = rid
+    _logger.info(json.dumps(payload))
 
 
 def observed(fn: Callable) -> Callable:

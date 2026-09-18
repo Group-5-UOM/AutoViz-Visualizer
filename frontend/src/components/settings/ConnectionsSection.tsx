@@ -4,6 +4,7 @@ import { ApiError } from '../../lib/api';
 import {
   createMcpKey,
   listMcpKeys,
+  reissueMcpKey,
   revokeMcpKey,
   type McpKey,
   type McpKeyCreated,
@@ -71,6 +72,9 @@ export function ConnectionsSection() {
   const [minted, setMinted] = useState<McpKeyCreated | null>(null);
   const [snippet, setSnippet] = useState(MCP_SNIPPETS[0].id);
   const [pendingRevoke, setPendingRevoke] = useState<McpKey | null>(null);
+  const [pendingReissue, setPendingReissue] = useState<McpKey | null>(null);
+  const [reissuePassword, setReissuePassword] = useState('');
+  const [reissuing, setReissuing] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -112,6 +116,23 @@ export function ConnectionsSection() {
       await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not revoke that connection.');
+    }
+  };
+
+  const handleReissue = async () => {
+    if (!pendingReissue) return;
+    setReissuing(true);
+    setError('');
+    try {
+      const created = await reissueMcpKey(pendingReissue.id, reissuePassword);
+      setMinted(created);
+      setPendingReissue(null);
+      setReissuePassword('');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not rotate that connection.');
+    } finally {
+      setReissuing(false);
     }
   };
 
@@ -219,15 +240,28 @@ export function ConnectionsSection() {
                 {k.expires_at ? ` · expires ${formatDate(k.expires_at)}` : ''}
               </span>
             </div>
-            <button
-              type="button"
-              className="conn-revoke"
-              onClick={() => setPendingRevoke(k)}
-              aria-label={`Revoke ${k.label || 'this connection'}`}
-            >
-              <Trash2 size={15} aria-hidden="true" />
-              Revoke
-            </button>
+            <div className="conn-row-actions">
+              <button
+                type="button"
+                className="conn-revoke"
+                onClick={() => {
+                  setPendingReissue(k);
+                  setReissuePassword('');
+                }}
+                aria-label={`Rotate ${k.label || 'this connection'}`}
+              >
+                Rotate
+              </button>
+              <button
+                type="button"
+                className="conn-revoke"
+                onClick={() => setPendingRevoke(k)}
+                aria-label={`Revoke ${k.label || 'this connection'}`}
+              >
+                <Trash2 size={15} aria-hidden="true" />
+                Revoke
+              </button>
+            </div>
           </div>
         ))}
         {revoked.length > 0 && (
@@ -242,6 +276,36 @@ export function ConnectionsSection() {
           </details>
         )}
       </div>
+
+      {pendingReissue && (
+        <ConfirmDialog
+          title="Rotate this connection?"
+          body={
+            <>
+              <p>
+                <strong>{pendingReissue.label || 'This connection'}</strong> will be revoked and
+                replaced. Enter your AutoViz password to continue.
+              </p>
+              <label className="set-field" style={{ marginTop: 12 }}>
+                <span>Password</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={reissuePassword}
+                  onChange={(e) => setReissuePassword(e.target.value)}
+                />
+              </label>
+            </>
+          }
+          confirmLabel={reissuing ? 'Rotating…' : 'Rotate'}
+          destructive
+          onConfirm={() => void handleReissue()}
+          onCancel={() => {
+            setPendingReissue(null);
+            setReissuePassword('');
+          }}
+        />
+      )}
 
       {pendingRevoke && (
         <ConfirmDialog

@@ -187,6 +187,9 @@ class Provenance(_Strict):
     # dataset when the source was itself a cleaned copy.
     cleaning: dict[str, Any] = {}
     sql: str
+    # Planner identity that produced the analysis plan for this chart (FR-146).
+    model_provider: str | None = None
+    model_id: str | None = None
 
 
 class ExecuteAnalysisOutput(_Strict):

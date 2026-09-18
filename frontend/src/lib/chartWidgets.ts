@@ -130,6 +130,7 @@ export function applyAgentCharts(
       vegaLiteSpec: chart.vega_lite_spec as Record<string, unknown>,
       chartType: typeof chart.chart_spec?.type === 'string' ? chart.chart_spec.type : widget.chartType,
       plan: chart.plan ?? widget.plan ?? null,
+      provenance: chart.result?.provenance ?? widget.provenance ?? null,
       // The spec changed under a widget that may already be saved, which is the
       // one thing autosave cannot see for itself.
       specVersion: (widget.specVersion ?? 0) + 1,
@@ -144,6 +145,7 @@ export function applyAgentCharts(
     description: descriptionFor(chart),
     chartType: typeof chart.chart_spec?.type === 'string' ? chart.chart_spec.type : undefined,
     plan: chart.plan ?? null,
+    provenance: chart.result?.provenance ?? null,
     // The backend already sizes specs with width/height "container", so the
     // spec reflows with the widget instead of needing a re-embed.
     vegaLiteSpec: chart.vega_lite_spec as Record<string, unknown>,

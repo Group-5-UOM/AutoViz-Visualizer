@@ -54,11 +54,36 @@ export async function completeOAuthRegister(pendingToken: string, username: stri
   return data;
 }
 
-export async function setAccountPassword(password: string, confirmPassword: string) {
-  return apiRequest<{ password_set: boolean }>('/auth/password', {
+export async function setAccountPassword(
+  password: string,
+  confirmPassword: string,
+  currentPassword?: string,
+) {
+  const data = await apiRequest<{
+    password_set: boolean;
+    access_token?: string;
+    email?: string;
+    username?: string;
+  }>('/auth/password', {
     method: 'POST',
-    body: { password, confirm_password: confirmPassword },
+    body: {
+      password,
+      confirm_password: confirmPassword,
+      ...(currentPassword ? { current_password: currentPassword } : {}),
+    },
   });
+  if (data.access_token && data.email) {
+    setSession(data.email, data.access_token, data.username);
+  }
+  return data;
+}
+
+export async function deleteAccount(password: string) {
+  await apiRequest<void>('/auth/me', {
+    method: 'DELETE',
+    body: { password },
+  });
+  clearSession();
 }
 
 export async function requestPasswordReset(email: string) {
@@ -146,5 +171,12 @@ export async function createMcpKey(
 export async function revokeMcpKey(keyId: string) {
   return apiRequest<void>(`/auth/mcp-keys/${encodeURIComponent(keyId)}`, {
     method: 'DELETE',
+  });
+}
+
+export async function reissueMcpKey(keyId: string, password: string, expiresInDays: number | null = 90) {
+  return apiRequest<McpKeyCreated>(`/auth/mcp-keys/${encodeURIComponent(keyId)}/reissue`, {
+    method: 'POST',
+    body: { password, expires_in_days: expiresInDays },
   });
 }

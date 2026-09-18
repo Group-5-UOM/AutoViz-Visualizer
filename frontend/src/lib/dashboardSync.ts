@@ -99,6 +99,7 @@ async function ensureCharts(
         vega_lite_spec: widget.vegaLiteSpec,
         dataset_id: datasetId,
         chart_spec: chartSpecOf(widget),
+        provenance: widget.provenance ?? null,
       });
       newChartIds[widget.id] = saved.id;
       syncedSpecVersions[widget.id] = version;
@@ -107,6 +108,7 @@ async function ensureCharts(
         name: widget.title,
         vega_lite_spec: widget.vegaLiteSpec,
         chart_spec: chartSpecOf(widget),
+        provenance: widget.provenance ?? null,
       });
       syncedSpecVersions[widget.id] = version;
     }

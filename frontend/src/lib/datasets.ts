@@ -62,10 +62,26 @@ export interface DatasetMetadata {
   row_count: number;
   column_count: number;
   created_at: string;
+  retention_days?: number;
+  expires_at?: string | null;
+  days_remaining?: number | null;
+  expired?: boolean;
 }
 
-export async function listDatasets(): Promise<{ datasets: DatasetMetadata[] }> {
-  return apiRequest<{ datasets: DatasetMetadata[] }>('/datasets', {
+export async function listDatasets(): Promise<{
+  datasets: DatasetMetadata[];
+  retention_days?: number;
+}> {
+  return apiRequest<{ datasets: DatasetMetadata[]; retention_days?: number }>('/datasets', {
+    method: 'GET',
+  });
+}
+
+export async function fetchRetentionPolicy(): Promise<{
+  retention_days: number;
+  message: string;
+}> {
+  return apiRequest<{ retention_days: number; message: string }>('/datasets/retention', {
     method: 'GET',
   });
 }

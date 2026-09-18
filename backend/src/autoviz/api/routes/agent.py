@@ -21,9 +21,12 @@ restart) is re-registered from its stored file instead of 404-ing mid-conversati
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from autoviz import observability
 from autoviz.api.deps import get_agent, get_current_user, get_db, get_registry
 from autoviz.api.errors import respond
+from autoviz.api.rate_limit import is_rate_limited
 from autoviz.api.schemas import AnalyzeRequest, ClarificationRequest
+from autoviz.core.config import settings
 from autoviz.models import User
 from autoviz.services.registry import DatasetRegistry
 from autoviz.storage import repository
@@ -39,6 +42,24 @@ def _require_owned(db: Session, registry: DatasetRegistry, dataset_id: str, user
         raise HTTPException(status_code=status, detail=error["error"])
 
 
+def _enforce_llm_budget(user: User) -> None:
+    """Per-user planner budget (FR-81). Preview/dashboards stay available."""
+    limited = is_rate_limited(
+        f"llm:{user.id}",
+        limit=settings.AUTOVIZ_LLM_RATE_LIMIT,
+        window_s=settings.AUTOVIZ_LLM_RATE_WINDOW_S,
+    )
+    if limited:
+        observability.log_event("llm_rate_limited", user_id=user.id)
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "You have reached the analysis request limit for now. "
+                "Try again later — your datasets and dashboards are still available."
+            ),
+        )
+
+
 @router.post("/analyze")
 def analyze(
     body: AnalyzeRequest,
@@ -47,6 +68,7 @@ def analyze(
     registry: DatasetRegistry = Depends(get_registry),
     agent=Depends(get_agent),
 ):
+    _enforce_llm_budget(user)
     if body.dataset_id is not None:
         _require_owned(db, registry, body.dataset_id, user)
     return respond(
@@ -67,4 +89,5 @@ def answer(
     user: User = Depends(get_current_user),
     agent=Depends(get_agent),
 ):
+    _enforce_llm_budget(user)
     return respond(agent.resume(body.thread_id, body.answer, body.interrupt_id))

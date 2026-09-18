@@ -27,12 +27,12 @@ forgotten link is still live, and it is not worth an `UPDATE` per tool call.
 
 from __future__ import annotations
 
-import time
 from typing import Any, Awaitable, Callable
 
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from autoviz import observability
+from autoviz.api.rate_limit import is_rate_limited
 from autoviz.mcp.context import McpCaller, caller_scope
 
 # Requests per key per window. Generous for a human driving a chat client, tight
@@ -42,20 +42,11 @@ from autoviz.mcp.context import McpCaller, caller_scope
 RATE_LIMIT_REQUESTS = 120
 RATE_LIMIT_WINDOW_S = 60.0
 
-# key_id -> [timestamps]. Process-local and therefore per-worker: an approximate
-# ceiling, not a quota. A real limiter belongs in nginx or Redis; this exists so
-# the endpoint is never completely ungoverned.
-_hits: dict[str, list[float]] = {}
-
 
 def _rate_limited(key_id: str) -> bool:
-    now = time.monotonic()
-    window = _hits.setdefault(key_id, [])
-    window[:] = [t for t in window if now - t < RATE_LIMIT_WINDOW_S]
-    if len(window) >= RATE_LIMIT_REQUESTS:
-        return True
-    window.append(now)
-    return False
+    return is_rate_limited(
+        f"mcp:{key_id}", limit=RATE_LIMIT_REQUESTS, window_s=RATE_LIMIT_WINDOW_S
+    )
 
 
 async def _send_error(send: Send, status: int, message: str) -> None:

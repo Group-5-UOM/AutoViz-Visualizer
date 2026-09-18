@@ -15,6 +15,7 @@ Ownership is enforced on every id: a caller can only see/act on their own
 datasets (403 otherwise, 404 for an unknown id).
 """
 
+import datetime
 import json
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -23,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from autoviz.api.deps import get_current_user, get_db, get_registry
 from autoviz.api.errors import respond
+from autoviz.core.config import settings
 from autoviz.errors import FILE_ERROR, RESOURCE_LIMIT, make_error
 from autoviz.models import User
 from autoviz.services import dataset as dataset_service
@@ -240,17 +242,48 @@ def register(
 
 @router.get("")
 def list_datasets(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return {
-        "datasets": [
+    retention_days = settings.AUTOVIZ_DATASET_RETENTION_DAYS
+    now = datetime.datetime.now(datetime.timezone.utc)
+    datasets = []
+    for m in repository.list_dataset_meta(db, user.id):
+        created = m.created_at
+        if created is not None and created.tzinfo is None:
+            created = created.replace(tzinfo=datetime.timezone.utc)
+        expires_at = None
+        days_remaining = None
+        expired = False
+        if created is not None and retention_days > 0:
+            expires_at = created + datetime.timedelta(days=retention_days)
+            days_remaining = max(0, (expires_at.date() - now.date()).days)
+            expired = now >= expires_at
+        datasets.append(
             {
                 "dataset_id": m.dataset_id,
                 "logical_name": m.filename,
                 "row_count": m.row_count,
                 "column_count": m.column_count,
-                "created_at": m.created_at.isoformat(),
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+                "retention_days": retention_days,
+                "expires_at": expires_at.isoformat() if expires_at else None,
+                "days_remaining": days_remaining,
+                "expired": expired,
             }
-            for m in repository.list_dataset_meta(db, user.id)
-        ]
+        )
+    return {
+        "retention_days": retention_days,
+        "datasets": datasets,
+    }
+
+
+@router.get("/retention")
+def dataset_retention_policy(user: User = Depends(get_current_user)):
+    """Public-to-user retention notice payload (FR-35)."""
+    return {
+        "retention_days": settings.AUTOVIZ_DATASET_RETENTION_DAYS,
+        "message": (
+            f"Datasets are kept for {settings.AUTOVIZ_DATASET_RETENTION_DAYS} days "
+            "unless you delete them earlier."
+        ),
     }
 
 

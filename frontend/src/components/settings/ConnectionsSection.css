@@ -163,6 +163,13 @@
   color: var(--text-secondary, #6b7280);
 }
 
+.conn-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
 .conn-revoke {
   display: inline-flex;
   align-items: center;
