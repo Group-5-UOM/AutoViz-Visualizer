@@ -37,6 +37,7 @@ dev = [
     "pytest>=8.0",
     "httpx2>=2.9.0",
     "httpx>=0.28",
+    "locust>=2.30",
 ]
 
 [build-system]

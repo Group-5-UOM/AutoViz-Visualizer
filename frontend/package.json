@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test \"tests/**/*.test.ts\"",
+    "test:e2e": "playwright test",
     "preview": "vite preview",
     "verify:specs": "node scripts/verify-specs.mjs",
     "verify:markdown": "node scripts/verify-markdown.mjs"
@@ -27,6 +28,7 @@
     "vega-lite": "^6.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
