@@ -14,7 +14,8 @@ cd backend
 
 uv run python -m bench.perf                 # latency, memory, ceilings          ~5 min
 uv run python -m bench.perf --quick         # small scales, fewer repeats        ~1 min
-uv run python -m bench.nl_run               # 39 NL prompts, live planner        ~6 min
+uv run python -m bench.nl_run               # all 100 NL prompts, live planner   ~15 min
+uv run python -m bench.nl_run --suite v1    # the original 39, to reproduce a published number
 uv run python -m bench.nl_run --only T01,W03 # one or two cases while iterating
 uv run python -m bench.chart_quality        # type / spec / legibility           instant
 uv run python -m bench.ambiguity_run --detectors-only   # 58 labelled prompts, no LLM  instant
@@ -35,7 +36,7 @@ repeat counts that produced it.
 | `gen.py` | The synthetic table — one seeded 11-column schema at 1k…1M rows, so a latency curve measures size and nothing else |
 | `plans.py` | Ten real `analysis_plan`s chosen to separate costs a single "query latency" would blend: scan, filter, 1-key and 2-key grouping, high-cardinality output, holistic aggregates, a computed key, a full ranking, and a cleaning block |
 | `perf.py` | Ingest, query, per-query overhead decomposition, the Arrow-vs-pandas A/B on `execute_analysis` itself, memory, result delivery, chart building, the end-to-end pipeline, join headroom, and the shipped ceilings |
-| `nl_suite.py` | **The frozen 39-prompt benchmark.** Freezing it matters more than growing it |
+| `nl_suite.py` | **The frozen 100-prompt benchmark** over six tables: v1, the original 39, plus v2, 61 added on 2026-09-25 because v1 had saturated (39/39). Freezing it matters more than growing it, so v2 was appended and no v1 case was touched |
 | `nl_run.py` | Runs the suite against the live agent and scores it — five outcomes, never one averaged accuracy. Also wraps `planner.compose` to capture the **raw** prose before the grounding guard can replace it, which is the only way to measure how often the composer had to be overruled (`answers_ungrounded`) |
 | `ambiguity_suite.py` | **The labelled ambiguity set** — 30 prompts that should be questioned, 28 that should not. The second half is the load-bearing one: over-asking is what a broader detector costs, and only the negatives can price it |
 | `ambiguity_run.py` | Scores that set at either layer. Reports recall and over-ask together, since either alone is trivial to max out, plus three properties a raw ask/don't-ask count cannot see: options grounded in real columns, answers that bind to a plan slot, and asking about the right slot |
@@ -47,6 +48,20 @@ repeat counts that produced it.
 **The NL suite is a held-out set.** Add cases; never remove or weaken one because it fails.
 A benchmark edited when a result disappoints measures nothing, and this is the set the planner
 fine-tune in `AutoViz-Planner-Model` will be judged against.
+
+Numbers published before 2026-09-25 are over v1 only. Reproduce them with `--suite v1`, and never
+put a v1 number beside an all-100 number in the same table: `meta.suite` in every result file
+says which one it is. `tests/test_nl_suite.py` pins v1 by hash, so an edit to one of the 39 fails CI.
+
+A new case has two more gates. It must not paraphrase a row of the planner's training corpus —
+check it with `generation/leakage.py`'s lexical net, because a fine-tune trained before the case
+existed cannot be un-trained. And it needs a reference plan in `tests/test_nl_suite.py`: the real
+agent, driven by a scripted planner that returns that plan, must score `correct`. That gate earned
+its place on its first run — nine v2 cases failed it because the deterministic ambiguity detectors
+asked before any planner ran, so every arm would have scored them `over_asked`. The detectors were
+fixed, not the prompts; `ambiguity_run --detectors-only` was unchanged by the fix (17/17
+detector-reachable recall, 0/28 over-ask). A case a detector still wrongly stops goes in
+`KNOWN_DETECTOR_OVERASKS` there, as a strict xfail, never into a reworded prompt.
 
 The same holds for `ambiguity_suite`, with one addition: `expect` is held-out, but `reachable`
 is a *prediction* about which layer can decide a case, and correcting it against evidence is
