@@ -200,6 +200,48 @@ def _apply_typography(spec: dict[str, Any], style: ChartStyle) -> None:
         config.pop("title", None)
 
 
+# Where `apply` parks the config as it stood before the user's raw config went on
+# top. `usermeta` is Vega-Lite's slot for data the renderer ignores.
+_CONFIG_BASE = "autovizConfigBase"
+
+
+def _deep_merge(target: dict[str, Any], overlay: dict[str, Any]) -> None:
+    """Lay `overlay` over `target` in place. Objects merge, anything else replaces,
+    and a null removes the key — back to Vega-Lite's own default."""
+    for key, value in overlay.items():
+        if value is None:
+            target.pop(key, None)
+        elif isinstance(value, dict) and isinstance(target.get(key), dict):
+            _deep_merge(target[key], value)
+        else:
+            target[key] = copy.deepcopy(value)
+
+
+def _restore_config_base(spec: dict[str, Any]) -> None:
+    """Undo the raw-config overlay a previous `apply` put on this spec.
+
+    Unlike the fields above, a hand-written config can touch any key, so there is
+    no single key to delete on revert. Instead `_apply_raw_config` snapshots the
+    config it overlays; restoring that snapshot first is what keeps this module
+    total — removing a line from the editor really does remove it from the chart.
+    """
+    usermeta = spec.get("usermeta")
+    if not isinstance(usermeta, dict) or _CONFIG_BASE not in usermeta:
+        return
+    spec["config"] = usermeta.pop(_CONFIG_BASE)
+    if not usermeta:
+        spec.pop("usermeta")
+
+
+def _apply_raw_config(spec: dict[str, Any], style: ChartStyle) -> None:
+    """The user's own Vega-Lite config, last so it wins over everything else."""
+    if not style.config:
+        return
+    config = spec.setdefault("config", {})
+    spec.setdefault("usermeta", {})[_CONFIG_BASE] = copy.deepcopy(config)
+    _deep_merge(config, style.config)
+
+
 def apply(spec: dict[str, Any], style: ChartStyle) -> dict[str, Any]:
     """A copy of `spec` with the user's overrides on it.
 
@@ -207,6 +249,7 @@ def apply(spec: dict[str, Any], style: ChartStyle) -> dict[str, Any]:
     block is the thing that is stateful, not the render.
     """
     styled = copy.deepcopy(spec)
+    _restore_config_base(styled)
     layer = primary_layer(styled)
 
     _apply_title(styled, style)
@@ -215,6 +258,7 @@ def apply(spec: dict[str, Any], style: ChartStyle) -> dict[str, Any]:
     _apply_colors(styled, layer, style)
     _apply_legend(layer, style)
     _apply_typography(styled, style)
+    _apply_raw_config(styled, style)
     return styled
 
 

@@ -179,6 +179,126 @@ function ColorField({
   );
 }
 
+/** What the advanced editor shows for a block with no raw config yet. */
+const CONFIG_EXAMPLE = `{
+  "axis": { "gridDash": [4, 2], "labelAngle": 0 },
+  "bar": { "cornerRadiusEnd": 4 },
+  "background": "#fbfbfd"
+}`;
+
+function formatConfig(config: Record<string, unknown> | null | undefined): string {
+  return config && Object.keys(config).length > 0 ? JSON.stringify(config, null, 2) : '';
+}
+
+/**
+ * A raw Vega-Lite `config` for the long tail the controls above do not cover.
+ *
+ * `config` rather than the whole spec on purpose: it holds appearance and
+ * nothing else, so no edit here can change a number, and the editor never has
+ * to show the inlined result rows. The backend refuses expressions, signals and
+ * URLs; the JSON syntax is checked here so a typo never costs a round trip.
+ */
+function AdvancedConfig({
+  value,
+  busy,
+  onApply,
+}: {
+  value: Record<string, unknown> | null | undefined;
+  busy: boolean;
+  onApply: (config: Record<string, unknown> | null) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(Boolean(value && Object.keys(value).length));
+  const [text, setText] = useState(formatConfig(value));
+  const [syntaxError, setSyntaxError] = useState<string | null>(null);
+
+  useEffect(() => setText(formatConfig(value)), [value]);
+
+  const apply = () => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      setSyntaxError(null);
+      void onApply(null);
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch (err) {
+      setSyntaxError(err instanceof Error ? err.message : 'Not valid JSON.');
+      return;
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      setSyntaxError('The config must be a JSON object, like { "axis": { … } }.');
+      return;
+    }
+    setSyntaxError(null);
+    void onApply(Object.keys(parsed).length ? (parsed as Record<string, unknown>) : null);
+  };
+
+  const dirty = text.trim() !== formatConfig(value).trim();
+
+  return (
+    <details
+      className="style-advanced"
+      open={open}
+      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary>Advanced: Vega-Lite config</summary>
+      <p className="style-advanced-hint">
+        Any{' '}
+        <a
+          href="https://vega.github.io/vega-lite/docs/config.html"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Vega-Lite config
+        </a>{' '}
+        property — gridlines, corner radius, label angle, background. Applied last, so it
+        overrides the options above. <code>null</code> removes a default.
+      </p>
+      <textarea
+        className="style-advanced-editor"
+        value={text}
+        spellCheck={false}
+        disabled={busy}
+        rows={10}
+        placeholder={CONFIG_EXAMPLE}
+        aria-label="Vega-Lite config JSON"
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          // The canvas listens for keys (delete a selected chart, Escape); none
+          // of that should fire while someone is typing JSON.
+          e.stopPropagation();
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) apply();
+        }}
+      />
+      {syntaxError && (
+        <p className="style-error" role="alert">
+          {syntaxError}
+        </p>
+      )}
+      <div className="style-advanced-actions">
+        <button type="button" disabled={busy || !dirty} onClick={apply}>
+          Apply
+        </button>
+        {value && (
+          <button
+            type="button"
+            className="style-reset"
+            disabled={busy}
+            onClick={() => {
+              setSyntaxError(null);
+              void onApply(null);
+            }}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    </details>
+  );
+}
+
 export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) {
   const style = widget.style ?? {};
   const series = specSeries(widget.vegaLiteSpec);
@@ -353,6 +473,12 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
             onChange={(hex) => patch({ mark_color: hex })}
           />
         )}
+
+        <AdvancedConfig
+          value={style.config}
+          busy={busy}
+          onApply={(config) => patch({ config })}
+        />
       </div>
     </section>
   );

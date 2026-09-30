@@ -22,9 +22,11 @@ colour-vision separation: the theme's own palette carries those guarantees, and 
 colour the user chose deliberately is the user's call to make.
 """
 
-from typing import Annotated, Literal
+import json
+import re
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 # #rgb or #rrggbb. Vega-Lite also accepts named CSS colours, but a free-text
 # colour field is a place for a planner to hallucinate something unrenderable —
@@ -50,6 +52,72 @@ FontFamily = Literal["sans", "system", "serif", "mono"]
 # the base keep their offset from it, so the whole scale moves together.
 MIN_FONT_SIZE = 8
 MAX_FONT_SIZE = 28
+
+# --- raw Vega-Lite config -----------------------------------------------------
+#
+# The fields above are the easy 80%. Everything else Vega-Lite can say about how
+# a chart looks — gridlines, corner radius, label angle, background — lives in
+# its top-level `config`, and a technical user may write that object by hand.
+#
+# `config` is chosen because it holds presentation and nothing else: no data, no
+# encoding, no transform. A hand edit there cannot change a number. But it is
+# still rendered in *other people's* browsers on a shared board, so the object is
+# checked for the few places where Vega-Lite reaches beyond styling.
+
+# Top-level keys a user may set: the Vega-Lite `Config` properties that describe
+# appearance. Absent on purpose: `customFormatTypes` (routes formatting through
+# registered code), `params`/`selection` (interaction, not look), `image` (its
+# mark config carries a `url`), `projection`/`locale` (not appearance).
+_CONFIG_KEYS = frozenset(
+    {
+        "arc", "area", "aria", "autosize", "background", "bar", "boxplot",
+        "circle", "concat", "countTitle", "errorband", "errorbar", "facet",
+        "font", "geoshape", "legend", "line", "lineBreak", "mark",
+        "normalizedNumberFormat", "numberFormat", "padding", "point", "range",
+        "rect", "rule", "scale", "square", "style", "text", "tick",
+        "timeFormat", "title", "tooltipFormat", "trail", "view",
+    }
+)
+# The axis* and header* families are open-ended (axisX, axisYBand, headerRow…).
+_CONFIG_KEY_FAMILIES = re.compile(r"^(axis|header)[A-Za-z]*$")
+
+# Keys refused at any depth. `expr`/`signal` and any `*Expr` (labelExpr, …) are
+# Vega expressions — a language, and one with a history of sandbox escapes.
+# `url`/`href` make a viewer's browser fetch or link somewhere. `test`/
+# `condition` carry predicates, which are expressions again.
+_FORBIDDEN_KEYS = frozenset({"expr", "signal", "url", "href", "test", "condition"})
+
+# A style override, not a stylesheet. Bounded for the same reason as the colour
+# maps: it is stored in chart_spec and shipped with every dashboard load.
+MAX_CONFIG_BYTES = 16_000
+MAX_CONFIG_DEPTH = 8
+
+
+def _check_config_value(value: Any, path: str, depth: int) -> None:
+    if depth > MAX_CONFIG_DEPTH:
+        raise ValueError(f"config is nested too deeply at {path}")
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            if key in _FORBIDDEN_KEYS or key.endswith("Expr"):
+                raise ValueError(
+                    f"config.{path}{key} is not allowed: expressions, signals and "
+                    "links cannot be set here"
+                )
+            _check_config_value(inner, f"{path}{key}.", depth + 1)
+    elif isinstance(value, list):
+        for i, inner in enumerate(value):
+            _check_config_value(inner, f"{path}{i}.", depth + 1)
+
+
+def validate_vega_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Refuse a config that does more than describe appearance."""
+    if len(json.dumps(config)) > MAX_CONFIG_BYTES:
+        raise ValueError(f"config is larger than {MAX_CONFIG_BYTES:,} bytes")
+    for key, value in config.items():
+        if key not in _CONFIG_KEYS and not _CONFIG_KEY_FAMILIES.match(key):
+            raise ValueError(f"config.{key} is not a styling option that can be set here")
+        _check_config_value({key: value}, "", 0)
+    return config
 
 
 class ChartStyle(BaseModel):
@@ -81,6 +149,15 @@ class ChartStyle(BaseModel):
     font: FontFamily | None = None
     # The tick-label size; the rest of the scale shifts with it.
     font_size: int | None = Field(default=None, ge=MIN_FONT_SIZE, le=MAX_FONT_SIZE)
+    # A raw Vega-Lite `config` object, applied last so it wins over the theme and
+    # over the fields above. Written by hand in the style panel's advanced
+    # editor; the natural-language path never authors it.
+    config: dict[str, Any] | None = None
+
+    @field_validator("config")
+    @classmethod
+    def _config_is_presentation_only(cls, value: dict[str, Any] | None):
+        return None if value is None else validate_vega_config(value)
 
     def merged_with(self, patch: "ChartStyle") -> "ChartStyle":
         """This block with `patch` laid over it.

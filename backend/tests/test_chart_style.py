@@ -242,3 +242,79 @@ def test_context_for_names_the_series_a_user_can_talk_about():
 
     plain = context_for(_bar())
     assert plain["has_color_scale"] is False
+
+
+# --- raw Vega-Lite config ------------------------------------------------------
+
+
+def test_raw_config_lands_last_and_wins_over_the_theme():
+    styled = apply(
+        _bar(),
+        ChartStyle(
+            font="mono",
+            config={"axis": {"gridDash": [4, 2]}, "bar": {"cornerRadiusEnd": 4}, "font": "Georgia"},
+        ),
+    )
+    assert styled["config"]["axis"]["gridDash"] == [4, 2]
+    assert styled["config"]["bar"]["cornerRadiusEnd"] == 4
+    # Last writer: the hand-written font beats the panel's font choice.
+    assert styled["config"]["font"] == "Georgia"
+    # Merged, not replaced — the theme's other axis settings are still there.
+    assert styled["config"]["axis"]["labelFontSize"] == THEME["axis"]["labelFontSize"]
+
+
+def test_raw_config_null_removes_a_theme_key():
+    styled = apply(_bar(), ChartStyle(config={"axis": {"labelFontSize": None}}))
+    assert "labelFontSize" not in styled["config"]["axis"]
+
+
+def test_raw_config_is_idempotent_and_revertible():
+    """Removing a line from the editor removes it from the chart, even though
+    the spec sent next time is the already-styled one."""
+    base = _bar()
+    style = ChartStyle(config={"axis": {"gridDash": [4, 2]}, "background": "#fafafa"})
+    once = apply(base, style)
+    assert apply(once, style) == once
+
+    reverted = apply(once, ChartStyle())
+    assert reverted == apply(base, ChartStyle())
+    assert "gridDash" not in reverted["config"]["axis"]
+    assert "usermeta" not in reverted
+
+    edited = apply(once, ChartStyle(config={"background": "#000000"}))
+    assert edited == apply(base, ChartStyle(config={"background": "#000000"}))
+
+
+def test_raw_config_never_touches_data_or_encoding():
+    base = _bar()
+    styled = apply(base, ChartStyle(config={"mark": {"opacity": 0.5}}))
+    assert styled["data"] == base["data"]
+    assert primary_layer(styled)["encoding"] == primary_layer(base)["encoding"]
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"axis": {"labelExpr": "datum.value"}},
+        {"mark": {"color": {"expr": "'red'"}}},
+        {"mark": {"href": "https://example.com"}},
+        {"background": {"signal": "x"}},
+        {"image": {"url": "https://example.com/a.png"}},
+        {"customFormatTypes": True},
+        {"params": [{"name": "p", "value": 1}]},
+        {"datasets": {"x": []}},
+        {"range": {"category": [{"expr": "1"}]}},
+    ],
+)
+def test_raw_config_refuses_anything_beyond_appearance(config):
+    with pytest.raises(ValidationError):
+        ChartStyle(config=config)
+
+
+def test_raw_config_accepts_axis_and_header_families():
+    ChartStyle(config={"axisX": {"labelAngle": -45}, "axisYBand": {"grid": False}, "headerRow": {}})
+
+
+def test_raw_config_is_size_bounded():
+    with pytest.raises(ValidationError):
+        ChartStyle(config={"title": {"subtitleColor": "#000", "x": "a" * 20_000}})
