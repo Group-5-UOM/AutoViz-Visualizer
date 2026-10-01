@@ -133,6 +133,101 @@ def test_metric_options_are_capped():
     assert len(amb.options) == 6
 
 
+# --- implied measures (regression, found by bench/nl_suite v2) -----------------
+#
+# Four answerable v2 prompts were stopped to ask "which measure should rank
+# them?" before any planner ran, so every arm scored them over-asked. Each named
+# its measure in a way the full-name match could not see.
+
+TIPS = [
+    {"name": "total_bill", "type": "number"},
+    {"name": "tip", "type": "number"},
+    {"name": "size", "type": "number"},
+    {"name": "day", "type": "string"},
+]
+MPG = [
+    {"name": "mpg", "type": "number"},
+    {"name": "horsepower", "type": "number"},
+    {"name": "weight", "type": "number"},
+    {"name": "origin", "type": "string"},
+    {"name": "name", "type": "string"},
+]
+PENGUINS = [
+    {"name": "species", "type": "string"},
+    {"name": "bill_length_mm", "type": "number"},
+    {"name": "bill_depth_mm", "type": "number"},
+    {"name": "flipper_length_mm", "type": "number"},
+    {"name": "body_mass_g", "type": "number"},
+]
+
+
+def _metric(request, schema):
+    return [a for a in _detect(request, schema) if a.type == "missing_metric"]
+
+
+def test_part_of_a_column_name_names_the_measure():
+    # `total_bill` is the only bill: "largest bill" is not missing a measure.
+    assert _metric("What is the largest bill recorded on each day?", TIPS) == []
+
+
+def test_a_superlative_can_carry_its_own_measure():
+    assert _metric("Top 5 heaviest cars.", MPG) == []
+
+
+def test_an_implied_measure_two_columns_share_still_asks():
+    # "longest" is a length, and there are two lengths — that is a real question.
+    assert _metric("the top 3 longest penguins", PENGUINS)
+
+
+def test_most_common_ranks_by_count():
+    assert _metric("What is the most common weather type?", WEATHER) == []
+
+
+def test_most_before_a_plural_noun_ranks_by_count(registry, titanic_id):
+    # "first" is a value of `class` and "class" a column, so the phrase is the
+    # counted noun with known modifiers — not an adjective asking for a measure.
+    schema = dataset_service.get_dataset_schema(titanic_id, registry)["columns"]
+    profile = dataset_service.get_dataset_profile(titanic_id, registry)
+    ambs = detect_ambiguities(
+        "Which embarkation town had the most first-class passengers?", schema, profile
+    )
+    assert [a for a in ambs if a.type == "missing_metric"] == []
+
+
+def test_most_before_an_adjective_still_asks():
+    # "most expensive" ranks by a price this table does not have.
+    assert _metric("Show the most expensive cars.", MPG)
+
+
+def test_a_bare_most_still_asks():
+    assert _metric("which region earns the most?", TWO_DATES)
+
+
+# --- a neighbour that pins a shared word (regression, bench/nl_suite v2) --------
+
+
+def _dimension(request, schema):
+    return [a for a in _detect(request, schema) if a.type == "column_reference"]
+
+
+def test_the_word_beside_a_shared_word_can_pin_it():
+    # flipper_length_mm is never named in full — the "mm" is missing — but
+    # "flipper" leaves one of the two lengths.
+    assert _dimension("Plot flipper length against body mass.", PENGUINS) == []
+    assert _dimension("Is bill length related to bill depth?", PENGUINS) == []
+
+
+def test_a_shared_word_with_no_pinning_neighbour_still_asks():
+    amb = _dimension("Compare length by species.", PENGUINS)[0]
+    assert amb.detail["candidates"] == ["bill_length_mm", "flipper_length_mm"]
+
+
+def test_every_use_of_a_shared_word_must_be_pinned():
+    # The first "bill" is a bill length; the second is either.
+    amb = _dimension("Show bill length and bill by species.", PENGUINS)[0]
+    assert amb.detail["term"] == "bill"
+
+
 # --- composition & suppression ----------------------------------------------
 
 def test_both_detectors_compose_time_first():

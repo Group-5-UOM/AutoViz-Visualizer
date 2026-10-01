@@ -201,6 +201,18 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
               : `Plan did not produce a chart (status=${res.status}).`);
           return detail;
         }
+        // The pipeline hands back an unstyled spec. Without this the widget kept
+        // its style block while the chart dropped every colour and title in it,
+        // and the panel showed settings the chart no longer had. Presentation
+        // only (no model), so it cannot change what the plan computed.
+        let spec = res.vega_lite_spec as Record<string, unknown>;
+        if (widget.style && Object.keys(widget.style).length > 0) {
+          try {
+            spec = (await styleChart(spec, widget.style)).vega_lite_spec;
+          } catch (err) {
+            return `The plan ran, but its saved styling could not be re-applied: ${errorMessage(err)}`;
+          }
+        }
         const rows = res.result?.row_count;
         const type = typeof res.chart_spec?.type === 'string' ? res.chart_spec.type : undefined;
         const explanation =
@@ -220,7 +232,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
               ? {
                   ...w,
                   plan,
-                  vegaLiteSpec: res.vega_lite_spec as Record<string, unknown>,
+                  vegaLiteSpec: spec,
                   chartType: type ?? w.chartType,
                   explanation,
                   description,

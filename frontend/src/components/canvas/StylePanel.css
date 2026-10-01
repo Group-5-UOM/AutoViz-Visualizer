@@ -180,3 +180,75 @@
   color: var(--text-secondary);
   cursor: pointer;
 }
+
+/* The raw-config editor. Collapsed by default so the panel still reads as a
+   handful of controls to someone who will never write JSON. */
+.style-advanced {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 12px;
+}
+
+.style-advanced > summary {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.style-advanced[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.style-advanced-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.style-advanced-hint a {
+  color: var(--accent);
+}
+
+.style-advanced-editor {
+  width: 100%;
+  min-height: 140px;
+  padding: 6px 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+  tab-size: 2;
+}
+
+.style-advanced-editor:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.style-advanced-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.style-advanced-actions > button:first-child {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.style-advanced-actions > button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

@@ -150,3 +150,31 @@ def test_style_requires_auth(api_db):
     app.dependency_overrides[get_planner] = lambda: StylePlanner()
     r = TestClient(app).post("/charts/style", json={"vega_lite_spec": _spec()})
     assert r.status_code == 401
+
+
+def test_hand_written_config_is_applied_without_the_model(api_db):
+    planner = StylePlanner()
+    r = _client(planner).post(
+        "/charts/style",
+        json={"vega_lite_spec": _spec(), "style": {"config": {"bar": {"cornerRadiusEnd": 6}}}},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["vega_lite_spec"]["config"]["bar"]["cornerRadiusEnd"] == 6
+    assert r.json()["style"]["config"] == {"bar": {"cornerRadiusEnd": 6}}
+    assert planner.calls == []
+
+
+def test_refused_config_says_why(api_db):
+    r = _client().post(
+        "/charts/style",
+        json={"vega_lite_spec": _spec(), "style": {"config": {"axis": {"labelExpr": "1"}}}},
+    )
+    assert r.status_code == 422
+    assert "labelExpr" in r.json()["error"]
+
+
+def test_the_model_may_not_write_raw_config(api_db):
+    client = _client(StylePlanner(patch={"config": {"background": "#000"}}))
+    r = client.post("/charts/style", json={"vega_lite_spec": _spec(), "request": "dark background"})
+    assert r.status_code == 422
+    assert r.json()["valid"] is False

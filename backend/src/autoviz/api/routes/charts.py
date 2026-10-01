@@ -102,16 +102,29 @@ def style_chart(
 
     try:
         current = ChartStyle.model_validate(body.style or {})
-    except ValidationError:
+    except ValidationError as exc:
+        # A hand-written config is the one field a person types free-form, so
+        # its refusal says what was wrong rather than a generic sentence.
+        for error in exc.errors():
+            if error["loc"][:1] == ("config",):
+                return refuse(str(error.get("ctx", {}).get("error") or error["msg"]))
         return refuse("That chart's saved styling could not be read.")
 
     if body.request:
+        out_of_grammar = (
+            "I can only change how this chart looks — try naming a colour, a "
+            "title, an axis label, or the legend."
+        )
         try:
             raw = planner.style_patch(
                 body.request,
                 current.model_dump(exclude_none=True),
                 chart_style.context_for(body.vega_lite_spec),
             )
+            if isinstance(raw, dict) and "config" in raw:
+                # Raw config is the hand-editor's field. A model writing Vega-Lite
+                # directly is the unconstrained output this grammar exists to avoid.
+                return refuse(out_of_grammar)
             current = current.merged_with(ChartStyle.model_validate(raw))
         except PlannerError:
             return refuse("I could not read that request. Try rephrasing it.")
@@ -119,10 +132,7 @@ def style_chart(
             # The model answered with something outside the grammar — a colour
             # that is not a colour, or a field that does not exist. Rendering it
             # would be worse than saying so: the chart stays as it is.
-            return refuse(
-                "I can only change how this chart looks — try naming a colour, a "
-                "title, an axis label, or the legend."
-            )
+            return refuse(out_of_grammar)
 
     return respond(
         {

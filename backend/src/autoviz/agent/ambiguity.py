@@ -61,6 +61,35 @@ _SUPERLATIVES = _RANKING_WORDS + _MEASURE_ADJECTIVES
 # Explicit aggregation words: if one appears the metric is likely already stated.
 _AGG_WORDS = ("average", "avg", "mean", "median", "sum", "total", "count", "number of")
 
+# "most"/"least" can rank by frequency, and then the measure is a count and there
+# is nothing to ask. Found by bench/nl_suite v2 (T19, W13): "the most common
+# weather type" and "the most first-class passengers" were both stopped to ask
+# which measure should rank them, when "how many" was the only reading.
+_COUNT_SUPERLATIVES = ("most", "least")
+_FREQUENCY_WORDS = frozenset({"common", "frequent", "popular", "often", "usual", "typical"})
+# Words that end the noun phrase a superlative opens: "the most trips *in* 2014".
+_NOUN_PHRASE_STOP = frozenset({
+    "of", "in", "on", "at", "for", "by", "per", "among", "across", "with", "from",
+    "over", "during", "than", "and", "or", "is", "was", "were", "are", "had", "has",
+    "have", "did", "does", "do", "that", "who", "which",
+})
+
+# Superlatives that carry their own measure. "The top 5 heaviest cars" ranks by
+# weight as plainly as "by weight" would (bench/nl_suite v2 M08); the stems are
+# matched against the words of numeric column names, so the measure still has to
+# exist in this dataset — and be the only candidate — before it counts as named.
+_MEASURE_STEMS: dict[str, tuple[str, ...]] = {
+    "heaviest": ("weight", "mass"), "lightest": ("weight", "mass"),
+    "oldest": ("age",), "youngest": ("age",),
+    "longest": ("length",), "shortest": ("length",),
+    "tallest": ("height",), "widest": ("width",),
+    "hottest": ("temp", "temperature"), "coldest": ("temp", "temperature"),
+    "wettest": ("precipitation", "rain", "rainfall"),
+    "rainiest": ("precipitation", "rain", "rainfall"),
+    "windiest": ("wind",),
+    "cheapest": ("price", "cost", "fare"),
+}
+
 # Things the closed grammar cannot express at all, grouped by what to say instead.
 #
 # This exists because the alternative is worse than a refusal: asked to "forecast
@@ -505,6 +534,12 @@ def _detect_missing_metric(
         return None
     if _has_any(request, _AGG_WORDS) and numeric_cols:
         return None
+    # Named in part — "the largest bill" when `total_bill` is the only bill — or
+    # by a superlative that is its own measure ("heaviest").
+    if _implied_measure(request, numeric_cols):
+        return None
+    if _ranks_by_count(request, trigger, schema, profile):
+        return None
 
     # Rank candidate measures by cardinality so continuous quantities (fare, age)
     # surface above low-signal integer codes (0/1 flags, small ordinals) when the
@@ -529,16 +564,60 @@ def _detect_missing_metric(
     )
 
 
+def _implied_measure(request: str, numeric_cols: list[str]) -> bool:
+    """Does a word in the request point at exactly one numeric column?
+
+    Two routes: a component of the column's name ("bill" -> `total_bill`), or a
+    superlative that carries its measure ("heaviest" -> `weight`). Exactly one,
+    because a word two columns share is a real question — it is just the
+    column-reference detector's, not this one's.
+    """
+    words = set(re.findall(r"[a-z0-9]+", _norm(request)))
+    wanted: set[str] = set()
+    for w in words:
+        if len(w) >= 3 and w not in _CONCEPT_STOPWORDS:
+            wanted |= _forms(w)
+        wanted |= set(_MEASURE_STEMS.get(w, ()))
+    hits = [c for c in numeric_cols if _col_words(c) & wanted]
+    return len(hits) == 1
+
+
+def _ranks_by_count(
+    request: str, trigger: str, schema: list[dict[str, str]], profile: dict[str, Any]
+) -> bool:
+    """Is "most"/"least" ranking by how many, rather than by a missing measure?
+
+    "the most common weather type" and "the most first-class passengers" can only
+    mean a count. "the most expensive cars" cannot, and must still ask — so the
+    words between the superlative and the plural noun it counts must all be
+    things this dataset knows (`first` is a value of `class`), not adjectives.
+    """
+    if trigger not in _COUNT_SUPERLATIVES:
+        return False
+    tokens = re.findall(r"[a-z0-9]+", _norm(request))
+    for i, tok in enumerate(tokens):
+        if tok != trigger:
+            continue
+        following = tokens[i + 1 : i + 5]
+        if following and following[0] in _FREQUENCY_WORDS:
+            return True
+        for word in following:
+            if word in _NOUN_PHRASE_STOP:
+                break
+            if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+                return True  # reached the counted noun through known words only
+            if not _is_known(word, schema, profile):
+                break  # an adjective: "most expensive" ranks by price, not count
+    return False
+
+
 # --- Day 3 detectors ----------------------------------------------------------
 
 
 def _detect_column_reference(request: str, schema: list[dict[str, str]]) -> Ambiguity | None:
     """A concept word matching >1 column name (and none exactly) => which column?"""
-    words = [
-        w
-        for w in re.findall(r"[a-z0-9]+", _norm(request))
-        if len(w) >= 3 and w not in _CONCEPT_STOPWORDS
-    ]
+    tokens = re.findall(r"[a-z0-9]+", _norm(request))
+    words = [w for w in tokens if len(w) >= 3 and w not in _CONCEPT_STOPWORDS]
     # Columns the request names in full (e.g. "sepal length" -> sepal_length) are
     # already disambiguated; a bare component word ("sepal") then isn't ambiguous.
     named = set(_mentioned_columns(request, [c["name"] for c in schema]))
@@ -550,6 +629,8 @@ def _detect_column_reference(request: str, schema: list[dict[str, str]]) -> Ambi
             continue  # an exact-name column wins — not ambiguous
         if set(matches) & named:
             continue  # the user named one of the candidates in full
+        if _pinned_by_neighbour(tokens, w, matches):
+            continue  # "flipper length": the word beside it leaves one candidate
         types = {_type_of(schema, c) for c in matches}
         if types == {"datetime"}:
             continue  # a pure date clash is the time_column detector's job
@@ -563,6 +644,29 @@ def _detect_column_reference(request: str, schema: list[dict[str, str]]) -> Ambi
             detail={"term": w, "candidates": matches},
         )
     return None
+
+
+def _pinned_by_neighbour(tokens: list[str], word: str, candidates: list[str]) -> bool:
+    """Does every use of `word` sit beside a word only one candidate contains?
+
+    `_mentioned_columns` wants the whole name, so "flipper length" never matched
+    `flipper_length_mm` — the unit suffix was missing — and "length" was asked
+    about although the phrase names one column exactly (bench/nl_suite v2 G03,
+    G05, G08, G09, R06). Every occurrence has to be pinned: "bill length and
+    bill" still leaves the second "bill" open.
+    """
+    positions = [i for i, t in enumerate(tokens) if t == word]
+    if not positions:
+        return False
+    for i in positions:
+        neighbours = [tokens[j] for j in (i - 1, i + 1) if 0 <= j < len(tokens)]
+        if not any(
+            sum(1 for c in candidates if _forms(n) & _col_words(c)) == 1
+            for n in neighbours
+            if n != word
+        ):
+            return False
+    return True
 
 
 def _detect_value_reference(request: str, profile: dict[str, Any]) -> Ambiguity | None:

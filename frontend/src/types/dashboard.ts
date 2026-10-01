@@ -84,6 +84,11 @@ export interface ChartStyle {
   font?: ChartFont | null;
   /** Tick-label size in px; every other text size keeps its offset from it. */
   font_size?: number | null;
+  /**
+   * A raw Vega-Lite `config` object, applied last. Appearance only — the backend
+   * refuses expressions, signals, URLs and any top-level key that is not styling.
+   */
+  config?: Record<string, unknown> | null;
 }
 
 export interface ChartWidget {

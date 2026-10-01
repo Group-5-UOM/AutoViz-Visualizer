@@ -1,6 +1,9 @@
 """Run the frozen NL benchmark against the live planner and score it.
 
-Run:  uv run python -m bench.nl_run [--only T01,P02] [--out results/nl.json]
+Run:  uv run python -m bench.nl_run [--suite all|v1|v2] [--only T01,P02] [--out results/nl.json]
+
+`--suite v1` is the original 39 — use it to reproduce a number published before
+the suite grew to 100. A v1 number and an all-100 number are not comparable.
 
 Scoring is deliberately conservative about what counts as correct. A prompt has
 many right plans, so a case passes on the properties every right answer shares
@@ -28,7 +31,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from bench.nl_suite import CASES, DATASETS  # noqa: E402
+from bench.nl_suite import DATASETS, SUITES  # noqa: E402
 
 from autoviz.agent.service import AgentService  # noqa: E402
 from autoviz.schema.allowlists import DATETIME_DERIVE_FNS  # noqa: E402
@@ -202,15 +205,16 @@ def score(case: dict[str, Any], response: dict[str, Any]) -> dict[str, Any]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--suite", default="all", choices=sorted(SUITES))
     ap.add_argument("--only", default=None, help="comma-separated case ids")
     ap.add_argument("--out", default="bench/results/nl.json")
     ap.add_argument("--model", default=None, help="override AUTOVIZ_PLANNER_MODEL")
     args = ap.parse_args()
 
-    cases = CASES
+    cases = SUITES[args.suite]
     if args.only:
         wanted = {c.strip() for c in args.only.split(",")}
-        cases = [c for c in CASES if c["id"] in wanted]
+        cases = [c for c in cases if c["id"] in wanted]
 
     registry = DatasetRegistry()
     ids: dict[str, str] = {}
@@ -328,6 +332,9 @@ def main() -> None:
         "meta": {
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "planner_model": args.model or "AUTOVIZ_PLANNER_MODEL default",
+            # Which suite the numbers are over. A `--only` run is a subset of it.
+            "suite": args.suite,
+            "suite_size": len(SUITES[args.suite]),
         },
         "summary": summary,
         "cases": rows,
