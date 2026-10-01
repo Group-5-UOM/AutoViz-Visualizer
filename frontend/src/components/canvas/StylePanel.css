@@ -1,9 +1,14 @@
 /* A flex sibling of the canvas, mirroring the chat/dashboards panels on the
    left. Deliberately not an overlay: it would otherwise cover the chart the
-   user is trying to watch change. */
+   user is trying to watch change.
+
+   Shaped to match .plan-panel (PlanPanel.css) — same width, header, footer and
+   buttons — so the two right-rail editors read as one family. The values are
+   restated rather than borrowed: depending on another component's stylesheet
+   having been loaded is an invisible coupling to break later. */
 .style-panel {
   flex: none;
-  width: 260px;
+  width: 360px;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -21,16 +26,7 @@
   gap: 8px;
   padding: 10px 8px 10px 12px;
   border-bottom: 1px solid var(--border-subtle);
-}
-
-.style-panel-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  color: var(--text-muted);
 }
 
 .style-panel-subject {
@@ -47,12 +43,6 @@
   text-overflow: ellipsis;
 }
 
-/* Shaped like .modal-close-btn but restated here rather than borrowed: that
-   class lives in DashboardsModal.css, and depending on another component's
-   stylesheet having been loaded is an invisible coupling to break later.
-   The tokens differ from that one deliberately — it reaches for
-   `--text-tertiary` and `--surface-hover`, neither of which is defined
-   anywhere in the app, so its colour and its hover are both inert. */
 .style-panel-close {
   flex: none;
   background: transparent;
@@ -74,6 +64,109 @@
   color: var(--text-primary);
 }
 
+/* --- tabs ------------------------------------------------------------------ */
+
+.style-tabs {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.style-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 4px 8px;
+  margin-right: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  /* The underline sits on the tab strip's own border, so the active tab reads
+     as joined to the body below it. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.style-tab:hover {
+  color: var(--text-primary);
+}
+
+.style-tab[aria-selected='true'] {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent, #2a78d6);
+}
+
+.style-tab:focus-visible {
+  outline: 2px solid var(--accent, #2a78d6);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Marks the Advanced tab when the chart carries a config, so it is not
+   forgotten while working on the Style tab. */
+.style-tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent, #2a78d6);
+}
+
+/* --- body ------------------------------------------------------------------ */
+
+.style-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.style-panel-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.style-panel-hint a {
+  color: var(--accent, #2a78d6);
+}
+
+.style-panel-hint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--bg-hover);
+}
+
+.style-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Same treatment as .plan-field-label. */
+.style-section-label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .style-field {
   display: flex;
   flex-direction: column;
@@ -83,16 +176,16 @@
 .style-error {
   margin: 0;
   padding: 6px 8px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
-  color: var(--danger);
+  color: var(--danger, #e34948);
   background: #fdecec;
   border-radius: var(--radius-sm);
 }
 
 .style-field > span,
 .style-color-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
 }
@@ -101,11 +194,12 @@
 .style-field select,
 .style-hex {
   width: 100%;
-  padding: 5px 8px;
+  box-sizing: border-box;
+  padding: 7px 10px;
   font: inherit;
   font-size: 12px;
   color: var(--text-primary);
-  background: var(--bg-surface);
+  background: var(--bg-primary, var(--bg-surface));
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
@@ -117,10 +211,11 @@
 .style-field input:focus,
 .style-field select:focus,
 .style-hex:focus {
-  outline: none;
-  border-color: var(--accent);
+  outline: 2px solid var(--accent, #2a78d6);
+  outline-offset: 1px;
 }
 
+.style-field input:disabled,
 .style-field select:disabled {
   opacity: 0.5;
   cursor: default;
@@ -135,14 +230,15 @@
 .style-swatches {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 6px;
 }
 
 .style-swatch {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   border: 2px solid transparent;
+  cursor: pointer;
   /* The ring is the surface colour, so an active swatch reads as selected
      without the border eating into the colour being previewed. */
   box-shadow: inset 0 0 0 1px rgb(0 0 0 / 12%);
@@ -160,11 +256,13 @@
 
 .style-reset {
   flex: none;
-  padding: 4px 8px;
-  font-size: 11px;
+  padding: 6px 10px;
+  font-size: 12px;
   color: var(--text-muted);
+  background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  cursor: pointer;
 }
 
 .style-reset:hover {
@@ -181,74 +279,84 @@
   cursor: pointer;
 }
 
-/* The raw-config editor. Collapsed by default so the panel still reads as a
-   handful of controls to someone who will never write JSON. */
-.style-advanced {
-  border-top: 1px solid var(--border-subtle);
-  padding-top: 12px;
-}
+/* --- advanced tab ---------------------------------------------------------- */
 
-.style-advanced > summary {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.style-advanced[open] {
+/* Grows to fill the body, like the plan editor, so a long config gets the
+   panel's full height instead of a fixed box. */
+.style-config-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex: 1;
+  min-height: 0;
 }
 
-.style-advanced-hint {
-  margin: 4px 0 0;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--text-muted);
-}
-
-.style-advanced-hint a {
-  color: var(--accent);
-}
-
-.style-advanced-editor {
+.style-config-editor {
+  flex: 1;
+  min-height: 280px;
   width: 100%;
-  min-height: 140px;
-  padding: 6px 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
+  resize: vertical;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
   line-height: 1.45;
-  color: var(--text-primary);
-  background: var(--bg-surface);
+  padding: 10px;
+  tab-size: 2;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  resize: vertical;
-  tab-size: 2;
+  background: var(--bg-primary, var(--bg-surface));
+  color: var(--text-primary);
 }
 
-.style-advanced-editor:focus {
-  outline: none;
-  border-color: var(--accent);
+.style-config-editor:focus {
+  outline: 2px solid var(--accent, #2a78d6);
+  outline-offset: 1px;
 }
 
-.style-advanced-actions {
+.style-config-editor:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* --- footer (matches .plan-panel-footer / .plan-btn) ----------------------- */
+
+.style-panel-footer {
+  flex: none;
   display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.style-btn {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-}
-
-.style-advanced-actions > button:first-child {
-  padding: 4px 12px;
-  font-size: 11px;
-  font-weight: 500;
-  color: #fff;
-  background: var(--accent);
-  border: none;
   border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  padding: 7px 12px;
+  font-size: 12px;
   cursor: pointer;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
-.style-advanced-actions > button:disabled {
+.style-btn:disabled {
   opacity: 0.5;
-  cursor: default;
+  cursor: not-allowed;
+}
+
+.style-btn-ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.style-btn-primary {
+  background: var(--accent, #2a78d6);
+  border-color: transparent;
+  color: #fff;
+}
+
+.style-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.05);
 }
