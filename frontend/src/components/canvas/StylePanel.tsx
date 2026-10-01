@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
+import { Palette, RotateCcw, Trash2, X } from 'lucide-react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import type { ChartFont, ChartStyle, ChartWidget } from '../../types/dashboard';
 import { specSeries } from '../../lib/specData';
@@ -190,124 +190,50 @@ function formatConfig(config: Record<string, unknown> | null | undefined): strin
   return config && Object.keys(config).length > 0 ? JSON.stringify(config, null, 2) : '';
 }
 
-/**
- * A raw Vega-Lite `config` for the long tail the controls above do not cover.
- *
- * `config` rather than the whole spec on purpose: it holds appearance and
- * nothing else, so no edit here can change a number, and the editor never has
- * to show the inlined result rows. The backend refuses expressions, signals and
- * URLs; the JSON syntax is checked here so a typo never costs a round trip.
- */
-function AdvancedConfig({
-  value,
-  busy,
-  onApply,
-}: {
-  value: Record<string, unknown> | null | undefined;
-  busy: boolean;
-  onApply: (config: Record<string, unknown> | null) => Promise<void>;
-}) {
-  const [open, setOpen] = useState(Boolean(value && Object.keys(value).length));
-  const [text, setText] = useState(formatConfig(value));
-  const [syntaxError, setSyntaxError] = useState<string | null>(null);
-
-  useEffect(() => setText(formatConfig(value)), [value]);
-
-  const apply = () => {
-    const trimmed = text.trim();
-    if (!trimmed) {
-      setSyntaxError(null);
-      void onApply(null);
-      return;
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch (err) {
-      setSyntaxError(err instanceof Error ? err.message : 'Not valid JSON.');
-      return;
-    }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      setSyntaxError('The config must be a JSON object, like { "axis": { … } }.');
-      return;
-    }
-    setSyntaxError(null);
-    void onApply(Object.keys(parsed).length ? (parsed as Record<string, unknown>) : null);
-  };
-
-  const dirty = text.trim() !== formatConfig(value).trim();
-
-  return (
-    <details
-      className="style-advanced"
-      open={open}
-      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
-    >
-      <summary>Advanced: Vega-Lite config</summary>
-      <p className="style-advanced-hint">
-        Any{' '}
-        <a
-          href="https://vega.github.io/vega-lite/docs/config.html"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Vega-Lite config
-        </a>{' '}
-        property — gridlines, corner radius, label angle, background. Applied last, so it
-        overrides the options above. <code>null</code> removes a default.
-      </p>
-      <textarea
-        className="style-advanced-editor"
-        value={text}
-        spellCheck={false}
-        disabled={busy}
-        rows={10}
-        placeholder={CONFIG_EXAMPLE}
-        aria-label="Vega-Lite config JSON"
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          // The canvas listens for keys (delete a selected chart, Escape); none
-          // of that should fire while someone is typing JSON.
-          e.stopPropagation();
-          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) apply();
-        }}
-      />
-      {syntaxError && (
-        <p className="style-error" role="alert">
-          {syntaxError}
-        </p>
-      )}
-      <div className="style-advanced-actions">
-        <button type="button" disabled={busy || !dirty} onClick={apply}>
-          Apply
-        </button>
-        {value && (
-          <button
-            type="button"
-            className="style-reset"
-            disabled={busy}
-            onClick={() => {
-              setSyntaxError(null);
-              void onApply(null);
-            }}
-          >
-            Clear
-          </button>
-        )}
-      </div>
-    </details>
-  );
+function hasKeys(config: Record<string, unknown> | null | undefined): boolean {
+  return Boolean(config && Object.keys(config).length > 0);
 }
+
+/** Every field the Style tab owns, cleared. `config` is the Advanced tab's. */
+const CLEARED_STYLE: ChartStyle = {
+  title: null,
+  x_title: null,
+  y_title: null,
+  legend: null,
+  mark_color: null,
+  series_colors: null,
+  color_scheme: null,
+  font: null,
+  font_size: null,
+};
+
+type StyleTab = 'style' | 'advanced';
+
+const TABS: { id: StyleTab; label: string }[] = [
+  { id: 'style', label: 'Style' },
+  { id: 'advanced', label: 'Advanced' },
+];
 
 export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) {
   const style = widget.style ?? {};
   const series = specSeries(widget.vegaLiteSpec);
   const labels = inferredLabels(widget);
+  const hasConfig = hasKeys(style.config);
 
   // This panel has no sidebar entry to toggle it shut, and it stops pointer-down
   // so the canvas deselect cannot reach it either. With its close button gone,
   // Escape and the chart's palette button are the only ways out.
   useEscapeToClose(onClose);
+
+  // Opens on Advanced only for a chart that already has a hand-written config —
+  // that is where its owner last worked on it. Reset only on switching charts:
+  // a config applied from the Style tab must not pull the user across tabs.
+  const [tab, setTab] = useState<StyleTab>(hasConfig ? 'advanced' : 'style');
+  const [tabFor, setTabFor] = useState(widget.id);
+  if (tabFor !== widget.id) {
+    setTabFor(widget.id);
+    setTab(hasConfig ? 'advanced' : 'style');
+  }
 
   // Text is edited locally and committed on blur or Enter: firing a request per
   // keystroke would be one round trip and one autosave per character typed.
@@ -328,8 +254,20 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
 
   // A rejected block is not a thrown error and not a changed chart — the spec
   // comes back untouched. Nothing here would show that on its own, so a failed
-  // edit used to look identical to one the backend had never heard of.
+  // edit used to look identical to one the backend had never heard of. Kept per
+  // tab, so the message sits beside the control that caused it.
   const [error, setError] = useState<string | null>(null);
+  const [configError, setConfigError] = useState<string | null>(null);
+
+  // The advanced editor's draft, apart from the stored block until applied so a
+  // half-typed object never reaches the chart.
+  const [configText, setConfigText] = useState(formatConfig(style.config));
+  useEffect(() => {
+    setConfigText(formatConfig(widget.style?.config));
+    setConfigError(null);
+  }, [widget.id, widget.style?.config]);
+
+  useEffect(() => setError(null), [widget.id]);
 
   // Always the whole block: the backend treats it as the widget's styling state,
   // not a diff, so an omitted field would read as a revert.
@@ -353,6 +291,37 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
     patch({ [key]: next } as ChartStyle);
   };
 
+  /**
+   * Apply the advanced editor's JSON. Syntax is checked here so a typo never
+   * costs a round trip; what the object may contain is the backend's call.
+   */
+  const applyConfig = async (text: string) => {
+    const trimmed = text.trim();
+    let config: Record<string, unknown> | null = null;
+    if (trimmed) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (err) {
+        setConfigError(err instanceof Error ? err.message : 'Not valid JSON.');
+        return;
+      }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        setConfigError('The config must be a JSON object, like { "axis": { … } }.');
+        return;
+      }
+      config = hasKeys(parsed as Record<string, unknown>)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    }
+    setConfigError(await onApply({ ...style, config }));
+  };
+
+  const hasStyleOverrides = (Object.keys(CLEARED_STYLE) as (keyof ChartStyle)[]).some(
+    (key) => style[key] !== undefined && style[key] !== null,
+  );
+  const configDirty = configText.trim() !== formatConfig(style.config).trim();
+
   const textField = (key: 'title' | 'x_title' | 'y_title', label: string) => (
     <label className="style-field">
       <span>{label}</span>
@@ -370,8 +339,18 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
     </label>
   );
 
+  // Arrow keys move between tabs, as a tablist is expected to.
+  const onTabKey = (e: KeyboardEvent) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const i = TABS.findIndex((t) => t.id === tab);
+    const next = TABS[(i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+    setTab(next.id);
+    document.getElementById(`style-tab-${next.id}`)?.focus();
+  };
+
   return (
-    <section
+    <aside
       className="style-panel"
       aria-label={`Style options for ${widget.title}`}
       // The canvas deselects on pointer-down, which would close this panel the
@@ -381,8 +360,9 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
       {/* Outside the scrolling body on purpose: the close control has to stay
           reachable at the top of a panel whose contents run past its height. */}
       <header className="style-panel-header">
+        <Palette size={14} aria-hidden />
         <p className="style-panel-subject" title={widget.title}>
-          {widget.title}
+          Style · {widget.title}
         </p>
         <button
           type="button"
@@ -395,91 +375,231 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
         </button>
       </header>
 
-      <div className="style-panel-body">
-
-        {error && (
-          <p className="style-error" role="alert">
-            {error}
-          </p>
-        )}
-
-        {textField('title', 'Title')}
-        {textField('x_title', 'X-axis label')}
-        {textField('y_title', 'Y-axis label')}
-
-        <label className="style-field">
-          <span>Font</span>
-          <select
-            value={style.font ?? ''}
-            disabled={busy}
-            onChange={(e) => patch({ font: (e.target.value || null) as ChartFont | null })}
+      <div className="style-tabs" role="tablist" aria-label="Styling mode" onKeyDown={onTabKey}>
+        {TABS.map(({ id, label }) => (
+          <button
+            key={id}
+            id={`style-tab-${id}`}
+            type="button"
+            role="tab"
+            className="style-tab"
+            aria-selected={tab === id}
+            aria-controls={`style-tabpanel-${id}`}
+            tabIndex={tab === id ? 0 : -1}
+            onClick={() => setTab(id)}
           >
-            <option value="">Default</option>
-            {FONTS.map(({ value, label }) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+            {label}
+            {id === 'advanced' && hasConfig && (
+              <span className="style-tab-dot" title="This chart has a custom config" />
+            )}
+          </button>
+        ))}
+      </div>
 
-        <label className="style-field">
-          <span>Text size</span>
-          <select
-            value={style.font_size ?? ''}
-            disabled={busy}
-            onChange={(e) =>
-              patch({ font_size: e.target.value ? Number(e.target.value) : null })
-            }
+      {tab === 'style' ? (
+        <>
+          <div
+            className="style-panel-body"
+            role="tabpanel"
+            id="style-tabpanel-style"
+            aria-labelledby="style-tab-style"
           >
-            <option value="">Default ({DEFAULT_FONT_SIZE} px)</option>
-            {FONT_SIZES.map((size) => (
-              <option key={size} value={size}>
-                {size} px
-              </option>
-            ))}
-          </select>
-        </label>
+            <p className="style-panel-hint">
+              Changes apply as you make them. For anything not listed here, use the
+              Advanced tab.
+            </p>
 
-        {series.length > 0 ? (
-          <>
-            {series.map((name) => (
-              <ColorField
-                key={name}
-                label={name}
-                value={style.series_colors?.[name]}
-                onChange={(hex) => {
-                  const next = { ...(style.series_colors ?? {}) };
-                  if (hex) next[name] = hex;
-                  else delete next[name];
-                  patch({ series_colors: Object.keys(next).length ? next : null });
+            {error && (
+              <p className="style-error" role="alert">
+                {error}
+              </p>
+            )}
+
+            <section className="style-section">
+              <h4 className="style-section-label">Labels</h4>
+              {textField('title', 'Title')}
+              {textField('x_title', 'X-axis label')}
+              {textField('y_title', 'Y-axis label')}
+            </section>
+
+            <section className="style-section">
+              <h4 className="style-section-label">Text</h4>
+              <label className="style-field">
+                <span>Font</span>
+                <select
+                  value={style.font ?? ''}
+                  disabled={busy}
+                  onChange={(e) => patch({ font: (e.target.value || null) as ChartFont | null })}
+                >
+                  <option value="">Default</option>
+                  {FONTS.map(({ value, label }) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="style-field">
+                <span>Text size</span>
+                <select
+                  value={style.font_size ?? ''}
+                  disabled={busy}
+                  onChange={(e) =>
+                    patch({ font_size: e.target.value ? Number(e.target.value) : null })
+                  }
+                >
+                  <option value="">Default ({DEFAULT_FONT_SIZE} px)</option>
+                  {FONT_SIZES.map((size) => (
+                    <option key={size} value={size}>
+                      {size} px
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </section>
+
+            <section className="style-section">
+              <h4 className="style-section-label">Colour</h4>
+              {series.length > 0 ? (
+                <>
+                  {series.map((name) => (
+                    <ColorField
+                      key={name}
+                      label={name}
+                      value={style.series_colors?.[name]}
+                      onChange={(hex) => {
+                        const next = { ...(style.series_colors ?? {}) };
+                        if (hex) next[name] = hex;
+                        else delete next[name];
+                        patch({ series_colors: Object.keys(next).length ? next : null });
+                      }}
+                    />
+                  ))}
+                  <label className="style-toggle">
+                    <input
+                      type="checkbox"
+                      checked={style.legend !== false}
+                      disabled={busy}
+                      onChange={(e) => patch({ legend: e.target.checked ? null : false })}
+                    />
+                    <span>Show legend</span>
+                  </label>
+                </>
+              ) : (
+                <ColorField
+                  label="Chart colour"
+                  value={style.mark_color ?? undefined}
+                  onChange={(hex) => patch({ mark_color: hex })}
+                />
+              )}
+            </section>
+          </div>
+
+          <footer className="style-panel-footer">
+            <button
+              type="button"
+              className="style-btn style-btn-ghost"
+              disabled={busy || !hasStyleOverrides}
+              onClick={() => void patch(CLEARED_STYLE)}
+              title="Clear every option on this tab and go back to the theme"
+            >
+              <RotateCcw size={14} />
+              Reset all
+            </button>
+          </footer>
+        </>
+      ) : (
+        <>
+          <div
+            className="style-panel-body"
+            role="tabpanel"
+            id="style-tabpanel-advanced"
+            aria-labelledby="style-tab-advanced"
+          >
+            {/* A raw Vega-Lite `config` for the long tail the Style tab does not
+                cover. `config` rather than the whole spec on purpose: it holds
+                appearance and nothing else, so no edit here can change a
+                number, and the editor never has to show the inlined rows. */}
+            <p className="style-panel-hint">
+              Any{' '}
+              <a
+                href="https://vega.github.io/vega-lite/docs/config.html"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Vega-Lite config
+              </a>{' '}
+              property — gridlines, corner radius, label angle, background. Applied on
+              top of the Style tab, so it wins where both set something.{' '}
+              <code>null</code> removes a default.
+            </p>
+
+            <label className="style-config-field">
+              <span className="style-section-label">Vega-Lite config</span>
+              <textarea
+                className="style-config-editor"
+                value={configText}
+                spellCheck={false}
+                disabled={busy}
+                placeholder={CONFIG_EXAMPLE}
+                aria-invalid={Boolean(configError)}
+                onChange={(e) => {
+                  setConfigText(e.target.value);
+                  setConfigError(null);
+                }}
+                onKeyDown={(e) => {
+                  // The canvas listens for keys (delete a selected chart,
+                  // Escape); none of that should fire while typing JSON.
+                  e.stopPropagation();
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void applyConfig(configText);
                 }}
               />
-            ))}
-            <label className="style-toggle">
-              <input
-                type="checkbox"
-                checked={style.legend !== false}
-                disabled={busy}
-                onChange={(e) => patch({ legend: e.target.checked ? null : false })}
-              />
-              <span>Show legend</span>
             </label>
-          </>
-        ) : (
-          <ColorField
-            label="Colour"
-            value={style.mark_color ?? undefined}
-            onChange={(hex) => patch({ mark_color: hex })}
-          />
-        )}
 
-        <AdvancedConfig
-          value={style.config}
-          busy={busy}
-          onApply={(config) => patch({ config })}
-        />
-      </div>
-    </section>
+            {configError && (
+              <p className="style-error" role="alert">
+                {configError}
+              </p>
+            )}
+          </div>
+
+          <footer className="style-panel-footer">
+            <button
+              type="button"
+              className="style-btn style-btn-ghost"
+              disabled={busy || !configDirty}
+              onClick={() => {
+                setConfigText(formatConfig(style.config));
+                setConfigError(null);
+              }}
+              title="Discard edits and show the config currently on this chart"
+            >
+              <RotateCcw size={14} />
+              Reset
+            </button>
+            <button
+              type="button"
+              className="style-btn style-btn-ghost"
+              disabled={busy || !hasConfig}
+              onClick={() => void applyConfig('')}
+              title="Remove the config from this chart"
+            >
+              <Trash2 size={14} />
+              Clear
+            </button>
+            <button
+              type="button"
+              className="style-btn style-btn-primary"
+              disabled={busy || !configDirty}
+              onClick={() => void applyConfig(configText)}
+              title="Apply (Ctrl+Enter)"
+            >
+              {busy ? 'Applying…' : 'Apply'}
+            </button>
+          </footer>
+        </>
+      )}
+    </aside>
   );
 }
