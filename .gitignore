@@ -16,6 +16,7 @@ __pycache__/
 .pytest_cache/
 dist/
 *.egg-info/
+.cache/
 
 # Exported charts and uploaded files
 backend/exports/
