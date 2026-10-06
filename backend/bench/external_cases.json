@@ -1,0 +1,8481 @@
+{
+ "meta": {
+  "seed": 20261006,
+  "per_source": 100,
+  "viseval": {
+   "commit": "55162fac5765d8873180d962cce7e20e75b2c092",
+   "zip_sha256": "4d9490493880b37b9b7345b13403bd9d52edfd66577c5f696e1094b35a88b92a"
+  },
+  "nvbench": {
+   "commit": "544fbc218a2c2fd5dac7591371e3e01ccd6afb93",
+   "json_sha256": "8c85a9454fe1343074ba915bcbb379f170ab62bb1279b6a7aed23255e6eefbcf"
+  },
+  "pools": {
+   "viseval": {
+    "published": 688,
+    "single_table_with_csv": 655
+   },
+   "nvbench": {
+    "published": 7247,
+    "not_in_viseval": 3596,
+    "single_table_with_csv_and_replaying": 1783,
+    "dropped_gold_not_reproduced": 211
+   }
+  }
+ },
+ "cases": [
+  {
+   "id": "NV-2200",
+   "source": "nvbench",
+   "key": "2200",
+   "db_id": "manufactory_1",
+   "table": "products",
+   "prompt": "For those products with a price between 60 and 120, return a scatter chart about the correlation between  price and  manufacturer , and group by attribute name.",
+   "chart": "Grouping Scatter",
+   "hardness": "Medium",
+   "sql": "SELECT Price , Manufacturer FROM products WHERE price BETWEEN 60 AND 120 GROUP BY Name",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Price",
+    "y_name": "Manufacturer",
+    "x_data": [
+     [
+      90
+     ],
+     [
+      120
+     ],
+     [
+      66
+     ]
+    ],
+    "y_data": [
+     [
+      2
+     ],
+     [
+      6
+     ],
+     [
+      3
+     ]
+    ],
+    "classify": [
+     "CD drive",
+     "Memory",
+     "Toner cartridge"
+    ]
+   }
+  },
+  {
+   "id": "NV-390",
+   "source": "nvbench",
+   "key": "390",
+   "db_id": "candidate_poll",
+   "table": "people",
+   "prompt": "Show me about the correlation between  Height and  Weight  in a scatter chart.",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Height , Weight FROM people",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Height",
+    "y_name": "Weight",
+    "x_data": [
+     [
+      188,
+      197,
+      200,
+      202,
+      195,
+      196,
+      193,
+      194,
+      196
+     ]
+    ],
+    "y_data": [
+     [
+      83,
+      85,
+      94,
+      92,
+      90,
+      88,
+      89,
+      88,
+      82
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3106",
+   "source": "nvbench",
+   "key": "3106",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Plot a scatter chart, team id by all_games_percent.",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Team_ID , All_Games_Percent FROM basketball_match",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Team_ID",
+    "y_name": "All_Games_Percent",
+    "x_data": [
+     [
+      1,
+      2,
+      3,
+      4
+     ]
+    ],
+    "y_data": [
+     [
+      0.946,
+      0.8240000000000001,
+      0.706,
+      0.6
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1357",
+   "source": "nvbench",
+   "key": "1357",
+   "db_id": "employee_hire_evaluation",
+   "table": "hiring",
+   "prompt": "Visualize a scatter chart about the correlation between  Shop_ID and  Employee_ID .",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Shop_ID , Employee_ID FROM hiring",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Shop_ID",
+    "y_name": "Employee_ID",
+    "x_data": [
+     [
+      1,
+      1,
+      8,
+      4,
+      5,
+      2,
+      6
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1359@x_name@DESC",
+   "source": "nvbench",
+   "key": "1359@x_name@DESC",
+   "db_id": "employee_hire_evaluation",
+   "table": "hiring",
+   "prompt": "Draw a line chart about the change of the average of Shop_ID over Start_from bin start_from by time, and could you display by the Start_from in desc?",
+   "chart": "Line",
+   "hardness": "Medium",
+   "sql": "SELECT Start_from , AVG(Shop_ID) FROM hiring  ORDER BY Start_from DESC",
+   "binning": "BIN Start_from BY YEAR",
+   "vis_obj": {
+    "x_name": "Start_from",
+    "y_name": "AVG(Shop_ID)",
+    "x_data": [
+     [
+      "2013",
+      "2012",
+      "2011",
+      "2010",
+      "2009",
+      "2008",
+      "2007",
+      "2006",
+      "2005",
+      "2004",
+      "2003"
+     ]
+    ],
+    "y_data": [
+     [
+      5,
+      4,
+      8,
+      2,
+      1,
+      6,
+      0,
+      0,
+      0,
+      0,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2452",
+   "source": "nvbench",
+   "key": "2452",
+   "db_id": "network_1",
+   "table": "Highschooler",
+   "prompt": "What are the names and their total grades for each high schooler? Show me the result using a bar chart.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT name , SUM(grade) FROM Highschooler GROUP BY name",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "name",
+    "y_name": "SUM(grade)",
+    "x_data": [
+     [
+      "Alexis",
+      "Andrew",
+      "Austin",
+      "Brittany",
+      "Cassandra",
+      "Gabriel",
+      "Haley",
+      "Jessica",
+      "John",
+      "Jordan",
+      "Kris",
+      "Kyle",
+      "Logan",
+      "Tiffany"
+     ]
+    ],
+    "y_data": [
+     [
+      11,
+      10,
+      11,
+      10,
+      9,
+      20,
+      10,
+      11,
+      12,
+      21,
+      10,
+      12,
+      12,
+      9
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1058",
+   "source": "nvbench",
+   "key": "1058",
+   "db_id": "customers_card_transactions",
+   "table": "Customers_cards",
+   "prompt": "Show the relationship between customer id and card number with a scatter chart.",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT customer_id , card_number FROM Customers_cards",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "customer_id",
+    "y_name": "card_number",
+    "x_data": [
+     [
+      14,
+      9,
+      6,
+      15,
+      13,
+      10,
+      9,
+      12,
+      3,
+      10,
+      8,
+      3,
+      2,
+      5,
+      2
+     ]
+    ],
+    "y_data": [
+     [
+      4560596484842,
+      4859448397570735,
+      348237249146948,
+      4485460762694,
+      5122249720639438,
+      5102229294602335,
+      4716674779726,
+      6011225247353230,
+      4929590358481,
+      4532488235104,
+      4707949584519,
+      4929896676202959,
+      5484846021884483,
+      4929384762825,
+      345475370003028
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2696@y_name@DESC",
+   "source": "nvbench",
+   "key": "2696@y_name@DESC",
+   "db_id": "school_bus",
+   "table": "driver",
+   "prompt": "Show the comparison of the total number of the home city of all drivers with a bar chart, and could you order the number of home city from high to low order?",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Home_city , COUNT(Home_city) FROM driver GROUP BY Home_city ORDER BY COUNT(Home_city) DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Home_city",
+    "y_name": "COUNT(Home_city)",
+    "x_data": [
+     [
+      "Hartford",
+      "East Hartford",
+      "Manchester",
+      "Coventry",
+      "Bethel"
+     ]
+    ],
+    "y_data": [
+     [
+      6,
+      3,
+      1,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1174",
+   "source": "nvbench",
+   "key": "1174",
+   "db_id": "dog_kennels",
+   "table": "Charges",
+   "prompt": "Give me a bar chart for charge_amount of each charge type",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT charge_type , charge_amount FROM Charges",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "charge_type",
+    "y_name": "charge_amount",
+    "x_data": [
+     [
+      "Daily Accommodation",
+      "Drugs",
+      "Health Check"
+     ]
+    ],
+    "y_data": [
+     [
+      98,
+      322,
+      640
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2519@y_name@DESC",
+   "source": "nvbench",
+   "key": "2519@y_name@DESC",
+   "db_id": "party_people",
+   "table": "party",
+   "prompt": "Plot how many minister by grouped by minister as a bar graph, and list in desc by the y axis.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Minister , COUNT(Minister) FROM party GROUP BY Minister ORDER BY COUNT(Minister) DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Minister",
+    "y_name": "COUNT(Minister)",
+    "x_data": [
+     [
+      "Ebenezer Ako-Adjei (MP)",
+      "Kojo Botsio (MP)",
+      "Imoru Egala (MP)",
+      "Dr. Kwame Nkrumah (MP)"
+     ]
+    ],
+    "y_data": [
+     [
+      2,
+      1,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2999@x_name@ASC",
+   "source": "nvbench",
+   "key": "2999@x_name@ASC",
+   "db_id": "tracking_share_transactions",
+   "table": "TRANSACTIONS",
+   "prompt": "A line chart for what are the number of the dates of transactions with at least 100 share count or amount bigger than 100?, and display by the date_of_transaction in asc.",
+   "chart": "Line",
+   "hardness": "Extra Hard",
+   "sql": "SELECT date_of_transaction , COUNT(date_of_transaction) FROM TRANSACTIONS WHERE share_count >= 100 OR amount_of_transaction >= 100  ORDER BY date_of_transaction ASC",
+   "binning": "BIN date_of_transaction BY YEAR",
+   "vis_obj": {
+    "x_name": "date_of_transaction",
+    "y_name": "COUNT(date_of_transaction)",
+    "x_data": [
+     [
+      "1977~1979",
+      "1980~1982",
+      "1983~1985",
+      "1986~1988",
+      "1989~1991",
+      "1992~1994",
+      "1995~1997",
+      "1998~2000",
+      "2001~2003",
+      "2004"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      2,
+      2,
+      1,
+      1,
+      0,
+      1,
+      1,
+      3,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2520",
+   "source": "nvbench",
+   "key": "2520",
+   "db_id": "party_people",
+   "table": "party",
+   "prompt": "How many parties of the time they took office, binning the took office into Year interval, and then split by the minister's name.",
+   "chart": "Stacked Bar",
+   "hardness": "Hard",
+   "sql": "SELECT Took_office , COUNT(Took_office) FROM party GROUP BY Minister",
+   "binning": "BIN Took_office BY YEAR",
+   "vis_obj": {
+    "x_name": "Took_office",
+    "y_name": "COUNT(Took_office)",
+    "x_data": [
+     [
+      "1957",
+      "1958",
+      "1959",
+      "1960",
+      "1961"
+     ]
+    ],
+    "y_data": [
+     [
+      2,
+      1,
+      1,
+      1,
+      1
+     ],
+     [
+      2,
+      1,
+      2,
+      1,
+      2
+     ],
+     [
+      2,
+      1,
+      2,
+      2,
+      2
+     ],
+     [
+      2,
+      2,
+      2,
+      2,
+      2
+     ]
+    ],
+    "classify": [
+     "Dr. Kwame Nkrumah (MP)",
+     "Ebenezer Ako-Adjei (MP)",
+     "Imoru Egala (MP)",
+     "Kojo Botsio (MP)"
+    ]
+   }
+  },
+  {
+   "id": "NV-3154",
+   "source": "nvbench",
+   "key": "3154",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Draw a pie chart about the proportion of  All_Road and  ACC_Percent.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT All_Road , ACC_Percent FROM basketball_match",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "All_Road",
+    "y_name": "ACC_Percent",
+    "x_data": [
+     [
+      "13–0",
+      "8–2",
+      "6–5",
+      "4–8"
+     ]
+    ],
+    "y_data": [
+     [
+      0.875,
+      0.813,
+      0.625,
+      0.563
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2603@x_name@ASC",
+   "source": "nvbench",
+   "key": "2603@x_name@ASC",
+   "db_id": "product_catalog",
+   "table": "Catalogs",
+   "prompt": "Find the dates on which more than one revisions were made, and the bin the date of latest revision into weekday interval and count them as a line chart, sort by the x axis from low to high.",
+   "chart": "Line",
+   "hardness": "Medium",
+   "sql": "SELECT date_of_latest_revision , COUNT(date_of_latest_revision) FROM Catalogs  ORDER BY date_of_latest_revision ASC",
+   "binning": "BIN date_of_latest_revision BY MONTH",
+   "vis_obj": {
+    "x_name": "date_of_latest_revision",
+    "y_name": "COUNT(date_of_latest_revision)",
+    "x_data": [
+     [
+      "Apr",
+      "Aug",
+      "Dec",
+      "July",
+      "June",
+      "Mar",
+      "May",
+      "Nov",
+      "Oct",
+      "Sept"
+     ]
+    ],
+    "y_data": [
+     [
+      0,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3228",
+   "source": "nvbench",
+   "key": "3228",
+   "db_id": "wine_1",
+   "table": "WINE",
+   "prompt": "List the number of wines whose price is bigger than 100 ordered by year, group by grape, and visualize with a bar chart.",
+   "chart": "Stacked Bar",
+   "hardness": "Hard",
+   "sql": "SELECT Year , COUNT(Year) FROM WINE WHERE Price > 100 GROUP BY Grape ORDER BY YEAR",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Year",
+    "y_name": "COUNT(Year)",
+    "x_data": [
+     [
+      "2006",
+      "2007",
+      "2008"
+     ]
+    ],
+    "y_data": [
+     [
+      10,
+      24,
+      4
+     ],
+     [
+      11,
+      25,
+      4
+     ],
+     [
+      12,
+      26,
+      4
+     ]
+    ],
+    "classify": [
+     "Cabernet Sauvingnon",
+     "Grenache",
+     "Syrah"
+    ]
+   }
+  },
+  {
+   "id": "NV-241",
+   "source": "nvbench",
+   "key": "241",
+   "db_id": "behavior_monitoring",
+   "table": "Student_Addresses",
+   "prompt": "For the average of monthly_rental,  date_address_to, visualize the trend.",
+   "chart": "Grouping Line",
+   "hardness": "Hard",
+   "sql": "SELECT date_address_to , AVG(monthly_rental) FROM Student_Addresses GROUP BY other_details ,  date_address_to ORDER BY monthly_rental DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "date_address_to",
+    "y_name": "AVG(monthly_rental)",
+    "x_data": [
+     [
+      "2018-02-25",
+      "2018-02-27",
+      "2018-03-02",
+      "2018-03-04",
+      "2018-03-05",
+      "2018-03-06",
+      "2018-03-07",
+      "2018-03-12",
+      "2018-03-14",
+      "2018-03-15",
+      "2018-03-18",
+      "2018-03-20",
+      "2018-03-22",
+      "2018-03-23"
+     ]
+    ],
+    "y_data": [
+     [
+      1297,
+      0,
+      0,
+      644,
+      1032,
+      0,
+      0,
+      1297,
+      1021.5,
+      1032,
+      0,
+      0,
+      0,
+      0
+     ],
+     [
+      0,
+      747,
+      1113,
+      857,
+      0,
+      800,
+      865,
+      679,
+      0,
+      826,
+      620,
+      1287,
+      1067,
+      894
+     ]
+    ],
+    "classify": [
+     "apartment",
+     "house"
+    ]
+   }
+  },
+  {
+   "id": "NV-531",
+   "source": "nvbench",
+   "key": "531",
+   "db_id": "college_1",
+   "table": "student",
+   "prompt": "Show me maximal stu gpa by dept code in a histogram",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT DEPT_CODE , max(stu_gpa) FROM student GROUP BY DEPT_CODE",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "DEPT_CODE",
+    "y_name": "max(stu_gpa)",
+    "x_data": [
+     [
+      "ACCT",
+      "BIOL",
+      "CIS",
+      "EDU",
+      "ENGL"
+     ]
+    ],
+    "y_data": [
+     [
+      3.15,
+      2.84,
+      3.27,
+      3.87,
+      2.11
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-79@y_name@ASC",
+   "source": "nvbench",
+   "key": "79@y_name@ASC",
+   "db_id": "apartment_rentals",
+   "table": "Guests",
+   "prompt": "Return the number of the date of birth for all the guests with gender code \"Male\", sort Y in ascending order please.",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT date_of_birth , COUNT(date_of_birth) FROM Guests WHERE gender_code = \"Male\"  ORDER BY COUNT(date_of_birth) ASC",
+   "binning": "BIN date_of_birth BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "date_of_birth",
+    "y_name": "COUNT(date_of_birth)",
+    "x_data": [
+     [
+      "Mon",
+      "Sun",
+      "Thur",
+      "Wed",
+      "Fri",
+      "Sat",
+      "Tue"
+     ]
+    ],
+    "y_data": [
+     [
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1209",
+   "source": "nvbench",
+   "key": "1209",
+   "db_id": "dorm_1",
+   "table": "dorm",
+   "prompt": "How many dorms are there for each gender? Plot apie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT gender , count(*) FROM dorm GROUP BY gender",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "gender",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "F",
+      "M",
+      "X"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      1,
+      5
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-571",
+   "source": "nvbench",
+   "key": "571",
+   "db_id": "college_1",
+   "table": "student",
+   "prompt": "What is the gpa of the top 5 students with highest gpa? Show me a pie chart.",
+   "chart": "Pie",
+   "hardness": "Medium",
+   "sql": "SELECT STU_FNAME , STU_GPA FROM student ORDER BY stu_gpa DESC LIMIT 5",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "STU_FNAME",
+    "y_name": "STU_GPA",
+    "x_data": [
+     [
+      "Gerald",
+      "Anne",
+      "Raphael",
+      "Walter",
+      "John"
+     ]
+    ],
+    "y_data": [
+     [
+      3.87,
+      3.27,
+      3.15,
+      3.09,
+      2.92
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-388",
+   "source": "nvbench",
+   "key": "388",
+   "db_id": "candidate_poll",
+   "table": "people",
+   "prompt": "A pie chart shows the proportion of  Sex and the sum of Height.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Sex , SUM(Height) FROM people GROUP BY Sex",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Sex",
+    "y_name": "SUM(Height)",
+    "x_data": [
+     [
+      "F",
+      "M"
+     ]
+    ],
+    "y_data": [
+     [
+      395,
+      1366
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3190",
+   "source": "nvbench",
+   "key": "3190",
+   "db_id": "university_basketball",
+   "table": "university",
+   "prompt": "Draw a pie chart for what are the different affiliations, and what is the total enrollment of schools founded after 1850 for each enrollment type?",
+   "chart": "Pie",
+   "hardness": "Medium",
+   "sql": "SELECT Affiliation , sum(Enrollment) FROM university WHERE founded > 1850 GROUP BY affiliation",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Affiliation",
+    "y_name": "sum(Enrollment)",
+    "x_data": [
+     [
+      "Private/Methodist",
+      "Public"
+     ]
+    ],
+    "y_data": [
+     [
+      2100,
+      43092
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1267",
+   "source": "nvbench",
+   "key": "1267",
+   "db_id": "e_learning",
+   "table": "Course_Authors_and_Tutors",
+   "prompt": "Give me the comparison about  author_id over the  middle_name  by a bar chart.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT middle_name , author_id FROM Course_Authors_and_Tutors ORDER BY personal_name",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "middle_name",
+    "y_name": "author_id",
+    "x_data": [
+     [
+      "Keira",
+      "Ruthie",
+      "Alejandra",
+      "Ethyl",
+      "Joyce",
+      "Amani",
+      "Mathew",
+      "Aniyah",
+      "Kennith",
+      "Ethelyn",
+      "Jaclyn",
+      "Corene",
+      "Fritz",
+      "Jayce",
+      "Zena"
+     ]
+    ],
+    "y_data": [
+     [
+      6,
+      1,
+      11,
+      3,
+      10,
+      14,
+      9,
+      4,
+      8,
+      7,
+      13,
+      2,
+      15,
+      12,
+      5
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1998",
+   "source": "nvbench",
+   "key": "1998",
+   "db_id": "insurance_policies",
+   "table": "Payments",
+   "prompt": "Give me a bar chart that bins the payment date into the day of the week interval and then shows the amount of each payment categorized by the payment method code, and then sort the bars in ascending order of date.",
+   "chart": "Stacked Bar",
+   "hardness": "Extra Hard",
+   "sql": "SELECT Date_Payment_Made , COUNT(Date_Payment_Made) FROM Payments GROUP BY Payment_Method_Code ORDER BY Date_Payment_Made ASC",
+   "binning": "BIN Date_Payment_Made BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "Date_Payment_Made",
+    "y_name": "COUNT(Date_Payment_Made)",
+    "x_data": [
+     [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thur",
+      "Fri",
+      "Sat",
+      "Sun"
+     ]
+    ],
+    "y_data": [
+     [
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0
+     ],
+     [
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      1
+     ],
+     [
+      1,
+      0,
+      1,
+      0,
+      1,
+      1,
+      3
+     ],
+     [
+      0,
+      0,
+      1,
+      0,
+      0,
+      2,
+      1
+     ]
+    ],
+    "classify": [
+     "American Express",
+     "Discover Card",
+     "MasterCard",
+     "Visa"
+    ]
+   }
+  },
+  {
+   "id": "NV-2791",
+   "source": "nvbench",
+   "key": "2791",
+   "db_id": "soccer_2",
+   "table": "College",
+   "prompt": "For the attribute  cName and  enr, show their proportion by a pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT cName , enr FROM College ORDER BY enr",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "cName",
+    "y_name": "enr",
+    "x_data": [
+     [
+      "ASU",
+      "LSU",
+      "FSU",
+      "OU"
+     ]
+    ],
+    "y_data": [
+     [
+      12000,
+      18000,
+      19000,
+      22000
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1784",
+   "source": "nvbench",
+   "key": "1784",
+   "db_id": "hr_1",
+   "table": "employees",
+   "prompt": "For those employees who was hired before 2002-06-21, visualize the relationship between  employee_id and  manager_id .",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT EMPLOYEE_ID , MANAGER_ID FROM employees WHERE hire_date < '2002-06-21'",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "EMPLOYEE_ID",
+    "y_name": "MANAGER_ID",
+    "x_data": [
+     [
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113,
+      114,
+      115,
+      116,
+      117,
+      118,
+      119,
+      120,
+      121,
+      122,
+      123,
+      124,
+      125,
+      126,
+      127,
+      128,
+      129,
+      130,
+      131,
+      132,
+      133,
+      134,
+      135,
+      136,
+      137,
+      138,
+      139,
+      140,
+      141,
+      142,
+      143,
+      144,
+      145,
+      146,
+      147,
+      148,
+      149,
+      150,
+      151,
+      152,
+      153,
+      154,
+      155,
+      156,
+      157,
+      158,
+      159,
+      160,
+      161,
+      162,
+      163,
+      164,
+      165,
+      166,
+      167,
+      168,
+      169,
+      170,
+      171,
+      172,
+      173,
+      174,
+      175,
+      176,
+      177,
+      178,
+      179,
+      180,
+      181,
+      182,
+      183,
+      184,
+      185,
+      186,
+      187,
+      188,
+      189,
+      190,
+      191,
+      192,
+      193,
+      194,
+      195,
+      196,
+      197,
+      198,
+      199,
+      200,
+      201,
+      202,
+      203,
+      204,
+      205,
+      206
+     ]
+    ],
+    "y_data": [
+     [
+      0,
+      100,
+      100,
+      102,
+      103,
+      103,
+      103,
+      103,
+      101,
+      108,
+      108,
+      108,
+      108,
+      108,
+      100,
+      114,
+      114,
+      114,
+      114,
+      114,
+      100,
+      100,
+      100,
+      100,
+      100,
+      120,
+      120,
+      120,
+      120,
+      121,
+      121,
+      121,
+      121,
+      122,
+      122,
+      122,
+      122,
+      123,
+      123,
+      123,
+      123,
+      124,
+      124,
+      124,
+      124,
+      100,
+      100,
+      100,
+      100,
+      100,
+      145,
+      145,
+      145,
+      145,
+      145,
+      145,
+      146,
+      146,
+      146,
+      146,
+      146,
+      146,
+      147,
+      147,
+      147,
+      147,
+      147,
+      147,
+      148,
+      148,
+      148,
+      148,
+      148,
+      148,
+      149,
+      149,
+      149,
+      149,
+      149,
+      149,
+      120,
+      120,
+      120,
+      120,
+      121,
+      121,
+      121,
+      121,
+      122,
+      122,
+      122,
+      122,
+      123,
+      123,
+      123,
+      123,
+      124,
+      124,
+      124,
+      124,
+      101,
+      100,
+      201,
+      101,
+      101,
+      101,
+      205
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1593@y_name@DESC",
+   "source": "nvbench",
+   "key": "1593@y_name@DESC",
+   "db_id": "hr_1",
+   "table": "employees",
+   "prompt": "For those employees whose salary is in the range of 8000 and 12000 and commission is not null or department number does not equal to 40, find hire_date and the average of salary bin hire_date by weekday, and visualize them by a bar chart, and show y axis in descending order.",
+   "chart": "Bar",
+   "hardness": "Extra Hard",
+   "sql": "SELECT HIRE_DATE , AVG(SALARY) FROM employees WHERE salary BETWEEN 8000 AND 12000 AND commission_pct != \"null\" OR department_id != 40  ORDER BY AVG(SALARY) DESC",
+   "binning": "BIN HIRE_DATE BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "HIRE_DATE",
+    "y_name": "AVG(SALARY)",
+    "x_data": [
+     [
+      "Wed",
+      "Thur",
+      "Sat",
+      "Fri",
+      "Tue",
+      "Sun",
+      "Mon"
+     ]
+    ],
+    "y_data": [
+     [
+      7775,
+      6762.5,
+      6493.333333333333,
+      6320,
+      6286.666666666667,
+      5746.666666666667,
+      5685.714285714285
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1120",
+   "source": "nvbench",
+   "key": "1120",
+   "db_id": "department_store",
+   "table": "products",
+   "prompt": "Scatterplot of minimal product price vs max(product price) by product_type_code",
+   "chart": "Grouping Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT max(product_price) , min(product_price) FROM products GROUP BY product_type_code",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "max(product_price)",
+    "y_name": "min(product_price)",
+    "x_data": [
+     [
+      939.57
+     ],
+     [
+      971.44
+     ]
+    ],
+    "y_data": [
+     [
+      408.82
+     ],
+     [
+      612.46
+     ]
+    ],
+    "classify": [
+     "Clothes",
+     "Hardware"
+    ]
+   }
+  },
+  {
+   "id": "NV-45@x_name@DESC",
+   "source": "nvbench",
+   "key": "45@x_name@DESC",
+   "db_id": "allergy_1",
+   "table": "Has_allergy",
+   "prompt": "How many students have each different allergy Show bar chart, and I want to order X in desc order please.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Allergy , count(*) FROM Has_allergy GROUP BY Allergy ORDER BY Allergy DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Allergy",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "Tree Pollen",
+      "Soy",
+      "Shellfish",
+      "Rodent",
+      "Ragweed",
+      "Nuts",
+      "Milk",
+      "Grass Pollen",
+      "Eggs",
+      "Dog",
+      "Cat",
+      "Anchovies"
+     ]
+    ],
+    "y_data": [
+     [
+      13,
+      4,
+      4,
+      1,
+      6,
+      11,
+      3,
+      4,
+      3,
+      3,
+      4,
+      3
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-398@y_name@ASC",
+   "source": "nvbench",
+   "key": "398@y_name@ASC",
+   "db_id": "candidate_poll",
+   "table": "people",
+   "prompt": "Give me the comparison about Weight over the Date_of_Birth by a bar chart, I want to rank in asc by the y axis please.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT Date_of_Birth , Weight FROM people ORDER BY Weight ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Date_of_Birth",
+    "y_name": "Weight",
+    "x_data": [
+     [
+      "28.09.1981",
+      "06.10.1976",
+      "10.11.1972",
+      "01.09.1977",
+      "22.04.1977",
+      "20.08.1970",
+      "10.03.1976",
+      "05.05.1972",
+      "03.02.1976"
+     ]
+    ],
+    "y_data": [
+     [
+      82,
+      83,
+      85,
+      88,
+      88,
+      89,
+      90,
+      92,
+      94
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-871",
+   "source": "nvbench",
+   "key": "871",
+   "db_id": "cre_Drama_Workshop_Groups",
+   "table": "INVOICES",
+   "prompt": "List the distinct payment method codes with the number of orders mad. Plot them as pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT payment_method_code , count(*) FROM INVOICES GROUP BY payment_method_code",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "payment_method_code",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "American E",
+      "MasterCard",
+      "Visa"
+     ]
+    ],
+    "y_data": [
+     [
+      4,
+      6,
+      5
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2345",
+   "source": "nvbench",
+   "key": "2345",
+   "db_id": "mountain_photos",
+   "table": "mountain",
+   "prompt": "What are the correlation between the height and prominence of mountains which do not belong to the range 'Aberdare Range'? Plot the result by a scatter chart.",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Height , Prominence FROM mountain WHERE range != 'Aberdare Range'",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Height",
+    "y_name": "Prominence",
+    "x_data": [
+     [
+      4260,
+      4220,
+      4195,
+      4193,
+      4167,
+      4127,
+      4125,
+      4120,
+      4100,
+      4088,
+      4071,
+      4070,
+      4070,
+      4068,
+      4030,
+      3996,
+      3950,
+      3941,
+      3912,
+      3903,
+      3900
+     ]
+    ],
+    "y_data": [
+     [
+      1909,
+      350,
+      1605,
+      1215,
+      3755,
+      1530,
+      660,
+      1510,
+      2225,
+      420,
+      610,
+      3931,
+      500,
+      1904,
+      420,
+      910,
+      500,
+      1540,
+      460,
+      450,
+      590
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-698",
+   "source": "nvbench",
+   "key": "698",
+   "db_id": "concert_singer",
+   "table": "singer",
+   "prompt": "What is the number of singers for each country? Return a pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Country , COUNT(Country) FROM singer GROUP BY Country",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Country",
+    "y_name": "COUNT(Country)",
+    "x_data": [
+     [
+      "France",
+      "Netherlands",
+      "United States"
+     ]
+    ],
+    "y_data": [
+     [
+      4,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1115",
+   "source": "nvbench",
+   "key": "1115",
+   "db_id": "department_store",
+   "table": "products",
+   "prompt": "Give the maximum product price for each product type in a pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT product_type_code , max(product_price) FROM products GROUP BY product_type_code",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "product_type_code",
+    "y_name": "max(product_price)",
+    "x_data": [
+     [
+      "Clothes",
+      "Hardware"
+     ]
+    ],
+    "y_data": [
+     [
+      939.57,
+      971.44
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-681",
+   "source": "nvbench",
+   "key": "681",
+   "db_id": "company_employee",
+   "table": "company",
+   "prompt": "Give me a pie to show how many industry from different industry.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Industry , COUNT(Industry) FROM company GROUP BY Industry",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Industry",
+    "y_name": "COUNT(Industry)",
+    "x_data": [
+     [
+      "Automotive",
+      "Banking",
+      "Conglomerate",
+      "Oil and gas",
+      "Retailing"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      7,
+      2,
+      8,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-897",
+   "source": "nvbench",
+   "key": "897",
+   "db_id": "cre_Theme_park",
+   "table": "HOTELS",
+   "prompt": "Show the id and star rating of each hotel, ordered by its price from low to high. Plot them as scatter chart.",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT hotel_id , star_rating_code FROM HOTELS ORDER BY price_range ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "hotel_id",
+    "y_name": "star_rating_code",
+    "x_data": [
+     [
+      431,
+      426,
+      473,
+      555,
+      420,
+      172,
+      264,
+      442,
+      514,
+      123,
+      421,
+      379,
+      373,
+      314,
+      144,
+      222,
+      239,
+      331,
+      350,
+      376
+     ]
+    ],
+    "y_data": [
+     [
+      2,
+      5,
+      1,
+      5,
+      5,
+      5,
+      1,
+      2,
+      5,
+      5,
+      3,
+      4,
+      5,
+      5,
+      4,
+      5,
+      3,
+      1,
+      1,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3180",
+   "source": "nvbench",
+   "key": "3180",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Show the relation between team id and all_games_percent for each All_Road using a scatter chart",
+   "chart": "Grouping Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Team_ID , All_Games_Percent FROM basketball_match GROUP BY All_Road",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Team_ID",
+    "y_name": "All_Games_Percent",
+    "x_data": [
+     [
+      1
+     ],
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ]
+    ],
+    "y_data": [
+     [
+      0.946
+     ],
+     [
+      0.6
+     ],
+     [
+      0.706
+     ],
+     [
+      0.8240000000000001
+     ]
+    ],
+    "classify": [
+     "13–0",
+     "4–8",
+     "6–5",
+     "8–2"
+    ]
+   }
+  },
+  {
+   "id": "NV-3076",
+   "source": "nvbench",
+   "key": "3076",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Give me a scatter chart that groups acc road, the x-axis is school id and the y-axis is all games percent.",
+   "chart": "Grouping Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT School_ID , All_Games_Percent FROM basketball_match GROUP BY ACC_Road",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "School_ID",
+    "y_name": "All_Games_Percent",
+    "x_data": [
+     [
+      5,
+      4
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ]
+    ],
+    "y_data": [
+     [
+      0.6,
+      0.706
+     ],
+     [
+      0.8240000000000001
+     ],
+     [
+      0.946
+     ]
+    ],
+    "classify": [
+     "3–5",
+     "6–2",
+     "8–0"
+    ]
+   }
+  },
+  {
+   "id": "NV-1986",
+   "source": "nvbench",
+   "key": "1986",
+   "db_id": "insurance_and_eClaims",
+   "table": "policies",
+   "prompt": "For each policy type, return its type code and its count in the record. Visualize by pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Policy_Type_Code , count(*) FROM policies GROUP BY policy_type_code",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Policy_Type_Code",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "Deputy",
+      "Jurisdiction",
+      "Normal",
+      "Uniformed"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      3,
+      1,
+      8
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-348",
+   "source": "nvbench",
+   "key": "348",
+   "db_id": "bike_1",
+   "table": "weather",
+   "prompt": "Show the average of cloud cover from each date",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT date , AVG(cloud_cover) FROM weather",
+   "binning": "BIN date BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "date",
+    "y_name": "AVG(cloud_cover)",
+    "x_data": [
+     [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thur",
+      "Fri",
+      "Sat",
+      "Sun"
+     ]
+    ],
+    "y_data": [
+     [
+      0,
+      0,
+      8,
+      8,
+      8,
+      4,
+      0
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-232",
+   "source": "nvbench",
+   "key": "232",
+   "db_id": "behavior_monitoring",
+   "table": "Student_Addresses",
+   "prompt": "Draw a bar chart about the distribution of  date_address_to and the amount of date_address_to bin date_address_to by weekday.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT date_address_to , COUNT(date_address_to) FROM Student_Addresses  ORDER BY monthly_rental DESC",
+   "binning": "BIN date_address_to BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "date_address_to",
+    "y_name": "COUNT(date_address_to)",
+    "x_data": [
+     [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thur",
+      "Fri",
+      "Sat",
+      "Sun"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      3,
+      3,
+      3,
+      2,
+      0,
+      6
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3098@x_name@DESC",
+   "source": "nvbench",
+   "key": "3098@x_name@DESC",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Give me the comparison about the sum of Team_ID over the ACC_Road , and group by attribute ACC_Road, show names in desc order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT ACC_Road , SUM(Team_ID) FROM basketball_match GROUP BY ACC_Road ORDER BY ACC_Road DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "ACC_Road",
+    "y_name": "SUM(Team_ID)",
+    "x_data": [
+     [
+      "8–0",
+      "6–2",
+      "3–5"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      7
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-482",
+   "source": "nvbench",
+   "key": "482",
+   "db_id": "city_record",
+   "table": "MATCH",
+   "prompt": "Create a pie chart showing the total number across competition.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Competition , count(*) FROM MATCH GROUP BY Competition",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Competition",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "1994 FIFA World Cup qualification",
+      "2002 FIFA World Cup qualification",
+      "Friendly match"
+     ]
+    ],
+    "y_data": [
+     [
+      4,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3157",
+   "source": "nvbench",
+   "key": "3157",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Give me a pie to show the number of acc road from different acc road.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT ACC_Road , COUNT(ACC_Road) FROM basketball_match GROUP BY ACC_Road",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "ACC_Road",
+    "y_name": "COUNT(ACC_Road)",
+    "x_data": [
+     [
+      "3–5",
+      "6–2",
+      "8–0"
+     ]
+    ],
+    "y_data": [
+     [
+      2,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1793",
+   "source": "nvbench",
+   "key": "1793",
+   "db_id": "hr_1",
+   "table": "employees",
+   "prompt": "For those employees who was hired before 2002-06-21, what is the relationship between  employee_id and  commission_pct ?",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT EMPLOYEE_ID , COMMISSION_PCT FROM employees WHERE hire_date < '2002-06-21'",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "EMPLOYEE_ID",
+    "y_name": "COMMISSION_PCT",
+    "x_data": [
+     [
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113,
+      114,
+      115,
+      116,
+      117,
+      118,
+      119,
+      120,
+      121,
+      122,
+      123,
+      124,
+      125,
+      126,
+      127,
+      128,
+      129,
+      130,
+      131,
+      132,
+      133,
+      134,
+      135,
+      136,
+      137,
+      138,
+      139,
+      140,
+      141,
+      142,
+      143,
+      144,
+      145,
+      146,
+      147,
+      148,
+      149,
+      150,
+      151,
+      152,
+      153,
+      154,
+      155,
+      156,
+      157,
+      158,
+      159,
+      160,
+      161,
+      162,
+      163,
+      164,
+      165,
+      166,
+      167,
+      168,
+      169,
+      170,
+      171,
+      172,
+      173,
+      174,
+      175,
+      176,
+      177,
+      178,
+      179,
+      180,
+      181,
+      182,
+      183,
+      184,
+      185,
+      186,
+      187,
+      188,
+      189,
+      190,
+      191,
+      192,
+      193,
+      194,
+      195,
+      196,
+      197,
+      198,
+      199,
+      200,
+      201,
+      202,
+      203,
+      204,
+      205,
+      206
+     ]
+    ],
+    "y_data": [
+     [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.4,
+      0.3,
+      0.3,
+      0.3,
+      0.2,
+      0.3,
+      0.25,
+      0.25,
+      0.2,
+      0.2,
+      0.15,
+      0.35,
+      0.35,
+      0.35,
+      0.3,
+      0.3,
+      0.25,
+      0.25,
+      0.15,
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.25,
+      0.2,
+      0.2,
+      0.15,
+      0.15,
+      0.1,
+      0.3,
+      0.25,
+      0.2,
+      0.2,
+      0.15,
+      0.1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-352",
+   "source": "nvbench",
+   "key": "352",
+   "db_id": "body_builder",
+   "table": "body_builder",
+   "prompt": "Show me about the correlation between  Body_Builder_ID and  People_ID  in a scatter chart.",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Body_Builder_ID , People_ID FROM body_builder",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Body_Builder_ID",
+    "y_name": "People_ID",
+    "x_data": [
+     [
+      1,
+      2,
+      3,
+      4,
+      5
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      3,
+      5,
+      6
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1004",
+   "source": "nvbench",
+   "key": "1004",
+   "db_id": "customers_and_products_contacts",
+   "table": "customers",
+   "prompt": "Show the proportion of the number of customers for each payment method code in a pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT payment_method_code , COUNT(payment_method_code) FROM customers GROUP BY payment_method_code",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "payment_method_code",
+    "y_name": "COUNT(payment_method_code)",
+    "x_data": [
+     [
+      "Credit Card",
+      "Direct Debit"
+     ]
+    ],
+    "y_data": [
+     [
+      7,
+      8
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1340@y_name@DESC",
+   "source": "nvbench",
+   "key": "1340@y_name@DESC",
+   "db_id": "employee_hire_evaluation",
+   "table": "hiring",
+   "prompt": "Find Start_from and the sum of Shop_ID bin start_from by weekday, and visualize them by a bar chart, could you rank in desc by the total number?",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Start_from , SUM(Shop_ID) FROM hiring  ORDER BY SUM(Shop_ID) DESC",
+   "binning": "BIN Start_from BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "Start_from",
+    "y_name": "SUM(Shop_ID)",
+    "x_data": [
+     [
+      "Tue",
+      "Sat",
+      "Sun",
+      "Fri",
+      "Wed",
+      "Thur",
+      "Mon"
+     ]
+    ],
+    "y_data": [
+     [
+      11,
+      8,
+      4,
+      2,
+      1,
+      1,
+      0
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-672",
+   "source": "nvbench",
+   "key": "672",
+   "db_id": "college_3",
+   "table": "COURSE",
+   "prompt": "Draw a scatter chart about the correlation between  Instructor and  DNO .",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Instructor , DNO FROM COURSE ORDER BY Credits",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Instructor",
+    "y_name": "DNO",
+    "x_data": [
+     [
+      4230,
+      9826,
+      6191,
+      9011,
+      2881,
+      6112,
+      1193,
+      4230,
+      6112,
+      6112,
+      6112,
+      1121,
+      9826,
+      9172,
+      2192,
+      1148,
+      8918,
+      7712,
+      2192,
+      1148,
+      8918,
+      7723,
+      8114,
+      7712,
+      7792,
+      1121,
+      8423,
+      1121,
+      9823,
+      9823,
+      8791,
+      8791,
+      2738,
+      8102,
+      6182,
+      9823,
+      8772,
+      6541,
+      8122,
+      9922,
+      8723,
+      9210,
+      6191,
+      1823,
+      9824,
+      6925,
+      6191,
+      6191,
+      2119,
+      7231,
+      9514,
+      6330,
+      8722,
+      9379,
+      7134,
+      9514,
+      4432,
+      6910,
+      4432,
+      6910,
+      8989,
+      4432,
+      4432,
+      5718,
+      2311,
+      8772,
+      6541,
+      8102,
+      2881,
+      1177,
+      2738,
+      8772,
+      9210,
+      8118,
+      9210,
+      9011
+     ]
+    ],
+    "y_data": [
+     [
+      600,
+      600,
+      600,
+      50,
+      550,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      600,
+      550,
+      550,
+      550,
+      550,
+      550,
+      550,
+      550,
+      550,
+      550,
+      550,
+      550,
+      550,
+      520,
+      520,
+      520,
+      520,
+      520,
+      520,
+      520,
+      520,
+      520,
+      520,
+      520,
+      520,
+      520,
+      520,
+      520,
+      520,
+      50,
+      50,
+      50,
+      50,
+      50,
+      50,
+      50,
+      50,
+      550,
+      550,
+      550,
+      550,
+      550,
+      550,
+      550,
+      550,
+      520,
+      520,
+      520,
+      50
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1613",
+   "source": "nvbench",
+   "key": "1613",
+   "db_id": "hr_1",
+   "table": "employees",
+   "prompt": "For those employees whose salary is in the range of 8000 and 12000 and commission is not null or department number does not equal to 40, show me about the correlation between  salary and  manager_id  in a scatter chart.",
+   "chart": "Scatter",
+   "hardness": "Medium",
+   "sql": "SELECT SALARY , MANAGER_ID FROM employees WHERE salary BETWEEN 8000 AND 12000 AND commission_pct != \"null\" OR department_id != 40",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "SALARY",
+    "y_name": "MANAGER_ID",
+    "x_data": [
+     [
+      24000,
+      17000,
+      17000,
+      9000,
+      6000,
+      4800,
+      4800,
+      4200,
+      12000,
+      9000,
+      8200,
+      7700,
+      7800,
+      6900,
+      11000,
+      3100,
+      2900,
+      2800,
+      2600,
+      2500,
+      8000,
+      8200,
+      7900,
+      6500,
+      5800,
+      3200,
+      2700,
+      2400,
+      2200,
+      3300,
+      2800,
+      2500,
+      2100,
+      3300,
+      2900,
+      2400,
+      2200,
+      3600,
+      3200,
+      2700,
+      2500,
+      3500,
+      3100,
+      2600,
+      2500,
+      14000,
+      13500,
+      12000,
+      11000,
+      10500,
+      10000,
+      9500,
+      9000,
+      8000,
+      7500,
+      7000,
+      10000,
+      9500,
+      9000,
+      8000,
+      7500,
+      7000,
+      10500,
+      9500,
+      7200,
+      6800,
+      6400,
+      6200,
+      11500,
+      10000,
+      9600,
+      7400,
+      7300,
+      6100,
+      11000,
+      8800,
+      8600,
+      8400,
+      7000,
+      6200,
+      3200,
+      3100,
+      2500,
+      2800,
+      4200,
+      4100,
+      3400,
+      3000,
+      3800,
+      3600,
+      2900,
+      2500,
+      4000,
+      3900,
+      3200,
+      2800,
+      3100,
+      3000,
+      2600,
+      2600,
+      4400,
+      13000,
+      6000,
+      10000,
+      12000,
+      8300
+     ]
+    ],
+    "y_data": [
+     [
+      0,
+      100,
+      100,
+      102,
+      103,
+      103,
+      103,
+      103,
+      101,
+      108,
+      108,
+      108,
+      108,
+      108,
+      100,
+      114,
+      114,
+      114,
+      114,
+      114,
+      100,
+      100,
+      100,
+      100,
+      100,
+      120,
+      120,
+      120,
+      120,
+      121,
+      121,
+      121,
+      121,
+      122,
+      122,
+      122,
+      122,
+      123,
+      123,
+      123,
+      123,
+      124,
+      124,
+      124,
+      124,
+      100,
+      100,
+      100,
+      100,
+      100,
+      145,
+      145,
+      145,
+      145,
+      145,
+      145,
+      146,
+      146,
+      146,
+      146,
+      146,
+      146,
+      147,
+      147,
+      147,
+      147,
+      147,
+      147,
+      148,
+      148,
+      148,
+      148,
+      148,
+      148,
+      149,
+      149,
+      149,
+      149,
+      149,
+      149,
+      120,
+      120,
+      120,
+      120,
+      121,
+      121,
+      121,
+      121,
+      122,
+      122,
+      122,
+      122,
+      123,
+      123,
+      123,
+      123,
+      124,
+      124,
+      124,
+      124,
+      101,
+      100,
+      201,
+      101,
+      101,
+      205
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2189@x_name@ASC",
+   "source": "nvbench",
+   "key": "2189@x_name@ASC",
+   "db_id": "manufactory_1",
+   "table": "products",
+   "prompt": "For those products with a price between 60 and 120, a bar chart shows the distribution of name and code , show bars in asc order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Name , Code FROM products WHERE price BETWEEN 60 AND 120 ORDER BY Name ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Name",
+    "y_name": "Code",
+    "x_data": [
+     [
+      "CD drive",
+      "Memory",
+      "Toner cartridge"
+     ]
+    ],
+    "y_data": [
+     [
+      7,
+      2,
+      9
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1151",
+   "source": "nvbench",
+   "key": "1151",
+   "db_id": "document_management",
+   "table": "users",
+   "prompt": "I want to know the proportion of the total number for each role code.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT role_code , count(*) FROM users GROUP BY role_code",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "role_code",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "DBA",
+      "PROJ-MGR"
+     ]
+    ],
+    "y_data": [
+     [
+      8,
+      7
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-831",
+   "source": "nvbench",
+   "key": "831",
+   "db_id": "cre_Docs_and_Epenses",
+   "table": "Accounts",
+   "prompt": "Show all statement id and the number of accounts for each statement. Show scatter chart.",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Statement_ID , count(*) FROM Accounts GROUP BY STATEMENT_ID",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Statement_ID",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      57,
+      192
+     ]
+    ],
+    "y_data": [
+     [
+      9,
+      6
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1581@y_name@ASC",
+   "source": "nvbench",
+   "key": "1581@y_name@ASC",
+   "db_id": "hr_1",
+   "table": "employees",
+   "prompt": "For those employees whose salary is in the range of 8000 and 12000 and commission is not null or department number does not equal to 40, return a bar chart about the distribution of hire_date and the amount of hire_date bin hire_date by weekday, could you show total number from low to high order?",
+   "chart": "Bar",
+   "hardness": "Extra Hard",
+   "sql": "SELECT HIRE_DATE , COUNT(HIRE_DATE) FROM employees WHERE salary BETWEEN 8000 AND 12000 AND commission_pct != \"null\" OR department_id != 40  ORDER BY COUNT(HIRE_DATE) ASC",
+   "binning": "BIN HIRE_DATE BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "HIRE_DATE",
+    "y_name": "COUNT(HIRE_DATE)",
+    "x_data": [
+     [
+      "Mon",
+      "Fri",
+      "Sat",
+      "Sun",
+      "Tue",
+      "Thur",
+      "Wed"
+     ]
+    ],
+    "y_data": [
+     [
+      14,
+      15,
+      15,
+      15,
+      15,
+      16,
+      16
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1148",
+   "source": "nvbench",
+   "key": "1148",
+   "db_id": "device",
+   "table": "device",
+   "prompt": "Give me a pie to show the total number from different software platform.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Software_Platform , COUNT(*) FROM device GROUP BY Software_Platform",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Software_Platform",
+    "y_name": "COUNT(*)",
+    "x_data": [
+     [
+      "Android",
+      "iOS"
+     ]
+    ],
+    "y_data": [
+     [
+      5,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-275",
+   "source": "nvbench",
+   "key": "275",
+   "db_id": "behavior_monitoring",
+   "table": "Student_Addresses",
+   "prompt": "What is the relationship between  address_id and  monthly_rental ?",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT address_id , monthly_rental FROM Student_Addresses ORDER BY monthly_rental DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "address_id",
+    "y_name": "monthly_rental",
+    "x_data": [
+     [
+      16,
+      1,
+      8,
+      2,
+      18,
+      13,
+      13,
+      10,
+      1,
+      5,
+      3,
+      8,
+      12,
+      3,
+      1,
+      12,
+      16,
+      9,
+      19,
+      18
+     ]
+    ],
+    "y_data": [
+     [
+      1297.807,
+      1297.3186,
+      1287.5604,
+      1132.742,
+      1113.0996,
+      1067.8383,
+      1036.8462,
+      1032.9782,
+      1032.8717,
+      1007.2597,
+      894.0958,
+      865.2615,
+      826.4319,
+      800.1214,
+      756.6745,
+      747.5312,
+      683.0735,
+      679.2988,
+      644.9306,
+      620.2801
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3277",
+   "source": "nvbench",
+   "key": "3277",
+   "db_id": "world_1",
+   "table": "country",
+   "prompt": "Return the names and surface areas of the 5 largest countries. Visualize by bar chart.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Name , SurfaceArea FROM country ORDER BY SurfaceArea DESC LIMIT 5",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Name",
+    "y_name": "SurfaceArea",
+    "x_data": [
+     [
+      "Russian Federation",
+      "Antarctica",
+      "Canada",
+      "China",
+      "United States"
+     ]
+    ],
+    "y_data": [
+     [
+      17075400,
+      13120000,
+      9970610,
+      9572900,
+      9363520
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2306",
+   "source": "nvbench",
+   "key": "2306",
+   "db_id": "manufactory_1",
+   "table": "Products",
+   "prompt": "What are the average prices of products, grouped by manufacturer code. Visualize by scatter chart.",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT AVG(Price) , Manufacturer FROM Products GROUP BY Manufacturer",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "AVG(Price)",
+    "y_name": "Manufacturer",
+    "x_data": [
+     [
+      240,
+      150,
+      162,
+      150,
+      240,
+      62.5
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-6",
+   "source": "nvbench",
+   "key": "6",
+   "db_id": "activity_1",
+   "table": "Faculty",
+   "prompt": "Return a pie on how many faculty members does each building have? List the result with the name of the building.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Building , count(*) FROM Faculty GROUP BY building",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Building",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "Barton",
+      "Krieger",
+      "NEB"
+     ]
+    ],
+    "y_data": [
+     [
+      20,
+      20,
+      18
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3012",
+   "source": "nvbench",
+   "key": "3012",
+   "db_id": "tracking_share_transactions",
+   "table": "TRANSACTIONS",
+   "prompt": "Bin all date of transactions into the YEAR interval, and give the average of the share count for each bin. What is the trend?",
+   "chart": "Line",
+   "hardness": "Easy",
+   "sql": "SELECT date_of_transaction , AVG(share_count) FROM TRANSACTIONS",
+   "binning": "BIN date_of_transaction BY YEAR",
+   "vis_obj": {
+    "x_name": "date_of_transaction",
+    "y_name": "AVG(share_count)",
+    "x_data": [
+     [
+      "1977~1979",
+      "1980~1982",
+      "1983~1985",
+      "1986~1988",
+      "1989~1991",
+      "1992~1994",
+      "1995~1997",
+      "1998~2000",
+      "2001~2003",
+      "2004"
+     ]
+    ],
+    "y_data": [
+     [
+      3170,
+      827382.5,
+      1669,
+      8718572,
+      1522,
+      0,
+      93191,
+      674529892,
+      212687,
+      96178
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3119@x_name@DESC",
+   "source": "nvbench",
+   "key": "3119@x_name@DESC",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Give me the comparison about School_ID over the All_Neutral , and rank All_Neutral in descending order.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT All_Neutral , School_ID FROM basketball_match ORDER BY All_Neutral DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "All_Neutral",
+    "y_name": "School_ID",
+    "x_data": [
+     [
+      "9–1",
+      "5–3",
+      "4–3",
+      "3–3"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      4,
+      5
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1248",
+   "source": "nvbench",
+   "key": "1248",
+   "db_id": "e_learning",
+   "table": "Students",
+   "prompt": "What are the dates of the latest logon of the students with family name \"Jaskolski\" or \"Langosh\", and count them by a bar chart",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT date_of_latest_logon , COUNT(date_of_latest_logon) FROM Students WHERE family_name = \"Jaskolski\" OR family_name = \"Langosh\"",
+   "binning": "BIN date_of_latest_logon BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "date_of_latest_logon",
+    "y_name": "COUNT(date_of_latest_logon)",
+    "x_data": [
+     [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thur",
+      "Fri",
+      "Sat",
+      "Sun"
+     ]
+    ],
+    "y_data": [
+     [
+      0,
+      0,
+      0,
+      0,
+      0,
+      2,
+      0
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3084",
+   "source": "nvbench",
+   "key": "3084",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Show me about the correlation between  School_ID and  All_Games_Percent , and group by attribute ACC_Home in a scatter chart.",
+   "chart": "Grouping Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT School_ID , All_Games_Percent FROM basketball_match GROUP BY ACC_Home",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "School_ID",
+    "y_name": "All_Games_Percent",
+    "x_data": [
+     [
+      1,
+      5
+     ],
+     [
+      4,
+      2
+     ]
+    ],
+    "y_data": [
+     [
+      0.946,
+      0.6
+     ],
+     [
+      0.706,
+      0.8240000000000001
+     ]
+    ],
+    "classify": [
+     "6–2",
+     "7–1"
+    ]
+   }
+  },
+  {
+   "id": "NV-1098@x_name@DESC",
+   "source": "nvbench",
+   "key": "1098@x_name@DESC",
+   "db_id": "department_management",
+   "table": "department",
+   "prompt": "Show average of budget in each year and bin creation time by year in a line chart, sort from high to low by the Creation.",
+   "chart": "Line",
+   "hardness": "Medium",
+   "sql": "SELECT Creation , AVG(Budget_in_Billions) FROM department  ORDER BY Creation DESC",
+   "binning": "BIN Creation BY YEAR",
+   "vis_obj": {
+    "x_name": "Creation",
+    "y_name": "AVG(Budget_in_Billions)",
+    "x_data": [
+     [
+      "1999~2002",
+      "1978~1998",
+      "1957~1977",
+      "1936~1956",
+      "1915~1935",
+      "1894~1914",
+      "1873~1893",
+      "1852~1872",
+      "1831~1851",
+      "1810~1830",
+      "1789~1809"
+     ]
+    ],
+    "y_data": [
+     [
+      44,
+      67.5,
+      41.666666666666664,
+      491,
+      0,
+      32.5,
+      77,
+      23,
+      10,
+      0,
+      10
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-484",
+   "source": "nvbench",
+   "key": "484",
+   "db_id": "climbing",
+   "table": "climber",
+   "prompt": "Display a pie chart for how many climbers are from each country?",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Country , COUNT(*) FROM climber GROUP BY Country",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Country",
+    "y_name": "COUNT(*)",
+    "x_data": [
+     [
+      "Switzerland",
+      "United Kingdom",
+      "West Germany"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      3,
+      6
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3173",
+   "source": "nvbench",
+   "key": "3173",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Visualize a scatter chart about the correlation between  Team_ID and  ACC_Percent , and group by attribute All_Games.",
+   "chart": "Grouping Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Team_ID , ACC_Percent FROM basketball_match GROUP BY All_Games",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Team_ID",
+    "y_name": "ACC_Percent",
+    "x_data": [
+     [
+      4
+     ],
+     [
+      3
+     ],
+     [
+      2
+     ],
+     [
+      1
+     ]
+    ],
+    "y_data": [
+     [
+      0.563
+     ],
+     [
+      0.625
+     ],
+     [
+      0.813
+     ],
+     [
+      0.875
+     ]
+    ],
+    "classify": [
+     "21–14",
+     "24–10",
+     "28–6",
+     "35–2"
+    ]
+   }
+  },
+  {
+   "id": "NV-281@y_name@ASC",
+   "source": "nvbench",
+   "key": "281@y_name@ASC",
+   "db_id": "behavior_monitoring",
+   "table": "Behavior_Incident",
+   "prompt": "What is the number of start dates for incidents with incident type code \"NOISE\"? Bin by year and return a bar chart, order Y-axis in asc order please.",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT date_incident_start , COUNT(date_incident_start) FROM Behavior_Incident WHERE incident_type_code = \"NOISE\"  ORDER BY COUNT(date_incident_start) ASC",
+   "binning": "BIN date_incident_start BY YEAR",
+   "vis_obj": {
+    "x_name": "date_incident_start",
+    "y_name": "COUNT(date_incident_start)",
+    "x_data": [
+     [
+      "2018",
+      "2017"
+     ]
+    ],
+    "y_data": [
+     [
+      2,
+      4
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1767@y_name@ASC",
+   "source": "nvbench",
+   "key": "1767@y_name@ASC",
+   "db_id": "hr_1",
+   "table": "employees",
+   "prompt": "For those employees who was hired before 2002-06-21, show me about the distribution of hire_date and the average of salary bin hire_date by weekday in a bar chart, and rank in asc by the total number.",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT HIRE_DATE , AVG(SALARY) FROM employees WHERE hire_date < '2002-06-21'  ORDER BY AVG(SALARY) ASC",
+   "binning": "BIN HIRE_DATE BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "HIRE_DATE",
+    "y_name": "AVG(SALARY)",
+    "x_data": [
+     [
+      "Mon",
+      "Sun",
+      "Tue",
+      "Fri",
+      "Sat",
+      "Thur",
+      "Wed"
+     ]
+    ],
+    "y_data": [
+     [
+      5740,
+      5746.666666666667,
+      6286.666666666667,
+      6320,
+      6493.333333333333,
+      6762.5,
+      7775
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2316@y_name@DESC",
+   "source": "nvbench",
+   "key": "2316@y_name@DESC",
+   "db_id": "match_season",
+   "table": "player",
+   "prompt": "Group and count the years played to draw a bar chart, list y axis in descending order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Years_Played , COUNT(Years_Played) FROM player GROUP BY Years_Played ORDER BY COUNT(Years_Played) DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Years_Played",
+    "y_name": "COUNT(Years_Played)",
+    "x_data": [
+     [
+      "2 (2010–2011)",
+      "1 (2011)",
+      "8 (2003–2005, 2007–2011)",
+      "4 (2003–2004, 2010–2011)",
+      "3 (2009–2011)",
+      "3 (2005, 2007–2008)",
+      "2 (2010-2011)",
+      "2 (1988, 1990)"
+     ]
+    ],
+    "y_data": [
+     [
+      2,
+      2,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-903",
+   "source": "nvbench",
+   "key": "903",
+   "db_id": "culture_company",
+   "table": "movie",
+   "prompt": "What is the number of movies for each year, ordered by budget in millions? Visualize in a bar chart.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Year , COUNT(Year) FROM movie  ORDER BY budget_million",
+   "binning": "BIN Year BY YEAR",
+   "vis_obj": {
+    "x_name": "Year",
+    "y_name": "COUNT(Year)",
+    "x_data": [
+     [
+      "1999",
+      "2000",
+      "2001"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      6,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3153",
+   "source": "nvbench",
+   "key": "3153",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "A pie chart shows the proportion of  All_Road and School_ID.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT All_Road , School_ID FROM basketball_match",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "All_Road",
+    "y_name": "School_ID",
+    "x_data": [
+     [
+      "13–0",
+      "8–2",
+      "6–5",
+      "4–8"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      4,
+      5
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3203",
+   "source": "nvbench",
+   "key": "3203",
+   "db_id": "voter_1",
+   "table": "votes",
+   "prompt": "Show me about the proportion of the number of distinct states with a pie chart.",
+   "chart": "Pie",
+   "hardness": "Medium",
+   "sql": "SELECT DISTINCT state , COUNT(state) FROM votes GROUP BY state",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "state",
+    "y_name": "COUNT(state)",
+    "x_data": [
+     [
+      "CA",
+      "NJ\n",
+      "NY"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      1,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2920@y_name@ASC",
+   "source": "nvbench",
+   "key": "2920@y_name@ASC",
+   "db_id": "swimming",
+   "table": "swimmer",
+   "prompt": "A bar chart shows the distribution of meter_500 and ID , and I want to rank y axis from low to high order.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT meter_500 , ID FROM swimmer ORDER BY ID ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "meter_500",
+    "y_name": "ID",
+    "x_data": [
+     [
+      "4:57.03",
+      "4:56.96",
+      "4:54.19",
+      "4:55.08",
+      "4:54.48",
+      "4:56.15",
+      "4:54.21",
+      "4:52.85"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1573",
+   "source": "nvbench",
+   "key": "1573",
+   "db_id": "hr_1",
+   "table": "employees",
+   "prompt": "For all employees who have the letters D or S in their first name, show me about the correlation between  employee_id and  salary  in a scatter chart.",
+   "chart": "Scatter",
+   "hardness": "Hard",
+   "sql": "SELECT EMPLOYEE_ID , SALARY FROM employees WHERE first_name LIKE '%D%' OR first_name LIKE '%S%'",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "EMPLOYEE_ID",
+    "y_name": "SALARY",
+    "x_data": [
+     [
+      100,
+      205,
+      168,
+      114,
+      148,
+      169,
+      151,
+      163,
+      103,
+      109,
+      175,
+      121,
+      153,
+      159,
+      112,
+      111,
+      160,
+      161,
+      113,
+      165,
+      123,
+      203,
+      166,
+      179,
+      173,
+      105,
+      107,
+      184,
+      185,
+      192,
+      137,
+      133,
+      138,
+      180,
+      194,
+      115,
+      142,
+      116,
+      117,
+      183,
+      143,
+      198,
+      199,
+      131,
+      140,
+      191,
+      127,
+      128
+     ]
+    ],
+    "y_data": [
+     [
+      24000,
+      12000,
+      11500,
+      11000,
+      11000,
+      10000,
+      9500,
+      9500,
+      9000,
+      9000,
+      8800,
+      8200,
+      8000,
+      8000,
+      7800,
+      7700,
+      7500,
+      7000,
+      6900,
+      6800,
+      6500,
+      6500,
+      6400,
+      6200,
+      6100,
+      4800,
+      4200,
+      4200,
+      4100,
+      4000,
+      3600,
+      3300,
+      3200,
+      3200,
+      3200,
+      3100,
+      3100,
+      2900,
+      2800,
+      2800,
+      2600,
+      2600,
+      2600,
+      2500,
+      2500,
+      2500,
+      2400,
+      2200
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3110@y_name@ASC",
+   "source": "nvbench",
+   "key": "3110@y_name@ASC",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Give me the comparison about Team_ID over the Team_Name by a bar chart, and I want to sort from low to high by the y-axis please.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT Team_Name , Team_ID FROM basketball_match ORDER BY Team_ID ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Team_Name",
+    "y_name": "Team_ID",
+    "x_data": [
+     [
+      "North Carolina",
+      "Duke",
+      "Clemson",
+      "Virginia Tech"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      3,
+      4
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3221",
+   "source": "nvbench",
+   "key": "3221",
+   "db_id": "wine_1",
+   "table": "WINE",
+   "prompt": "A bar chart for listing the number of grapes, whose score is higher than 93 ordered by Name.",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT Grape , COUNT(Grape) FROM WINE WHERE Score > 93 GROUP BY Grape ORDER BY Name",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Grape",
+    "y_name": "COUNT(Grape)",
+    "x_data": [
+     [
+      "Cabernet Sauvingnon",
+      "Chardonnay",
+      "Grenache",
+      "Pinot Noir",
+      "Syrah",
+      "Zinfandel"
+     ]
+    ],
+    "y_data": [
+     [
+      15,
+      13,
+      1,
+      19,
+      7,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2527@x_name@ASC",
+   "source": "nvbench",
+   "key": "2527@x_name@ASC",
+   "db_id": "party_people",
+   "table": "party",
+   "prompt": "Compare the total number of each minister using a bar graph, and list by the X in ascending.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Minister , COUNT(Minister) FROM party GROUP BY Minister ORDER BY Minister ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Minister",
+    "y_name": "COUNT(Minister)",
+    "x_data": [
+     [
+      "Dr. Kwame Nkrumah (MP)",
+      "Ebenezer Ako-Adjei (MP)",
+      "Imoru Egala (MP)",
+      "Kojo Botsio (MP)"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1549@y_name@DESC",
+   "source": "nvbench",
+   "key": "1549@y_name@DESC",
+   "db_id": "hr_1",
+   "table": "employees",
+   "prompt": "For all employees who have the letters D or S in their first name, show me about the distribution of hire_date and the average of employee_id bin hire_date by weekday in a bar chart, and sort total number in desc order.",
+   "chart": "Bar",
+   "hardness": "Extra Hard",
+   "sql": "SELECT HIRE_DATE , AVG(EMPLOYEE_ID) FROM employees WHERE first_name LIKE '%D%' OR first_name LIKE '%S%'  ORDER BY AVG(EMPLOYEE_ID) DESC",
+   "binning": "BIN HIRE_DATE BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "HIRE_DATE",
+    "y_name": "AVG(EMPLOYEE_ID)",
+    "x_data": [
+     [
+      "Thur",
+      "Sat",
+      "Wed",
+      "Mon",
+      "Tue",
+      "Sun",
+      "Fri"
+     ]
+    ],
+    "y_data": [
+     [
+      166.8,
+      151.22222222222223,
+      150.27272727272728,
+      149.625,
+      148,
+      141.33333333333334,
+      140
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2797",
+   "source": "nvbench",
+   "key": "2797",
+   "db_id": "soccer_2",
+   "table": "college",
+   "prompt": "Create a pie chart showing minimal enr across cname.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT cName , min(enr) FROM college GROUP BY state",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "cName",
+    "y_name": "min(enr)",
+    "x_data": [
+     [
+      "ASU",
+      "FSU",
+      "LSU",
+      "OU"
+     ]
+    ],
+    "y_data": [
+     [
+      12000,
+      19000,
+      18000,
+      22000
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-274",
+   "source": "nvbench",
+   "key": "274",
+   "db_id": "behavior_monitoring",
+   "table": "Student_Addresses",
+   "prompt": "Visualize a scatter chart about the correlation between  student_id and  address_id .",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT student_id , address_id FROM Student_Addresses ORDER BY monthly_rental DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "student_id",
+    "y_name": "address_id",
+    "x_data": [
+     [
+      13,
+      8,
+      2,
+      4,
+      3,
+      7,
+      5,
+      12,
+      15,
+      1,
+      7,
+      2,
+      6,
+      2,
+      4,
+      11,
+      8,
+      9,
+      13,
+      10
+     ]
+    ],
+    "y_data": [
+     [
+      16,
+      1,
+      8,
+      2,
+      18,
+      13,
+      13,
+      10,
+      1,
+      5,
+      3,
+      8,
+      12,
+      3,
+      1,
+      12,
+      16,
+      9,
+      19,
+      18
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1467",
+   "source": "nvbench",
+   "key": "1467",
+   "db_id": "game_1",
+   "table": "Student",
+   "prompt": "Return a scatter chart showing the relationship between major id and average age.",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Major , avg(age) FROM Student GROUP BY major",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Major",
+    "y_name": "avg(age)",
+    "x_data": [
+     [
+      50,
+      100,
+      520,
+      540,
+      550,
+      600
+     ]
+    ],
+    "y_data": [
+     [
+      22,
+      17,
+      19.33333333333333,
+      17.5,
+      19.8,
+      19.666666666666668
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1369@x_name@ASC",
+   "source": "nvbench",
+   "key": "1369@x_name@ASC",
+   "db_id": "entertainment_awards",
+   "table": "artwork",
+   "prompt": "Show the total number from each type, and order names in asc order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Type , COUNT(*) FROM artwork GROUP BY TYPE ORDER BY Type ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Type",
+    "y_name": "COUNT(*)",
+    "x_data": [
+     [
+      "Presenter Music/Variety Show",
+      "Presenter Talent Show",
+      "Program Music/Variety Show",
+      "Program Talent Show"
+     ]
+    ],
+    "y_data": [
+     [
+      2,
+      2,
+      3,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2187",
+   "source": "nvbench",
+   "key": "2187",
+   "db_id": "manufactory_1",
+   "table": "products",
+   "prompt": "Display a pie chart for what are the names and prices of products that cost at least 180, sorted by price decreasing and name ascending?",
+   "chart": "Pie",
+   "hardness": "Medium",
+   "sql": "SELECT Name , Price FROM products WHERE price >= 180 ORDER BY price DESC , name ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Name",
+    "y_name": "Price",
+    "x_data": [
+     [
+      "Printer",
+      "Hard drive",
+      "Monitor",
+      "DVD burner",
+      "DVD drive"
+     ]
+    ],
+    "y_data": [
+     [
+      270,
+      240,
+      240,
+      180,
+      180
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1011",
+   "source": "nvbench",
+   "key": "1011",
+   "db_id": "customers_campaigns_ecommerce",
+   "table": "premises",
+   "prompt": "Show each premise type and the number of premises in that type with a pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT premises_type , count(*) FROM premises GROUP BY premises_type",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "premises_type",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "Office",
+      "Residence",
+      "Warehouse"
+     ]
+    ],
+    "y_data": [
+     [
+      7,
+      4,
+      4
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2754",
+   "source": "nvbench",
+   "key": "2754",
+   "db_id": "ship_1",
+   "table": "captain",
+   "prompt": "Tell me the proportion of the total number of different ranks using a bar graph.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Rank , COUNT(Rank) FROM captain GROUP BY Rank",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Rank",
+    "y_name": "COUNT(Rank)",
+    "x_data": [
+     [
+      "Commander, junior captain",
+      "Lieutenant",
+      "Midshipman"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      4
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2320",
+   "source": "nvbench",
+   "key": "2320",
+   "db_id": "match_season",
+   "table": "match_season",
+   "prompt": "Show the position of players and the corresponding number of players in a pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Position , COUNT(*) FROM match_season GROUP BY POSITION",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Position",
+    "y_name": "COUNT(*)",
+    "x_data": [
+     [
+      "Defender",
+      "Forward",
+      "Midfielder"
+     ]
+    ],
+    "y_data": [
+     [
+      7,
+      3,
+      6
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-822",
+   "source": "nvbench",
+   "key": "822",
+   "db_id": "cre_Docs_and_Epenses",
+   "table": "Accounts",
+   "prompt": "Show all account ids and account details. Plot them as scatter chart.",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Account_ID , Account_Details FROM Accounts",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Account_ID",
+    "y_name": "Account_Details",
+    "x_data": [
+     [
+      7,
+      61,
+      98,
+      136,
+      164,
+      209,
+      211,
+      240,
+      262,
+      280,
+      321,
+      346,
+      414,
+      427,
+      451
+     ]
+    ],
+    "y_data": [
+     [
+      495.06300000000005,
+      930.14,
+      6035.84,
+      199.52,
+      12223.93,
+      11130.23,
+      1230.454,
+      6352.31,
+      147.96,
+      187.14,
+      745.817,
+      127.9,
+      25.41,
+      1168.32,
+      658.26
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2662@x_name@ASC",
+   "source": "nvbench",
+   "key": "2662@x_name@ASC",
+   "db_id": "restaurant_1",
+   "table": "Student",
+   "prompt": "For those female students with age is older than 18 who are not majoring in 600, tell me how many students of different first names using a bar chart, sort bar from low to high order.",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT Fname , COUNT(Fname) FROM Student WHERE Age > 18 AND Major != 600 AND Sex = 'F' GROUP BY Fname ORDER BY Fname ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Fname",
+    "y_name": "COUNT(Fname)",
+    "x_data": [
+     [
+      "Lisa",
+      "Sarah"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-288",
+   "source": "nvbench",
+   "key": "288",
+   "db_id": "bike_1",
+   "table": "weather",
+   "prompt": "For the days with the 3 largest maximum gust speeds, calculate the mean of the average temperature of each month (bin date into month level).",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT date , AVG(mean_temperature_f) FROM weather  ORDER BY max_gust_speed_mph DESC LIMIT 3",
+   "binning": "BIN date BY MONTH",
+   "vis_obj": {
+    "x_name": "date",
+    "y_name": "AVG(mean_temperature_f)",
+    "x_data": [
+     [
+      "Aug",
+      "Sept",
+      "Oct"
+     ]
+    ],
+    "y_data": [
+     [
+      68,
+      0,
+      61.5
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-683@x_name@DESC",
+   "source": "nvbench",
+   "key": "683@x_name@DESC",
+   "db_id": "company_employee",
+   "table": "company",
+   "prompt": "What is the number of companies for each headquarter? Visualize by bar chart, could you sort by the Headquarters in desc?",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Headquarters , COUNT(Headquarters) FROM company GROUP BY Headquarters ORDER BY Headquarters DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Headquarters",
+    "y_name": "COUNT(Headquarters)",
+    "x_data": [
+     [
+      "USA",
+      "UK",
+      "Russia",
+      "Netherlands",
+      "Germany",
+      "France",
+      "China",
+      "Brazil"
+     ]
+    ],
+    "y_data": [
+     [
+      8,
+      2,
+      1,
+      1,
+      1,
+      1,
+      4,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-537",
+   "source": "nvbench",
+   "key": "537",
+   "db_id": "college_1",
+   "table": "student",
+   "prompt": "Show me a scatter plot of avg(stu gpa) and minimal stu gpa for .",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT avg(stu_gpa) , min(stu_gpa) FROM student GROUP BY dept_code",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "avg(stu_gpa)",
+    "y_name": "min(stu_gpa)",
+    "x_data": [
+     [
+      2.776666666666667,
+      2.84,
+      3.18,
+      3.87,
+      2.11
+     ]
+    ],
+    "y_data": [
+     [
+      2.26,
+      2.84,
+      3.09,
+      3.87,
+      2.11
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2000",
+   "source": "nvbench",
+   "key": "2000",
+   "db_id": "insurance_policies",
+   "table": "Payments",
+   "prompt": "Give me a bar chart that bins the payment date into the day of the day of the week interval and then compute the total amount of each payment categorized by the payment method code, and then sort the bars in ascending order of date.",
+   "chart": "Stacked Bar",
+   "hardness": "Extra Hard",
+   "sql": "SELECT Date_Payment_Made , SUM(Amount_Payment) FROM Payments GROUP BY Payment_Method_Code ORDER BY Date_Payment_Made ASC",
+   "binning": "BIN Date_Payment_Made BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "Date_Payment_Made",
+    "y_name": "SUM(Amount_Payment)",
+    "x_data": [
+     [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thur",
+      "Fri",
+      "Sat",
+      "Sun"
+     ]
+    ],
+    "y_data": [
+     [
+      0,
+      0,
+      0,
+      0,
+      177130,
+      0,
+      0
+     ],
+     [
+      0,
+      0,
+      0,
+      123255,
+      0,
+      71246,
+      38324
+     ],
+     [
+      423154,
+      0,
+      407235,
+      0,
+      241730,
+      456098,
+      1003648
+     ],
+     [
+      0,
+      0,
+      172309,
+      0,
+      0,
+      466750,
+      155654
+     ]
+    ],
+    "classify": [
+     "American Express",
+     "Discover Card",
+     "MasterCard",
+     "Visa"
+    ]
+   }
+  },
+  {
+   "id": "NV-250",
+   "source": "nvbench",
+   "key": "250",
+   "db_id": "behavior_monitoring",
+   "table": "Student_Addresses",
+   "prompt": "Draw a pie chart about the proportion of  other_details and the amount of other_details.",
+   "chart": "Pie",
+   "hardness": "Medium",
+   "sql": "SELECT other_details , COUNT(other_details) FROM Student_Addresses GROUP BY other_details ORDER BY monthly_rental DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "other_details",
+    "y_name": "COUNT(other_details)",
+    "x_data": [
+     [
+      "apartment",
+      "house"
+     ]
+    ],
+    "y_data": [
+     [
+      7,
+      13
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-2523@y_name@DESC",
+   "source": "nvbench",
+   "key": "2523@y_name@DESC",
+   "db_id": "party_people",
+   "table": "party",
+   "prompt": "Stacked bar chart of the number of left office for with each Minister in each left office, could you sort by the Y in descending please?",
+   "chart": "Stacked Bar",
+   "hardness": "Extra Hard",
+   "sql": "SELECT Left_office , COUNT(Left_office) FROM party GROUP BY Minister ORDER BY COUNT(Left_office) DESC",
+   "binning": "BIN Left_office BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "Left_office",
+    "y_name": "COUNT(Left_office)",
+    "x_data": [
+     [
+      "Thur",
+      "Wed",
+      "Sun",
+      "Mon",
+      "Fri",
+      "Tue",
+      "Sat"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     [
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     [
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     [
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    ],
+    "classify": [
+     "Dr. Kwame Nkrumah (MP)",
+     "Ebenezer Ako-Adjei (MP)",
+     "Imoru Egala (MP)",
+     "Kojo Botsio (MP)"
+    ]
+   }
+  },
+  {
+   "id": "NV-511",
+   "source": "nvbench",
+   "key": "511",
+   "db_id": "coffee_shop",
+   "table": "member",
+   "prompt": "A scatter chart showing the correlation between age and purchase time for each coffee shop.",
+   "chart": "Grouping Scatter",
+   "hardness": "Medium",
+   "sql": "SELECT Time_of_purchase , Age FROM member GROUP BY Address ORDER BY Time_of_purchase",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Time_of_purchase",
+    "y_name": "Age",
+    "x_data": [
+     [
+      26
+     ],
+     [
+      26,
+      44
+     ],
+     [
+      18,
+      20,
+      27
+     ],
+     [
+      18,
+      24,
+      27,
+      41
+     ]
+    ],
+    "y_data": [
+     [
+      42
+     ],
+     [
+      33,
+      50
+     ],
+     [
+      29,
+      34,
+      51
+     ],
+     [
+      35,
+      45,
+      51,
+      67
+     ]
+    ],
+    "classify": [
+     "Bridgeport",
+     "Cheshire",
+     "Hartford",
+     "Waterbury"
+    ]
+   }
+  },
+  {
+   "id": "NV-2199",
+   "source": "nvbench",
+   "key": "2199",
+   "db_id": "manufactory_1",
+   "table": "products",
+   "prompt": "For those products with a price between 60 and 120, show me about the correlation between  code and  manufacturer , and group by attribute name in a scatter chart.",
+   "chart": "Grouping Scatter",
+   "hardness": "Medium",
+   "sql": "SELECT Code , Manufacturer FROM products WHERE price BETWEEN 60 AND 120 GROUP BY Name",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Code",
+    "y_name": "Manufacturer",
+    "x_data": [
+     [
+      7
+     ],
+     [
+      2
+     ],
+     [
+      9
+     ]
+    ],
+    "y_data": [
+     [
+      2
+     ],
+     [
+      6
+     ],
+     [
+      3
+     ]
+    ],
+    "classify": [
+     "CD drive",
+     "Memory",
+     "Toner cartridge"
+    ]
+   }
+  },
+  {
+   "id": "NV-3072",
+   "source": "nvbench",
+   "key": "3072",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Draw a scatterplot of team id vs school_id where team id is on the x-axis and points are colored by All_Home",
+   "chart": "Grouping Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Team_ID , School_ID FROM basketball_match GROUP BY All_Home",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Team_ID",
+    "y_name": "School_ID",
+    "x_data": [
+     [
+      3,
+      1
+     ],
+     [
+      4
+     ],
+     [
+      2
+     ]
+    ],
+    "y_data": [
+     [
+      4,
+      1
+     ],
+     [
+      5
+     ],
+     [
+      2
+     ]
+    ],
+    "classify": [
+     "14–2",
+     "14–3",
+     "15–1"
+    ]
+   }
+  },
+  {
+   "id": "NV-1168",
+   "source": "nvbench",
+   "key": "1168",
+   "db_id": "dog_kennels",
+   "table": "Dogs",
+   "prompt": "List the dog name and age of the dogs who have been abandoned in a pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT name , weight FROM Dogs WHERE abandoned_yn = 1",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "name",
+    "y_name": "weight",
+    "x_data": [
+     [
+      "Kacey",
+      "Lyric",
+      "Evangeline"
+     ]
+    ],
+    "y_data": [
+     [
+      7.57,
+      4.36,
+      4.01
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-3127",
+   "source": "nvbench",
+   "key": "3127",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Return a pie chart about the proportion of  ACC_Regular_Season and  Team_ID.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT ACC_Regular_Season , Team_ID FROM basketball_match",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "ACC_Regular_Season",
+    "y_name": "Team_ID",
+    "x_data": [
+     [
+      "14–2",
+      "13–3",
+      "10–6",
+      "9–7"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      3,
+      4
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "NV-1423",
+   "source": "nvbench",
+   "key": "1423",
+   "db_id": "flight_company",
+   "table": "flight",
+   "prompt": "Show how many flights each pilot has flied in a bar chart.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Pilot , COUNT(Pilot) FROM flight GROUP BY Pilot ORDER BY altitude ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Pilot",
+    "y_name": "COUNT(Pilot)",
+    "x_data": [
+     [
+      "Peterson",
+      "Thompson"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      10
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1022@y_name@ASC",
+   "source": "viseval",
+   "key": "1022@y_name@ASC",
+   "db_id": "customers_campaigns_ecommerce",
+   "table": "mailshot_customers",
+   "prompt": "Show the outcome code of mailshots along with the number of mailshots in each outcome code Plot them as bar chart, and show by the total number in asc.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT outcome_code , count(*) FROM mailshot_customers GROUP BY outcome_code ORDER BY count(*) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "outcome_code",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "No Response",
+      "Order"
+     ]
+    ],
+    "y_data": [
+     [
+      5,
+      10
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2507@y_name@ASC",
+   "source": "viseval",
+   "key": "2507@y_name@ASC",
+   "db_id": "party_host",
+   "table": "party",
+   "prompt": "Create a bar chart showing how many location across location, and display by the total number from low to high.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Location , COUNT(Location) FROM party GROUP BY Location ORDER BY COUNT(Location) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Location",
+    "y_name": "COUNT(Location)",
+    "x_data": [
+     [
+      "Hemkade 48 Zaandam, Heineken Music Hall Amsterdam",
+      "RAI Amsterdam",
+      "Heineken Music Hall Amsterdam",
+      "Hemkade 48 Zaandam",
+      "Various locations"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      1,
+      2,
+      2,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1130",
+   "source": "viseval",
+   "key": "1130",
+   "db_id": "department_store",
+   "table": "products",
+   "prompt": "What is the lowest price of product, grouped by product type? Show a bar chart.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT product_type_code , min(product_price) FROM products GROUP BY product_type_code",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "product_type_code",
+    "y_name": "min(product_price)",
+    "x_data": [
+     [
+      "Clothes",
+      "Hardware"
+     ]
+    ],
+    "y_data": [
+     [
+      408.82,
+      612.46
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1493@y_name@ASC",
+   "source": "viseval",
+   "key": "1493@y_name@ASC",
+   "db_id": "game_injury",
+   "table": "game",
+   "prompt": "Bar chart x axis away team y axis the number of away team, and list from low to high by the the number of away team please.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Away_team , COUNT(Away_team) FROM game GROUP BY Away_team ORDER BY COUNT(Away_team) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Away_team",
+    "y_name": "COUNT(Away_team)",
+    "x_data": [
+     [
+      "Quruvchi",
+      "Bunyodkor",
+      "Pakhtakor"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      7,
+      10
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1169@y_name@DESC",
+   "source": "viseval",
+   "key": "1169@y_name@DESC",
+   "db_id": "dog_kennels",
+   "table": "Dogs",
+   "prompt": "What is the weight of each dog that was abandoned? Show in a bar chart, rank Y in desc order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT name , weight FROM Dogs WHERE abandoned_yn = 1 ORDER BY weight DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "name",
+    "y_name": "weight",
+    "x_data": [
+     [
+      "Kacey",
+      "Lyric",
+      "Evangeline"
+     ]
+    ],
+    "y_data": [
+     [
+      7.57,
+      4.36,
+      4.01
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-296",
+   "source": "viseval",
+   "key": "296",
+   "db_id": "bike_1",
+   "table": "weather",
+   "prompt": "For the top 3 days with the largest max wind speeds, please bin the date into the of the week and then compute the average of mean humidity to visualize a bar chart.",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT date , AVG(mean_humidity) FROM weather  ORDER BY max_gust_speed_mph DESC LIMIT 3",
+   "binning": "BIN date BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "date",
+    "y_name": "AVG(mean_humidity)",
+    "x_data": [
+     [
+      "Mon",
+      "Thur"
+     ]
+    ],
+    "y_data": [
+     [
+      52,
+      59
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-541",
+   "source": "viseval",
+   "key": "541",
+   "db_id": "college_1",
+   "table": "student",
+   "prompt": "What is the relationship between lowest and average student GPA for every department? Give me a scatter chart colored by department code.",
+   "chart": "Grouping Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT avg(stu_gpa) , min(stu_gpa) FROM student GROUP BY DEPT_CODE",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "avg(stu_gpa)",
+    "y_name": "min(stu_gpa)",
+    "x_data": [
+     [
+      2.776666666666667
+     ],
+     [
+      2.84
+     ],
+     [
+      3.18
+     ],
+     [
+      3.87
+     ],
+     [
+      2.11
+     ]
+    ],
+    "y_data": [
+     [
+      2.26
+     ],
+     [
+      2.84
+     ],
+     [
+      3.09
+     ],
+     [
+      3.87
+     ],
+     [
+      2.11
+     ]
+    ],
+    "classify": [
+     "ACCT",
+     "BIOL",
+     "CIS",
+     "EDU",
+     "ENGL"
+    ]
+   }
+  },
+  {
+   "id": "VE-622",
+   "source": "viseval",
+   "key": "622",
+   "db_id": "college_2",
+   "table": "classroom",
+   "prompt": "What is the relationship between average and greatest capacity for rooms in each building? Show me a scatter chart.",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT max(capacity) , avg(capacity) FROM classroom GROUP BY building",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "max(capacity)",
+    "y_name": "avg(capacity)",
+    "x_data": [
+     [
+      47,
+      12,
+      11,
+      18,
+      27,
+      59,
+      65,
+      34,
+      51,
+      10,
+      30,
+      92,
+      97,
+      28,
+      12,
+      60,
+      109,
+      113,
+      115,
+      120
+     ]
+    ],
+    "y_data": [
+     [
+      36.5,
+      12,
+      10.5,
+      18,
+      27,
+      59,
+      37.5,
+      34,
+      51,
+      10,
+      26,
+      92,
+      97,
+      28,
+      11,
+      60,
+      49.33333333333334,
+      113,
+      93,
+      76
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-96",
+   "source": "viseval",
+   "key": "96",
+   "db_id": "apartment_rentals",
+   "table": "Apartments",
+   "prompt": "Show the minimum room count of apartments in different type with a bar chart.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT apt_type_code , min(room_count) FROM Apartments GROUP BY apt_type_code",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "apt_type_code",
+    "y_name": "min(room_count)",
+    "x_data": [
+     [
+      "Duplex",
+      "Flat",
+      "Studio"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      3,
+      6
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1977@x_name@ASC",
+   "source": "viseval",
+   "key": "1977@x_name@ASC",
+   "db_id": "inn_1",
+   "table": "Rooms",
+   "prompt": "Draw a bar chart for what is the average base price of rooms, for each bed type?, display x axis in asc order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT bedType , avg(basePrice) FROM Rooms GROUP BY bedType ORDER BY bedType ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "bedType",
+    "y_name": "avg(basePrice)",
+    "x_data": [
+     [
+      "Double",
+      "King",
+      "Queen"
+     ]
+    ],
+    "y_data": [
+     [
+      100,
+      181.25,
+      150
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2869@y_name@DESC",
+   "source": "viseval",
+   "key": "2869@y_name@DESC",
+   "db_id": "storm_record",
+   "table": "storm",
+   "prompt": "For all storms with at least 1 death, compare the number of deaths by dates active with a bar graph, show y axis in descending order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Dates_active , Number_Deaths FROM storm WHERE number_deaths >= 1 ORDER BY Number_Deaths DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Dates_active",
+    "y_name": "Number_Deaths",
+    "x_data": [
+     [
+      "May19 -October26",
+      "August5-August14",
+      "August3-August10",
+      "August26-September2",
+      "September7-September17",
+      "September18-September25"
+     ]
+    ],
+    "y_data": [
+     [
+      71,
+      52,
+      7,
+      7,
+      3,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-470",
+   "source": "viseval",
+   "key": "470",
+   "db_id": "cinema",
+   "table": "cinema",
+   "prompt": "What is the sum of capacity of cinemas open for each year? Return a line chart.",
+   "chart": "Line",
+   "hardness": "Easy",
+   "sql": "SELECT Openning_year , SUM(Capacity) FROM cinema",
+   "binning": "BIN Openning_year BY YEAR",
+   "vis_obj": {
+    "x_name": "Openning_year",
+    "y_name": "SUM(Capacity)",
+    "x_data": [
+     [
+      "2009",
+      "2010",
+      "2011",
+      "2012",
+      "2013",
+      "2015"
+     ]
+    ],
+    "y_data": [
+     [
+      305,
+      1633,
+      1336,
+      368,
+      330,
+      364
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2706@y_name@DESC",
+   "source": "viseval",
+   "key": "2706@y_name@DESC",
+   "db_id": "school_finance",
+   "table": "school",
+   "prompt": "Please give me a bar chart for the total enrollment in each county, and order by the sum enrollment in desc.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT County , sum(enrollment) FROM school GROUP BY county ORDER BY sum(enrollment) DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "County",
+    "y_name": "sum(enrollment)",
+    "x_data": [
+     [
+      "50 Marshall",
+      "71 St. Joseph",
+      "46 LaPorte 71 St. Joseph",
+      "75 Starke",
+      "20 Elkhart"
+     ]
+    ],
+    "y_data": [
+     [
+      1098,
+      984,
+      852,
+      620,
+      601
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2416",
+   "source": "viseval",
+   "key": "2416",
+   "db_id": "museum_visit",
+   "table": "visitor",
+   "prompt": "Find the name and membership level of the visitors whose membership level is higher than 4. Plot them as pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Name , Level_of_membership FROM visitor WHERE Level_of_membership > 4",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Name",
+    "y_name": "Level_of_membership",
+    "x_data": [
+     [
+      "Fernando Gago",
+      "Gonzalo Higuaín ",
+      "Guti Midfielder"
+     ]
+    ],
+    "y_data": [
+     [
+      6,
+      8,
+      5
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2698@y_name@DESC",
+   "source": "viseval",
+   "key": "2698@y_name@DESC",
+   "db_id": "school_bus",
+   "table": "driver",
+   "prompt": "Compare the average age of drivers from the same home city with a bar chart, could you rank in descending by the Y-axis please?",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Home_city , AVG(Age) FROM driver GROUP BY Home_city ORDER BY AVG(Age) DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Home_city",
+    "y_name": "AVG(Age)",
+    "x_data": [
+     [
+      "Manchester",
+      "Hartford",
+      "East Hartford",
+      "Coventry",
+      "Bethel"
+     ]
+    ],
+    "y_data": [
+     [
+      52,
+      43.5,
+      37,
+      35,
+      30
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-293",
+   "source": "viseval",
+   "key": "293",
+   "db_id": "bike_1",
+   "table": "weather",
+   "prompt": "For the top 3 days with the largest max wind speeds, please bin the date into the day of the week and then sum the mean temperature for a bar chart.",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT date , SUM(mean_temperature_f) FROM weather  ORDER BY max_gust_speed_mph DESC LIMIT 3",
+   "binning": "BIN date BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "date",
+    "y_name": "SUM(mean_temperature_f)",
+    "x_data": [
+     [
+      "Tue",
+      "Thur"
+     ]
+    ],
+    "y_data": [
+     [
+      58,
+      143
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2790@x_name@DESC",
+   "source": "viseval",
+   "key": "2790@x_name@DESC",
+   "db_id": "soccer_2",
+   "table": "Player",
+   "prompt": "Find the name and training hours of players whose hours are below 1500 Show bar chart, show names in desc order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT pName , HS FROM Player WHERE HS < 1500 ORDER BY pName DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "pName",
+    "y_name": "HS",
+    "x_data": [
+     [
+      "Eddie",
+      "Charles",
+      "Andrew"
+     ]
+    ],
+    "y_data": [
+     [
+      600,
+      300,
+      1200
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-399",
+   "source": "viseval",
+   "key": "399",
+   "db_id": "candidate_poll",
+   "table": "candidate",
+   "prompt": "Plot a scatter chart, to show the correlation between support and consider rates for each candidate.",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Support_rate , Consider_rate FROM candidate",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Support_rate",
+    "y_name": "Consider_rate",
+    "x_data": [
+     [
+      0.25,
+      0.33,
+      0.24,
+      0.18,
+      0.24,
+      0.17
+     ]
+    ],
+    "y_data": [
+     [
+      0.3,
+      0.2,
+      0.27,
+      0.34,
+      0.3,
+      0.42
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2765@y_name@ASC",
+   "source": "viseval",
+   "key": "2765@y_name@ASC",
+   "db_id": "ship_mission",
+   "table": "ship",
+   "prompt": "Show different types of ships and the average tonnage of ships of each type in a bar chart, could you list y axis in asc order?",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Type , avg(Tonnage) FROM ship GROUP BY TYPE ORDER BY avg(Tonnage) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Type",
+    "y_name": "avg(Tonnage)",
+    "x_data": [
+     [
+      "Cargo ship",
+      "Battle ship"
+     ]
+    ],
+    "y_data": [
+     [
+      3932.2,
+      4845
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1460",
+   "source": "viseval",
+   "key": "1460",
+   "db_id": "formula_1",
+   "table": "races",
+   "prompt": "What are the names of all races held between 2009 and 2011, and count them by a bar chart",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT name , COUNT(name) FROM races WHERE YEAR BETWEEN 2009 AND 2011 GROUP BY name",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "name",
+    "y_name": "COUNT(name)",
+    "x_data": [
+     [
+      "Abu Dhabi Grand Prix",
+      "Australian Grand Prix",
+      "Bahrain Grand Prix",
+      "Belgian Grand Prix",
+      "Brazilian Grand Prix",
+      "British Grand Prix",
+      "Canadian Grand Prix",
+      "Chinese Grand Prix",
+      "European Grand Prix",
+      "German Grand Prix",
+      "Hungarian Grand Prix",
+      "Indian Grand Prix",
+      "Italian Grand Prix",
+      "Japanese Grand Prix",
+      "Korean Grand Prix",
+      "Malaysian Grand Prix",
+      "Monaco Grand Prix",
+      "Singapore Grand Prix",
+      "Spanish Grand Prix",
+      "Turkish Grand Prix"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      3,
+      2,
+      3,
+      3,
+      3,
+      2,
+      3,
+      3,
+      3,
+      3,
+      1,
+      3,
+      3,
+      2,
+      3,
+      3,
+      3,
+      3,
+      3
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-858",
+   "source": "viseval",
+   "key": "858",
+   "db_id": "cre_Drama_Workshop_Groups",
+   "table": "PRODUCTS",
+   "prompt": "For each distinct product name, show its average product price. Plot them as pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Product_Name , avg(Product_Price) FROM PRODUCTS GROUP BY Product_Name",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Product_Name",
+    "y_name": "avg(Product_Price)",
+    "x_data": [
+     [
+      "dinning",
+      "film",
+      "photo"
+     ]
+    ],
+    "y_data": [
+     [
+      238704.33333333328,
+      11385515.333333336,
+      5102691.666666667
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2815@x_name@DESC",
+   "source": "viseval",
+   "key": "2815@x_name@DESC",
+   "db_id": "sports_competition",
+   "table": "competition",
+   "prompt": "Compute the total number in each competition type, and then split by country. Plot a bar chart and show in desc by the x-axis.",
+   "chart": "Stacked Bar",
+   "hardness": "Hard",
+   "sql": "SELECT Country , COUNT(Country) FROM competition GROUP BY Competition_type ,  Country ORDER BY Country DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Country",
+    "y_name": "COUNT(Country)",
+    "x_data": [
+     [
+      "Spain",
+      "Slovenia",
+      "Russia",
+      "Italy",
+      "Ireland",
+      "Australia"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      0,
+      2,
+      2,
+      1,
+      2
+     ],
+     [
+      0,
+      2,
+      1,
+      0,
+      0,
+      0
+     ]
+    ],
+    "classify": [
+     "Friendly",
+     "Tournament"
+    ]
+   }
+  },
+  {
+   "id": "VE-1384@y_name@ASC",
+   "source": "viseval",
+   "key": "1384@y_name@ASC",
+   "db_id": "farm",
+   "table": "city",
+   "prompt": "What are the statuses and average populations of each city Plot them as bar chart, and list by the y-axis in asc.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Status , avg(Population) FROM city GROUP BY Status ORDER BY avg(Population) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Status",
+    "y_name": "avg(Population)",
+    "x_data": [
+     [
+      "Village",
+      "Town"
+     ]
+    ],
+    "y_data": [
+     [
+      1009.75,
+      5706
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-515@y_name@ASC",
+   "source": "viseval",
+   "key": "515@y_name@ASC",
+   "db_id": "college_1",
+   "table": "department",
+   "prompt": "Find the number of departments in each school Plot them as bar chart, show y-axis in ascending order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT SCHOOL_CODE , count(DISTINCT dept_name) FROM department ORDER BY count(DISTINCT dept_name) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "SCHOOL_CODE",
+    "y_name": "count(DISTINCT dept_name)",
+    "x_data": [
+     [
+      "BUS",
+      "A&SCI"
+     ]
+    ],
+    "y_data": [
+     [
+      4,
+      7
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2119",
+   "source": "viseval",
+   "key": "2119",
+   "db_id": "local_govt_and_lot",
+   "table": "customer_events",
+   "prompt": "Group and count the move in date in a bar chart, and bin the X-axis into week day interval.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT date_moved_in , COUNT(date_moved_in) FROM customer_events",
+   "binning": "BIN date_moved_in BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "date_moved_in",
+    "y_name": "COUNT(date_moved_in)",
+    "x_data": [
+     [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thur",
+      "Fri",
+      "Sat",
+      "Sun"
+     ]
+    ],
+    "y_data": [
+     [
+      0,
+      4,
+      0,
+      0,
+      9,
+      0,
+      0
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-3134@y_name@ASC",
+   "source": "viseval",
+   "key": "3134@y_name@ASC",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Draw a bar chart about the distribution of Team_Name and All_Games_Percent , order by the All_Games_Percent in ascending.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT Team_Name , All_Games_Percent FROM basketball_match ORDER BY All_Games_Percent ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Team_Name",
+    "y_name": "All_Games_Percent",
+    "x_data": [
+     [
+      "Virginia Tech",
+      "Clemson",
+      "Duke",
+      "North Carolina"
+     ]
+    ],
+    "y_data": [
+     [
+      0.6,
+      0.706,
+      0.8240000000000001,
+      0.946
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-298@y_name@DESC",
+   "source": "viseval",
+   "key": "298@y_name@DESC",
+   "db_id": "bike_1",
+   "table": "weather",
+   "prompt": "For those dates with a max temperature greater than or equal to 80, I want to know the number of days on the day of the week interval using a bar chart, could you show from high to low by the Y?",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT date , COUNT(date) FROM weather WHERE max_temperature_f >= 80  ORDER BY COUNT(date) DESC",
+   "binning": "BIN date BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "date",
+    "y_name": "COUNT(date)",
+    "x_data": [
+     [
+      "Mon",
+      "Thur",
+      "Wed",
+      "Sun",
+      "Sat",
+      "Fri",
+      "Tue"
+     ]
+    ],
+    "y_data": [
+     [
+      25,
+      32,
+      28,
+      24,
+      25,
+      25,
+      20
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-580@x_name@DESC",
+   "source": "viseval",
+   "key": "580@x_name@DESC",
+   "db_id": "college_1",
+   "table": "CLASS",
+   "prompt": "Bar chart of the total number from each class room, and list by the names in desc.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT CLASS_ROOM , count(*) FROM CLASS GROUP BY class_room ORDER BY CLASS_ROOM DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "CLASS_ROOM",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "KLR211",
+      "KLR209",
+      "KLR200",
+      "BUS311",
+      "BUS252",
+      "BUS200"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      3,
+      4,
+      2,
+      2,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-9",
+   "source": "viseval",
+   "key": "9",
+   "db_id": "activity_1",
+   "table": "Faculty",
+   "prompt": "What is the number of the faculty members for each rank? Visualize in bar chart.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT Rank , COUNT(Rank) FROM Faculty GROUP BY Rank",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Rank",
+    "y_name": "COUNT(Rank)",
+    "x_data": [
+     [
+      "AssocProf",
+      "AsstProf",
+      "Instructor",
+      "Professor"
+     ]
+    ],
+    "y_data": [
+     [
+      8,
+      15,
+      8,
+      27
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2633",
+   "source": "viseval",
+   "key": "2633",
+   "db_id": "protein_institute",
+   "table": "institution",
+   "prompt": "Show the relationship between the number of institutions and total enrollment for each type with a scatter plot.",
+   "chart": "Scatter",
+   "hardness": "Medium",
+   "sql": "SELECT count(*) , sum(enrollment) FROM institution GROUP BY TYPE",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "count(*)",
+    "y_name": "sum(enrollment)",
+    "x_data": [
+     [
+      7,
+      3,
+      1
+     ]
+    ],
+    "y_data": [
+     [
+      7868,
+      5267,
+      1000
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-17@y_name@DESC",
+   "source": "viseval",
+   "key": "17@y_name@DESC",
+   "db_id": "activity_1",
+   "table": "Faculty",
+   "prompt": "Show the number of faculty for each rank in a bar chart, and sort from high to low by the total number.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Rank , count(Rank) FROM Faculty GROUP BY Rank ORDER BY count(Rank) DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Rank",
+    "y_name": "count(Rank)",
+    "x_data": [
+     [
+      "Professor",
+      "AsstProf",
+      "Instructor",
+      "AssocProf"
+     ]
+    ],
+    "y_data": [
+     [
+      27,
+      15,
+      8,
+      8
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-416",
+   "source": "viseval",
+   "key": "416",
+   "db_id": "car_1",
+   "table": "CARS_DATA",
+   "prompt": "Show me a line chart of the mean weight change over the year, binning by year",
+   "chart": "Line",
+   "hardness": "Medium",
+   "sql": "SELECT Year , avg(Weight) FROM CARS_DATA",
+   "binning": "BIN Year BY YEAR",
+   "vis_obj": {
+    "x_name": "Year",
+    "y_name": "avg(Weight)",
+    "x_data": [
+     [
+      "1970",
+      "1971",
+      "1972",
+      "1973",
+      "1974",
+      "1975",
+      "1976",
+      "1977",
+      "1978",
+      "1979",
+      "1980",
+      "1981",
+      "1982"
+     ]
+    ],
+    "y_data": [
+     [
+      3441,
+      2960,
+      3237,
+      3419,
+      2877,
+      3176,
+      3078,
+      2997,
+      2861,
+      3055,
+      2436,
+      2532,
+      2453
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2436@y_name@DESC",
+   "source": "viseval",
+   "key": "2436@y_name@DESC",
+   "db_id": "music_4",
+   "table": "music_festival",
+   "prompt": "Return the number of music festivals of each category in a bar chart, and sort by the y-axis from high to low.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Category , COUNT(*) FROM music_festival GROUP BY Category ORDER BY COUNT(*) DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Category",
+    "y_name": "COUNT(*)",
+    "x_data": [
+     [
+      "Best Song",
+      "Best Lyrics",
+      "Best Sound Song"
+     ]
+    ],
+    "y_data": [
+     [
+      5,
+      3,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-474@x_name@DESC",
+   "source": "viseval",
+   "key": "474@x_name@DESC",
+   "db_id": "cinema",
+   "table": "cinema",
+   "prompt": "Create a bar chart showing capacity across name, order Name in desc order.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT Name , Capacity FROM cinema ORDER BY Name DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Name",
+    "y_name": "Capacity",
+    "x_data": [
+     [
+      "Oriel",
+      "Mount Callan",
+      "Moneypoint",
+      "Grouse Lodge",
+      "Gortahile",
+      "Glenough",
+      "Glenmore",
+      "Dublin Array",
+      "Codling",
+      "Carrowleagh"
+     ]
+    ],
+    "y_data": [
+     [
+      330,
+      908,
+      225,
+      203,
+      208,
+      325,
+      305,
+      364,
+      1100,
+      368
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1551@y_name@ASC",
+   "source": "viseval",
+   "key": "1551@y_name@ASC",
+   "db_id": "hr_1",
+   "table": "employees",
+   "prompt": "For all employees who have the letters D or S in their first name, find hire_date and the average of salary bin hire_date by weekday, and visualize them by a bar chart, list in ascending by the total number please.",
+   "chart": "Bar",
+   "hardness": "Extra Hard",
+   "sql": "SELECT HIRE_DATE , AVG(SALARY) FROM employees WHERE first_name LIKE '%D%' OR first_name LIKE '%S%'  ORDER BY AVG(SALARY) ASC",
+   "binning": "BIN HIRE_DATE BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "HIRE_DATE",
+    "y_name": "AVG(SALARY)",
+    "x_data": [
+     [
+      "Thur",
+      "Sat",
+      "Fri",
+      "Mon",
+      "Tue",
+      "Wed",
+      "Sun"
+     ]
+    ],
+    "y_data": [
+     [
+      3280,
+      4933.333333333333,
+      6357.142857142857,
+      6525,
+      6620,
+      7590.909090909091,
+      7733.333333333333
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-708",
+   "source": "viseval",
+   "key": "708",
+   "db_id": "county_public_safety",
+   "table": "county_public_safety",
+   "prompt": "Return a pie chart on how many counties correspond to each police force?",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Police_force , COUNT(*) FROM county_public_safety GROUP BY Police_force",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Police_force",
+    "y_name": "COUNT(*)",
+    "x_data": [
+     [
+      "Abbotsford Police Department",
+      "Central Saanich Police",
+      "RCMP"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      1,
+      4
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2814@y_name@ASC",
+   "source": "viseval",
+   "key": "2814@y_name@ASC",
+   "db_id": "sports_competition",
+   "table": "competition",
+   "prompt": "Show the number of different competition types with a bar graph, list in asc by the Y please.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Competition_type , COUNT(Competition_type) FROM competition GROUP BY Competition_type ORDER BY COUNT(Competition_type) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Competition_type",
+    "y_name": "COUNT(Competition_type)",
+    "x_data": [
+     [
+      "Tournament",
+      "Friendly"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      8
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-340",
+   "source": "viseval",
+   "key": "340",
+   "db_id": "bike_1",
+   "table": "weather",
+   "prompt": "Using bar chart to show how many days in each year, mean sea level pressure was between 30.3 and 31.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT date , COUNT(date) FROM weather WHERE mean_sea_level_pressure_inches BETWEEN 30.3 AND 31",
+   "binning": "BIN date BY YEAR",
+   "vis_obj": {
+    "x_name": "date",
+    "y_name": "COUNT(date)",
+    "x_data": [
+     [
+      "2013",
+      "2014",
+      "2015"
+     ]
+    ],
+    "y_data": [
+     [
+      7,
+      9,
+      6
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2763@y_name@ASC",
+   "source": "viseval",
+   "key": "2763@y_name@ASC",
+   "db_id": "ship_mission",
+   "table": "mission",
+   "prompt": "Compare the total number of each fate with a bar chart, and display Y-axis from low to high order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Fate , COUNT(Fate) FROM mission GROUP BY Fate ORDER BY COUNT(Fate) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Fate",
+    "y_name": "COUNT(Fate)",
+    "x_data": [
+     [
+      "Decommissioned 1959",
+      "Decommissioned 1960",
+      "Lost (burned and sunk) 1933",
+      "Lost (burned) 1931",
+      "Retired 1939",
+      "Decommissioned 1950"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      1,
+      1,
+      1,
+      1,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-3165",
+   "source": "viseval",
+   "key": "3165",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Scatterplot of all_games_percent vs acc percent colored by Team_Name",
+   "chart": "Grouping Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT ACC_Percent , All_Games_Percent FROM basketball_match GROUP BY Team_Name",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "ACC_Percent",
+    "y_name": "All_Games_Percent",
+    "x_data": [
+     [
+      0.625
+     ],
+     [
+      0.813
+     ],
+     [
+      0.875
+     ],
+     [
+      0.563
+     ]
+    ],
+    "y_data": [
+     [
+      0.706
+     ],
+     [
+      0.8240000000000001
+     ],
+     [
+      0.946
+     ],
+     [
+      0.6
+     ]
+    ],
+    "classify": [
+     "Clemson",
+     "Duke",
+     "North Carolina",
+     "Virginia Tech"
+    ]
+   }
+  },
+  {
+   "id": "VE-354",
+   "source": "viseval",
+   "key": "354",
+   "db_id": "body_builder",
+   "table": "body_builder",
+   "prompt": "Draw a scatter chart about the correlation between  Snatch and  Total .",
+   "chart": "Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT Snatch , Total FROM body_builder",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Snatch",
+    "y_name": "Total",
+    "x_data": [
+     [
+      142.5,
+      137.5,
+      140,
+      137.5,
+      130
+     ]
+    ],
+    "y_data": [
+     [
+      317.5,
+      315,
+      315,
+      312.5,
+      292.5
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1324@y_name@ASC",
+   "source": "viseval",
+   "key": "1324@y_name@ASC",
+   "db_id": "election_representative",
+   "table": "representative",
+   "prompt": "Bar chart of the total number from each party, show total number in asc order please.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Party , COUNT(*) FROM representative GROUP BY Party ORDER BY COUNT(*) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Party",
+    "y_name": "COUNT(*)",
+    "x_data": [
+     [
+      "Democratic",
+      "Republican"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      4
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1242@y_name@ASC",
+   "source": "viseval",
+   "key": "1242@y_name@ASC",
+   "db_id": "driving_school",
+   "table": "Customers",
+   "prompt": "When are the birthdays of customer who are classified as 'Good Customer' status, bin birthday by weekday and count them by a bar chart, could you order y-axis in ascending order?",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT date_of_birth , COUNT(date_of_birth) FROM Customers WHERE customer_status_code = 'Good Customer'  ORDER BY COUNT(date_of_birth) ASC",
+   "binning": "BIN date_of_birth BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "date_of_birth",
+    "y_name": "COUNT(date_of_birth)",
+    "x_data": [
+     [
+      "Fri",
+      "Wed",
+      "Sat",
+      "Sun",
+      "Thur",
+      "Tue",
+      "Mon"
+     ]
+    ],
+    "y_data": [
+     [
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-4016",
+   "source": "viseval",
+   "key": "4016",
+   "db_id": "college_2",
+   "table": "section",
+   "prompt": "Show me the trend of the number of courses in Fall and Spring from 2005 to 2010 by a grouping line chart.",
+   "chart": "Grouping Line",
+   "hardness": "Medium",
+   "sql": "SELECT year, count(*), semester from section where year >=2005 GROUP BY year, semester",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "year",
+    "y_name": "semester",
+    "x_data": [
+     [
+      2005,
+      2006,
+      2007,
+      2008,
+      2009,
+      2010
+     ]
+    ],
+    "y_data": [
+     [
+      4,
+      8,
+      6,
+      1,
+      7,
+      5
+     ],
+     [
+      4,
+      5,
+      6,
+      9,
+      2,
+      6
+     ]
+    ],
+    "classify": [
+     "Fall",
+     "Spring"
+    ]
+   }
+  },
+  {
+   "id": "VE-339@x_name@DESC",
+   "source": "viseval",
+   "key": "339@x_name@DESC",
+   "db_id": "bike_1",
+   "table": "station",
+   "prompt": "List the name and the number of stations for all the cities that have at least 15 stations Show bar chart, and order by the x axis in desc.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT city , COUNT(*) FROM station GROUP BY city ORDER BY city DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "city",
+    "y_name": "COUNT(*)",
+    "x_data": [
+     [
+      "San Jose",
+      "San Francisco"
+     ]
+    ],
+    "y_data": [
+     [
+      16,
+      35
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2018",
+   "source": "viseval",
+   "key": "2018",
+   "db_id": "insurance_policies",
+   "table": "Settlements",
+   "prompt": "Bin the settlement date for each settlement case into the day of week interval and count them for visualizing a bar chart.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT Date_Claim_Settled , COUNT(Date_Claim_Settled) FROM Settlements",
+   "binning": "BIN Date_Claim_Settled BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "Date_Claim_Settled",
+    "y_name": "COUNT(Date_Claim_Settled)",
+    "x_data": [
+     [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thur",
+      "Fri",
+      "Sat",
+      "Sun"
+     ]
+    ],
+    "y_data": [
+     [
+      0,
+      4,
+      2,
+      2,
+      2,
+      2,
+      3
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-3004",
+   "source": "viseval",
+   "key": "3004",
+   "db_id": "tracking_share_transactions",
+   "table": "TRANSACTIONS",
+   "prompt": "Show the average transaction amount for different transaction types. Visualize by pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT transaction_type_code , avg(amount_of_transaction) FROM TRANSACTIONS GROUP BY transaction_type_code",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "transaction_type_code",
+    "y_name": "avg(amount_of_transaction)",
+    "x_data": [
+     [
+      "PUR",
+      "SALE"
+     ]
+    ],
+    "y_data": [
+     [
+      25945880.3716125,
+      11198167.237771427
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-84@y_name@ASC",
+   "source": "viseval",
+   "key": "84@y_name@ASC",
+   "db_id": "apartment_rentals",
+   "table": "Apartment_Bookings",
+   "prompt": "How many apartment bookings in each weekday? Show me a bar chart binning booking end date by weekday, could you display Y-axis in asc order?",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT booking_end_date , COUNT(booking_end_date) FROM Apartment_Bookings  ORDER BY COUNT(booking_end_date) ASC",
+   "binning": "BIN booking_end_date BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "booking_end_date",
+    "y_name": "COUNT(booking_end_date)",
+    "x_data": [
+     [
+      "Thur",
+      "Fri",
+      "Mon",
+      "Sun",
+      "Wed",
+      "Sat",
+      "Tue"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      2,
+      2,
+      2,
+      3,
+      3
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-753@x_name@DESC",
+   "source": "viseval",
+   "key": "753@x_name@DESC",
+   "db_id": "cre_Doc_Template_Mgt",
+   "table": "Templates",
+   "prompt": "Return a bar chart on what are the different template type codes, and how many templates correspond to each?, and list by the Template_Type_Code in descending.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Template_Type_Code , count(*) FROM Templates GROUP BY template_type_code ORDER BY Template_Type_Code DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Template_Type_Code",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "PPT",
+      "PP",
+      "CV",
+      "BK",
+      "AD"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      6,
+      2,
+      6,
+      3
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2881",
+   "source": "viseval",
+   "key": "2881",
+   "db_id": "student_assessment",
+   "table": "courses",
+   "prompt": "Give me a pie chart show the proportion of the number of course names in the course table.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT course_name , COUNT(course_name) FROM courses GROUP BY course_name",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "course_name",
+    "y_name": "COUNT(course_name)",
+    "x_data": [
+     [
+      "English",
+      "French",
+      "data structure",
+      "statistics",
+      "database",
+      "Art history"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2453@y_name@DESC",
+   "source": "viseval",
+   "key": "2453@y_name@DESC",
+   "db_id": "network_1",
+   "table": "Highschooler",
+   "prompt": "Bar graph to show mean grade from different name, could you show y-axis in desc order?",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT name , AVG(grade) FROM Highschooler GROUP BY name ORDER BY AVG(grade) DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "name",
+    "y_name": "AVG(grade)",
+    "x_data": [
+     [
+      "Logan",
+      "Kyle",
+      "John",
+      "Jessica",
+      "Austin",
+      "Alexis",
+      "Jordan",
+      "Kris",
+      "Haley",
+      "Gabriel",
+      "Brittany",
+      "Andrew",
+      "Tiffany",
+      "Cassandra"
+     ]
+    ],
+    "y_data": [
+     [
+      12,
+      12,
+      12,
+      11,
+      11,
+      11,
+      10.5,
+      10,
+      10,
+      10,
+      10,
+      10,
+      9,
+      9
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2634",
+   "source": "viseval",
+   "key": "2634",
+   "db_id": "protein_institute",
+   "table": "institution",
+   "prompt": "Show count(*) vs sum enrollment as scatter plot use a different color for each Type",
+   "chart": "Grouping Scatter",
+   "hardness": "Medium",
+   "sql": "SELECT count(*) , sum(enrollment) FROM institution GROUP BY Type",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "count(*)",
+    "y_name": "sum(enrollment)",
+    "x_data": [
+     [
+      7
+     ],
+     [
+      3
+     ],
+     [
+      1
+     ]
+    ],
+    "y_data": [
+     [
+      7868
+     ],
+     [
+      5267
+     ],
+     [
+      1000
+     ]
+    ],
+    "classify": [
+     "Private",
+     "Public",
+     "Tribal"
+    ]
+   }
+  },
+  {
+   "id": "VE-1494@x_name@ASC",
+   "source": "viseval",
+   "key": "1494@x_name@ASC",
+   "db_id": "game_injury",
+   "table": "game",
+   "prompt": "List the number of games in each season with a line chart, show by the X-axis in ascending.",
+   "chart": "Line",
+   "hardness": "Medium",
+   "sql": "SELECT Season , COUNT(Season) FROM game GROUP BY Season ORDER BY Season ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Season",
+    "y_name": "COUNT(Season)",
+    "x_data": [
+     [
+      "2007",
+      "2008",
+      "2009",
+      "2010",
+      "2011",
+      "2012",
+      "2013"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      3,
+      3,
+      2,
+      2,
+      5,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2013",
+   "source": "viseval",
+   "key": "2013",
+   "db_id": "insurance_policies",
+   "table": "Payments",
+   "prompt": "Create a pie chart showing total number of amount payment across payment method code.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Payment_Method_Code , SUM(Amount_Payment) FROM Payments GROUP BY Payment_Method_Code",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Payment_Method_Code",
+    "y_name": "SUM(Amount_Payment)",
+    "x_data": [
+     [
+      "American Express",
+      "Discover Card",
+      "MasterCard",
+      "Visa"
+     ]
+    ],
+    "y_data": [
+     [
+      177130,
+      232825,
+      2531865,
+      794713
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-4031",
+   "source": "viseval",
+   "key": "4031",
+   "db_id": "wine_1",
+   "table": "wine",
+   "prompt": "Show the number of wines with score over 95 in different years colored by grape. Stacked bar chart.",
+   "chart": "Stacked Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Year, count(*), Grape from wine where Score > 95 group by Year, Grape",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Year",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      2006,
+      2007
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      3
+     ],
+     [
+      1,
+      0
+     ],
+     [
+      1,
+      1
+     ]
+    ],
+    "classify": [
+     "Cabernet Sauvingnon",
+     "Grenache",
+     "Syrah"
+    ]
+   }
+  },
+  {
+   "id": "VE-627@y_name@DESC",
+   "source": "viseval",
+   "key": "627@y_name@DESC",
+   "db_id": "college_2",
+   "table": "instructor",
+   "prompt": "Bar chart of mean salary from each dept name, and could you order by the Y-axis from high to low?",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT dept_name , AVG(salary) FROM instructor GROUP BY dept_name ORDER BY AVG(salary) DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "dept_name",
+    "y_name": "AVG(salary)",
+    "x_data": [
+     [
+      "Physics",
+      "Finance",
+      "Pol. Sci.",
+      "Geology",
+      "Comp. Sci.",
+      "Cybernetics",
+      "Marketing",
+      "Mech. Eng.",
+      "Astronomy",
+      "Athletics",
+      "Elec. Eng.",
+      "English",
+      "Statistics",
+      "Biology",
+      "Psychology",
+      "Languages",
+      "Accounting"
+     ]
+    ],
+    "y_data": [
+     [
+      114576.9,
+      105311.38,
+      100053.07333333332,
+      99382.59,
+      98133.47,
+      96346.5675,
+      84097.4375,
+      79813.02,
+      79070.08,
+      77098.198,
+      74162.73999999999,
+      72089.04999999999,
+      67795.44166666667,
+      61287.25,
+      61143.05,
+      57421.85666666667,
+      48716.5925
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-295",
+   "source": "viseval",
+   "key": "295",
+   "db_id": "bike_1",
+   "table": "weather",
+   "prompt": "For the top 3 days with the largest max wind speeds, please bin the date into day of the week and then sum the mean humidity to visualize a bar chart.",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT date , SUM(mean_humidity) FROM weather  ORDER BY max_gust_speed_mph DESC LIMIT 3",
+   "binning": "BIN date BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "date",
+    "y_name": "SUM(mean_humidity)",
+    "x_data": [
+     [
+      "Tue",
+      "Thur"
+     ]
+    ],
+    "y_data": [
+     [
+      52,
+      118
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1462@x_name@ASC",
+   "source": "viseval",
+   "key": "1462@x_name@ASC",
+   "db_id": "game_1",
+   "table": "Sportsinfo",
+   "prompt": "Give me a histogram for how many students play each sport?, and show X-axis in ascending order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT SportName , count(*) FROM Sportsinfo GROUP BY sportname ORDER BY SportName ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "SportName",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "Athletics",
+      "Baseball",
+      "Basketball",
+      "Cricket",
+      "Curling",
+      "Football",
+      "Lacrosse",
+      "Soccer",
+      "Swimming",
+      "Tennis"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      1,
+      1,
+      1,
+      1,
+      2,
+      3,
+      1,
+      1,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2950@y_name@ASC",
+   "source": "viseval",
+   "key": "2950@y_name@ASC",
+   "db_id": "theme_gallery",
+   "table": "exhibition",
+   "prompt": "Find those years for all exhibitions with ticket prices lower than 15, return a bar chart that groups by year and counts the total number of years, and I want to display in ascending by the total number.",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT Year , COUNT(Year) FROM exhibition WHERE ticket_price < 15 GROUP BY Year ORDER BY COUNT(Year) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Year",
+    "y_name": "COUNT(Year)",
+    "x_data": [
+     [
+      "2007",
+      "2008",
+      "2006",
+      "2009"
+     ]
+    ],
+    "y_data": [
+     [
+      0,
+      0,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-4027",
+   "source": "viseval",
+   "key": "4027",
+   "db_id": "phone_1",
+   "table": "chip_model",
+   "prompt": "Generate a line chart displaying the annual count of launched chip models, with color differentiation based on slots.",
+   "chart": "Grouping Line",
+   "hardness": "Easy",
+   "sql": "SELECT Launch_year, count(*), Slots FROM chip_model GROUP BY Launch_year, Slots",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Launch_year",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      2002,
+      2003,
+      2004,
+      2005
+     ]
+    ],
+    "y_data": [
+     [
+      2,
+      0,
+      3,
+      3
+     ],
+     [
+      0,
+      3,
+      3,
+      0
+     ]
+    ],
+    "classify": [
+     "1CFII,1SD",
+     "1SD"
+    ]
+   }
+  },
+  {
+   "id": "VE-1967@x_name@DESC",
+   "source": "viseval",
+   "key": "1967@x_name@DESC",
+   "db_id": "inn_1",
+   "table": "Rooms",
+   "prompt": "A bar chart about what are the number of rooms for each bed type?, could you sort in descending by the x-axis?",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT bedType , count(*) FROM Rooms GROUP BY bedType ORDER BY bedType DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "bedType",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "Queen",
+      "King",
+      "Double"
+     ]
+    ],
+    "y_data": [
+     [
+      4,
+      4,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-42@y_name@ASC",
+   "source": "viseval",
+   "key": "42@y_name@ASC",
+   "db_id": "allergy_1",
+   "table": "Student",
+   "prompt": "A bar chart showing the number of last name for all female students Their sex is F, and sort in asc by the y-axis please.",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT LName , COUNT(LName) FROM Student WHERE Sex = 'F' GROUP BY LName ORDER BY COUNT(LName) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "LName",
+    "y_name": "COUNT(LName)",
+    "x_data": [
+     [
+      "Apap",
+      "Cheng",
+      "Jones",
+      "Kim",
+      "Lee",
+      "Nelson",
+      "Prater",
+      "Schmidt",
+      "Smith"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-926",
+   "source": "viseval",
+   "key": "926",
+   "db_id": "customers_and_invoices",
+   "table": "Accounts",
+   "prompt": "How many accounts for different account details? Draw a bar chart.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT other_account_details , COUNT(other_account_details) FROM Accounts GROUP BY other_account_details",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "other_account_details",
+    "y_name": "COUNT(other_account_details)",
+    "x_data": [
+     [
+      "Regular",
+      "VIP"
+     ]
+    ],
+    "y_data": [
+     [
+      8,
+      7
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-409",
+   "source": "viseval",
+   "key": "409",
+   "db_id": "candidate_poll",
+   "table": "people",
+   "prompt": "Show avg(weight) vs minimal weight as scatter plot use a different color for each Sex",
+   "chart": "Grouping Scatter",
+   "hardness": "Easy",
+   "sql": "SELECT avg(weight) , min(weight) FROM people GROUP BY Sex",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "avg(weight)",
+    "y_name": "min(weight)",
+    "x_data": [
+     [
+      92
+     ],
+     [
+      86.7142857142857
+     ]
+    ],
+    "y_data": [
+     [
+      90
+     ],
+     [
+      82
+     ]
+    ],
+    "classify": [
+     "F",
+     "M"
+    ]
+   }
+  },
+  {
+   "id": "VE-2862@x_name@ASC",
+   "source": "viseval",
+   "key": "2862@x_name@ASC",
+   "db_id": "store_product",
+   "table": "store",
+   "prompt": "Find all types of store and number of them Visualize by bar chart, could you order Type in ascending order?",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Type , count(*) FROM store GROUP BY TYPE ORDER BY Type ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Type",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "City Mall",
+      "Village Store"
+     ]
+    ],
+    "y_data": [
+     [
+      2,
+      3
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1182",
+   "source": "viseval",
+   "key": "1182",
+   "db_id": "dog_kennels",
+   "table": "Dogs",
+   "prompt": "List the number of dogs departed in each day with a bar chart that groups by departed date.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT date_departed , COUNT(date_departed) FROM Dogs GROUP BY date_departed",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "date_departed",
+    "y_name": "COUNT(date_departed)",
+    "x_data": [
+     [
+      "2018-03-24",
+      "2018-03-25"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      12
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-364@y_name@ASC",
+   "source": "viseval",
+   "key": "364@y_name@ASC",
+   "db_id": "book_2",
+   "table": "publication",
+   "prompt": "Draw a bar chart of publisher versus the total number, and could you sort by the y-axis from low to high please?",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Publisher , COUNT(*) FROM publication GROUP BY Publisher ORDER BY COUNT(*) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Publisher",
+    "y_name": "COUNT(*)",
+    "x_data": [
+     [
+      "Bertelsmann",
+      "Springer Nature",
+      "Thomson Reuters",
+      "Pearson",
+      "Wiley"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      1,
+      1,
+      2,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-567",
+   "source": "viseval",
+   "key": "567",
+   "db_id": "college_1",
+   "table": "student",
+   "prompt": "What is the gpa of the top 5 students with highest gpa? Show me a bar chart with each student by first name.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT STU_FNAME , STU_GPA FROM student ORDER BY stu_gpa DESC LIMIT 5",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "STU_FNAME",
+    "y_name": "STU_GPA",
+    "x_data": [
+     [
+      "Gerald",
+      "Anne",
+      "Raphael",
+      "Walter",
+      "John"
+     ]
+    ],
+    "y_data": [
+     [
+      3.87,
+      3.27,
+      3.15,
+      3.09,
+      2.92
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2624",
+   "source": "viseval",
+   "key": "2624",
+   "db_id": "program_share",
+   "table": "channel",
+   "prompt": "Find the total rating ratio for each channel owner. Show a pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Owner , sum(Rating_in_percent) FROM channel GROUP BY OWNER",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Owner",
+    "y_name": "sum(Rating_in_percent)",
+    "x_data": [
+     [
+      "Anhui Television",
+      "CCTV",
+      "HBS",
+      "Shandong Television"
+     ]
+    ],
+    "y_data": [
+     [
+      0.2,
+      2.43,
+      0.53,
+      0.19
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-140@y_name@ASC",
+   "source": "viseval",
+   "key": "140@y_name@ASC",
+   "db_id": "assets_maintenance",
+   "table": "Assets",
+   "prompt": "Bar graph to show how many asset make from different asset make, show total number in asc order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT asset_make , COUNT(asset_make) FROM Assets GROUP BY asset_make ORDER BY COUNT(asset_make) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "asset_make",
+    "y_name": "COUNT(asset_make)",
+    "x_data": [
+     [
+      "GB",
+      "IE",
+      "IT",
+      "PT",
+      "CN",
+      "DE",
+      "FR",
+      "IN",
+      "RU"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      1,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      3
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-3146@x_name@DESC",
+   "source": "viseval",
+   "key": "3146@x_name@DESC",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Return a bar chart about the distribution of All_Neutral and All_Games_Percent , and could you sort by the x axis in descending?",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT All_Neutral , All_Games_Percent FROM basketball_match ORDER BY All_Neutral DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "All_Neutral",
+    "y_name": "All_Games_Percent",
+    "x_data": [
+     [
+      "9-1",
+      "5-3",
+      "4-3",
+      "3-3"
+     ]
+    ],
+    "y_data": [
+     [
+      0.946,
+      0.8240000000000001,
+      0.706,
+      0.6
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1966",
+   "source": "viseval",
+   "key": "1966",
+   "db_id": "inn_1",
+   "table": "Rooms",
+   "prompt": "Give me a pie to show the total number from different bedtype.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT bedType , count(*) FROM Rooms GROUP BY bedType",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "bedType",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "Double",
+      "King",
+      "Queen"
+     ]
+    ],
+    "y_data": [
+     [
+      2,
+      4,
+      4
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-3260",
+   "source": "viseval",
+   "key": "3260",
+   "db_id": "workshop_paper",
+   "table": "workshop",
+   "prompt": "Draw a bar chart that counts the number of venues of each workshop.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT Venue , COUNT(Venue) FROM workshop GROUP BY Venue",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Venue",
+    "y_name": "COUNT(Venue)",
+    "x_data": [
+     [
+      "Istanbul Turkey",
+      "London UK",
+      "New Jersey USA",
+      "New York USA"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      1,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1238@x_name@ASC",
+   "source": "viseval",
+   "key": "1238@x_name@ASC",
+   "db_id": "dorm_1",
+   "table": "student",
+   "prompt": "What is the oldest age for each gender of student? Return a bar chart, and order by the x axis in asc please.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT Sex , max(age) FROM student GROUP BY Sex ORDER BY Sex ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Sex",
+    "y_name": "max(age)",
+    "x_data": [
+     [
+      "F",
+      "M"
+     ]
+    ],
+    "y_data": [
+     [
+      26,
+      27
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2568",
+   "source": "viseval",
+   "key": "2568",
+   "db_id": "phone_market",
+   "table": "phone",
+   "prompt": "Show different carriers of phones together with the number of phones with each carrier by a bar chart.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT Carrier , COUNT(*) FROM phone GROUP BY Carrier",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Carrier",
+    "y_name": "COUNT(*)",
+    "x_data": [
+     [
+      "Sprint",
+      "TMobile"
+     ]
+    ],
+    "y_data": [
+     [
+      2,
+      3
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1979@y_name@DESC",
+   "source": "viseval",
+   "key": "1979@y_name@DESC",
+   "db_id": "inn_1",
+   "table": "Rooms",
+   "prompt": "Find the number of rooms with price higher than 120 for different decor Show bar chart, and list by the Y in descending.",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT decor , count(*) FROM Rooms WHERE basePrice > 120 GROUP BY decor ORDER BY count(*) DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "decor",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "traditional",
+      "rustic",
+      "modern"
+     ]
+    ],
+    "y_data": [
+     [
+      4,
+      2,
+      2
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2067",
+   "source": "viseval",
+   "key": "2067",
+   "db_id": "loan_1",
+   "table": "customer",
+   "prompt": "For each account type, find the average account balance of customers with credit score lower than 50. Show a pie chart.",
+   "chart": "Pie",
+   "hardness": "Medium",
+   "sql": "SELECT acc_type , avg(acc_bal) FROM customer WHERE credit_score < 50 GROUP BY acc_type",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "acc_type",
+    "y_name": "avg(acc_bal)",
+    "x_data": [
+     [
+      "checking",
+      "saving"
+     ]
+    ],
+    "y_data": [
+     [
+      1000,
+      2000
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1113",
+   "source": "viseval",
+   "key": "1113",
+   "db_id": "department_management",
+   "table": "head",
+   "prompt": "List the age of each head of departments in a bar chart ordered by age in asc.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT name , age FROM head ORDER BY age",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "name",
+    "y_name": "age",
+    "x_data": [
+     [
+      "Pádraig Harrington",
+      "Stewart Cink",
+      "Dudley Hart",
+      "Jeff Maggert",
+      "Nick Faldo",
+      "Tiger Woods",
+      "Franklin Langham",
+      "Sergio García",
+      "K. J. Choi",
+      "Billy Mayfair"
+     ]
+    ],
+    "y_data": [
+     [
+      43,
+      50,
+      52,
+      53,
+      56,
+      67,
+      67,
+      68,
+      69,
+      69
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2015",
+   "source": "viseval",
+   "key": "2015",
+   "db_id": "insurance_policies",
+   "table": "Payments",
+   "prompt": "Return a trend line to show the average amount of payment by each payment day.",
+   "chart": "Line",
+   "hardness": "Medium",
+   "sql": "SELECT Date_Payment_Made , AVG(Amount_Payment) FROM Payments GROUP BY Date_Payment_Made ORDER BY Date_Payment_Made ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Date_Payment_Made",
+    "y_name": "AVG(Amount_Payment)",
+    "x_data": [
+     [
+      "2017-05-03",
+      "2017-05-04",
+      "2017-05-28",
+      "2017-06-24",
+      "2017-07-31",
+      "2017-08-06",
+      "2017-10-07",
+      "2017-12-16",
+      "2018-01-10",
+      "2018-01-19",
+      "2018-01-28",
+      "2018-02-16",
+      "2018-02-18",
+      "2018-02-24"
+     ]
+    ],
+    "y_data": [
+     [
+      172309,
+      123255,
+      302133.5,
+      456098,
+      423154,
+      38324,
+      71246,
+      459407,
+      407235,
+      177130,
+      319142,
+      241730,
+      235893,
+      7343
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2459@y_name@DESC",
+   "source": "viseval",
+   "key": "2459@y_name@DESC",
+   "db_id": "network_2",
+   "table": "Person",
+   "prompt": "How old is the average person for each job Show bar chart, and rank total number from high to low order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT job , avg(age) FROM Person GROUP BY job ORDER BY avg(age) DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "job",
+    "y_name": "avg(age)",
+    "x_data": [
+     [
+      "doctor",
+      "engineer",
+      "student"
+     ]
+    ],
+    "y_data": [
+     [
+      45,
+      35,
+      25.5
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1498@y_name@DESC",
+   "source": "viseval",
+   "key": "1498@y_name@DESC",
+   "db_id": "gas_company",
+   "table": "company",
+   "prompt": "Bar chart of the total number from each headquarters, rank by the Y in descending.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Headquarters , count(*) FROM company GROUP BY headquarters ORDER BY count(*) DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Headquarters",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "USA",
+      "UK",
+      "China",
+      "Netherlands",
+      "Brazil"
+     ]
+    ],
+    "y_data": [
+     [
+      4,
+      2,
+      2,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-3262",
+   "source": "viseval",
+   "key": "3262",
+   "db_id": "workshop_paper",
+   "table": "submission",
+   "prompt": "Show the authors of their total submissions with a pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT Author , COUNT(Author) FROM submission GROUP BY Author",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Author",
+    "y_name": "COUNT(Author)",
+    "x_data": [
+     [
+      "Andy Bolton",
+      "Don Bitterlich",
+      "Jeff Lloyd",
+      "Randy Johnson",
+      "Rick Engles",
+      "Sammy Green",
+      "Sherman Smith",
+      "Steve Myer",
+      "Steve Niehaus",
+      "Steve Raible"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2963",
+   "source": "viseval",
+   "key": "2963",
+   "db_id": "tracking_grants_for_research",
+   "table": "Project_Staff",
+   "prompt": "When do all the researcher role staff stop working? Bin the time into weekday interval and count them with a bar chart.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT date_to , COUNT(date_to) FROM Project_Staff",
+   "binning": "BIN date_to BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "date_to",
+    "y_name": "COUNT(date_to)",
+    "x_data": [
+     [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thur",
+      "Fri",
+      "Sat",
+      "Sun"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      2,
+      2,
+      3,
+      1,
+      0,
+      0
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-3144@x_name@DESC",
+   "source": "viseval",
+   "key": "3144@x_name@DESC",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Return a bar chart about the distribution of All_Neutral and ACC_Percent , sort in descending by the X-axis.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT All_Neutral , ACC_Percent FROM basketball_match ORDER BY All_Neutral DESC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "All_Neutral",
+    "y_name": "ACC_Percent",
+    "x_data": [
+     [
+      "9-1",
+      "5-3",
+      "4-3",
+      "3-3"
+     ]
+    ],
+    "y_data": [
+     [
+      0.875,
+      0.813,
+      0.625,
+      0.563
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2993@y_name@ASC",
+   "source": "viseval",
+   "key": "2993@y_name@ASC",
+   "db_id": "tracking_share_transactions",
+   "table": "LOTS",
+   "prompt": "Bar chart x axis lot details y axis the number of lot details, rank in ascending by the total number.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT lot_details , COUNT(lot_details) FROM LOTS GROUP BY lot_details ORDER BY COUNT(lot_details) ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "lot_details",
+    "y_name": "COUNT(lot_details)",
+    "x_data": [
+     [
+      "q",
+      "r",
+      "x",
+      "h",
+      "m",
+      "s",
+      "d",
+      "z"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      1,
+      1,
+      2,
+      2,
+      2,
+      3,
+      3
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2030@y_name@ASC",
+   "source": "viseval",
+   "key": "2030@y_name@ASC",
+   "db_id": "insurance_policies",
+   "table": "Payments",
+   "prompt": "Which Payments were processed with Visa? List the date and the amount using a bar chart, and rank by the Y from low to high please.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Date_Payment_Made , Amount_Payment FROM Payments WHERE Payment_Method_Code = 'Visa' ORDER BY Amount_Payment ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Date_Payment_Made",
+    "y_name": "Amount_Payment",
+    "x_data": [
+     [
+      "2018-02-24",
+      "2017-05-28",
+      "2017-05-03",
+      "2017-12-16"
+     ]
+    ],
+    "y_data": [
+     [
+      7343,
+      155654,
+      172309,
+      459407
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2962",
+   "source": "viseval",
+   "key": "2962",
+   "db_id": "tracking_grants_for_research",
+   "table": "Project_Staff",
+   "prompt": "When do all the researcher role staff start to work? Bin the time into weekday interval and count them with a bar chart.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT date_from , COUNT(date_from) FROM Project_Staff",
+   "binning": "BIN date_from BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "date_from",
+    "y_name": "COUNT(date_from)",
+    "x_data": [
+     [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thur",
+      "Fri",
+      "Sat",
+      "Sun"
+     ]
+    ],
+    "y_data": [
+     [
+      4,
+      0,
+      2,
+      1,
+      2,
+      0,
+      0
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2351",
+   "source": "viseval",
+   "key": "2351",
+   "db_id": "mountain_photos",
+   "table": "photos",
+   "prompt": "Compare the number of items in each color scheme using a bar chart.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT color , COUNT(color) FROM photos GROUP BY color",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "color",
+    "y_name": "COUNT(color)",
+    "x_data": [
+     [
+      "Black/White",
+      "RBG"
+     ]
+    ],
+    "y_data": [
+     [
+      2,
+      8
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-924",
+   "source": "viseval",
+   "key": "924",
+   "db_id": "customers_and_addresses",
+   "table": "customers",
+   "prompt": "How many customers with ids between 10 and 20 became customers in ench weekday? Show by a bar chart.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT date_became_customer , COUNT(date_became_customer) FROM customers WHERE customer_id BETWEEN 10 AND 20",
+   "binning": "BIN date_became_customer BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "date_became_customer",
+    "y_name": "COUNT(date_became_customer)",
+    "x_data": [
+     [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thur",
+      "Fri",
+      "Sat",
+      "Sun"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      0,
+      0,
+      3,
+      0,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-542",
+   "source": "viseval",
+   "key": "542",
+   "db_id": "college_1",
+   "table": "department",
+   "prompt": "Draw a pie chart for how many different locations does each school have?",
+   "chart": "Pie",
+   "hardness": "Medium",
+   "sql": "SELECT SCHOOL_CODE , count(DISTINCT dept_address) FROM department",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "SCHOOL_CODE",
+    "y_name": "count(DISTINCT dept_address)",
+    "x_data": [
+     [
+      "A&SCI",
+      "BUS"
+     ]
+    ],
+    "y_data": [
+     [
+      7,
+      4
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-74",
+   "source": "viseval",
+   "key": "74",
+   "db_id": "apartment_rentals",
+   "table": "Apartment_Bookings",
+   "prompt": "Show me a bar chart for how many bookings does each booking status have? List the booking status code and the number of corresponding bookings.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT booking_status_code , COUNT(*) FROM Apartment_Bookings GROUP BY booking_status_code",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "booking_status_code",
+    "y_name": "COUNT(*)",
+    "x_data": [
+     [
+      "Confirmed",
+      "Provisional"
+     ]
+    ],
+    "y_data": [
+     [
+      7,
+      8
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2655@x_name@ASC",
+   "source": "viseval",
+   "key": "2655@x_name@ASC",
+   "db_id": "railway",
+   "table": "railway",
+   "prompt": "Show different builders of railways, along with the corresponding number of railways using each builder by a bar chart, and order x-axis in ascending order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Builder , COUNT(*) FROM railway GROUP BY Builder ORDER BY Builder ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Builder",
+    "y_name": "COUNT(*)",
+    "x_data": [
+     [
+      "Avonside",
+      "GER Hartford",
+      "GER Stratford",
+      "GNR Doncaster",
+      "GWR Swindon",
+      "MR Derby",
+      "SECR Ashford",
+      "Stephenson",
+      "Swindon Works"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      1,
+      1,
+      1,
+      2,
+      1,
+      1,
+      1,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2549",
+   "source": "viseval",
+   "key": "2549",
+   "db_id": "pets_1",
+   "table": "pets",
+   "prompt": "Find the average age for each type of pet. Visualize them as a pie chart.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT PetType , avg(pet_age) FROM pets GROUP BY pettype",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "PetType",
+    "y_name": "avg(pet_age)",
+    "x_data": [
+     [
+      "cat",
+      "dog"
+     ]
+    ],
+    "y_data": [
+     [
+      3,
+      1.5
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2638",
+   "source": "viseval",
+   "key": "2638",
+   "db_id": "protein_institute",
+   "table": "building",
+   "prompt": "Please compare the number of floors for all street address using a bar chart, and order by the number of floors in ascending.",
+   "chart": "Bar",
+   "hardness": "Easy",
+   "sql": "SELECT Street_address , Floors FROM building ORDER BY floors",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Street_address",
+    "y_name": "Floors",
+    "x_data": [
+     [
+      "315 John F. Kennedy Boulevard",
+      "701 North Franklin Street",
+      "905 Franklin Street",
+      "655 North Franklin Street",
+      "400 North Tampa Street",
+      "201 North Franklin Street",
+      "101 East Kennedy Boulevard",
+      "100 North Tampa Street"
+     ]
+    ],
+    "y_data": [
+     [
+      10,
+      12,
+      17,
+      22,
+      36,
+      39,
+      42,
+      42
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-783@y_name@DESC",
+   "source": "viseval",
+   "key": "783@y_name@DESC",
+   "db_id": "cre_Doc_Tracking_DB",
+   "table": "Ref_calendar",
+   "prompt": "Show all calendar dates and bin by weekday in a bar chart, I want to rank y axis in desc order.",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Calendar_Date , COUNT(Calendar_Date) FROM Ref_calendar  ORDER BY COUNT(Calendar_Date) DESC",
+   "binning": "BIN Calendar_Date BY WEEKDAY",
+   "vis_obj": {
+    "x_name": "Calendar_Date",
+    "y_name": "COUNT(Calendar_Date)",
+    "x_data": [
+     [
+      "Tue",
+      "Mon",
+      "Fri",
+      "Sun",
+      "Thur",
+      "Wed",
+      "Sat"
+     ]
+    ],
+    "y_data": [
+     [
+      5,
+      4,
+      3,
+      2,
+      1,
+      0,
+      0
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-4017",
+   "source": "viseval",
+   "key": "4017",
+   "db_id": "company_office",
+   "table": "buildings",
+   "prompt": "Display the count of buildings that are equal to or taller than 100 meters in Mexico City and Monterrey. Represent the distribution of these buildings across different statuses using a stacked bar chart.",
+   "chart": "Stacked Bar",
+   "hardness": "Medium",
+   "sql": "SELECT City, count(*), Status FROM buildings WHERE Height >= 100 GROUP BY City, Status",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "City",
+    "y_name": "count(*)",
+    "x_data": [
+     [
+      "Mexico City",
+      "Monterrey"
+     ]
+    ],
+    "y_data": [
+     [
+      4,
+      0
+     ],
+     [
+      1,
+      0
+     ],
+     [
+      4,
+      1
+     ]
+    ],
+    "classify": [
+     "on-hold",
+     "proposed",
+     "under construction"
+    ]
+   }
+  },
+  {
+   "id": "VE-679@x_name@ASC",
+   "source": "viseval",
+   "key": "679@x_name@ASC",
+   "db_id": "company_employee",
+   "table": "company",
+   "prompt": "Show the different headquarters and number of companies at each headquarterin a bar chart, and could you list in ascending by the X please?",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Headquarters , COUNT(*) FROM company GROUP BY Headquarters ORDER BY Headquarters ASC",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Headquarters",
+    "y_name": "COUNT(*)",
+    "x_data": [
+     [
+      "Brazil",
+      "China",
+      "France",
+      "Germany",
+      "Netherlands",
+      "Russia",
+      "UK",
+      "USA"
+     ]
+    ],
+    "y_data": [
+     [
+      1,
+      4,
+      1,
+      1,
+      1,
+      1,
+      2,
+      8
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-3150",
+   "source": "viseval",
+   "key": "3150",
+   "db_id": "university_basketball",
+   "table": "basketball_match",
+   "prompt": "Create a pie chart showing acc_percent across acc regular season.",
+   "chart": "Pie",
+   "hardness": "Easy",
+   "sql": "SELECT ACC_Regular_Season , ACC_Percent FROM basketball_match",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "ACC_Regular_Season",
+    "y_name": "ACC_Percent",
+    "x_data": [
+     [
+      "14-2",
+      "13-3",
+      "10-6",
+      "9-7"
+     ]
+    ],
+    "y_data": [
+     [
+      0.875,
+      0.813,
+      0.625,
+      0.563
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-1580",
+   "source": "viseval",
+   "key": "1580",
+   "db_id": "hr_1",
+   "table": "employees",
+   "prompt": "For those employees whose salary is in the range of 8000 and 12000 and commission is not null or department number does not equal to 40, find  hire_date and the amount of hire_date bin hire_date by month, and visualize them by a bar chart.",
+   "chart": "Bar",
+   "hardness": "Hard",
+   "sql": "SELECT HIRE_DATE , COUNT(HIRE_DATE) FROM employees WHERE salary BETWEEN 8000 AND 12000 AND commission_pct != \"null\" OR department_id != 40",
+   "binning": "BIN HIRE_DATE BY MONTH",
+   "vis_obj": {
+    "x_name": "HIRE_DATE",
+    "y_name": "COUNT(HIRE_DATE)",
+    "x_data": [
+     [
+      "June",
+      "July",
+      "Aug",
+      "Sept",
+      "Oct"
+     ]
+    ],
+    "y_data": [
+     [
+      14,
+      31,
+      31,
+      29,
+      1
+     ]
+    ],
+    "classify": []
+   }
+  },
+  {
+   "id": "VE-2646",
+   "source": "viseval",
+   "key": "2646",
+   "db_id": "race_track",
+   "table": "track",
+   "prompt": "Return a bar chart on what are the names and seatings for all tracks opened after 2000, ordered by seating in ascending?",
+   "chart": "Bar",
+   "hardness": "Medium",
+   "sql": "SELECT Name , Seating FROM track WHERE year_opened > 2000 ORDER BY seating",
+   "binning": "",
+   "vis_obj": {
+    "x_name": "Name",
+    "y_name": "Seating",
+    "x_data": [
+     [
+      "Chicagoland Speedway",
+      "Kansas Speedway"
+     ]
+    ],
+    "y_data": [
+     [
+      75000,
+      81687
+     ]
+    ],
+    "classify": []
+   }
+  }
+ ]
+}
