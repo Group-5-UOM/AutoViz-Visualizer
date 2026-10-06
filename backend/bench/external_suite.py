@@ -41,6 +41,7 @@ import random
 import re
 import sqlite3
 import sys
+import unicodedata
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -96,6 +97,9 @@ _ISO = re.compile(
 )
 
 
+_DASHES = re.compile("[‐‑‒–—―−]")
+
+
 def binning_unit(binning: str) -> str | None:
     """'BIN x BY YEAR' -> 'year'. None when the query is not binned."""
     m = re.search(r"\bBY\s+(YEAR|MONTH|WEEKDAY|DAY|TIME|INTERVAL)\b", binning or "", re.IGNORECASE)
@@ -117,8 +121,18 @@ def norm_x(value: Any, unit: str | None = None) -> str:
         f = float(value)
         if unit == "year" and f.is_integer():
             return str(int(f))
+        # A weekday or month bin drawn from a date part is a number in the
+        # chart's data (DuckDB: dow 0 = Sunday, month 1-12) and a name in the
+        # gold chart; both name the same bin.
+        if unit == "weekday" and f.is_integer() and 0 <= f <= 6:
+            return ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][int(f)]
+        if unit == "month" and f.is_integer() and 1 <= f <= 12:
+            return _MONTHS[int(f) - 1]
         return str(int(f)) if f.is_integer() else f"{round(f, 4):g}"
-    s = str(value).strip().lower()
+    # The gold charts and VisEval's CSV export spell the same value differently
+    # ("9-1" against "9–1"), so text is compared after Unicode normalisation with
+    # every dash folded to a hyphen.
+    s = _DASHES.sub("-", unicodedata.normalize("NFKC", str(value))).strip().lower()
     m = _ISO.match(s)
     if m:
         year, month, day = m.group(1), m.group(2), m.group(3)
@@ -211,7 +225,9 @@ def load_cases() -> list[dict[str, Any]]:
 
 
 def cases_sha256() -> str:
-    return _sha256(CASES_FILE)
+    """Hash of the frozen cases with line endings normalised, so a Windows
+    (CRLF) checkout and a Linux one report the same version."""
+    return hashlib.sha256(CASES_FILE.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 # --------------------------------------------------------------------------

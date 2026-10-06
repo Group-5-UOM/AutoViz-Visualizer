@@ -88,6 +88,8 @@ def test_pause_and_no_chart_are_not_scored_on_properties():
         ("2009-02-14", "month", "feb"), ("February", "month", "feb"),
         ("2024-10-03", "weekday", "thu"), ("Thur", "weekday", "thu"), ("Thursday", "weekday", "thu"),
         ("2024-10-03 00:00:00", None, "2024-10-03"),
+        ("9–1", None, "9-1"), ("May19 –October26", None, "may19 -october26"),
+        (0, "weekday", "sun"), (4.0, "weekday", "thu"), (2, "month", "feb"), (2, None, "2"),
     ],
 )
 def test_normalisation(value, unit, want):
