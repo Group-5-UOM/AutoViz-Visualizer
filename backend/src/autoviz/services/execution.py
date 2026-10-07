@@ -712,6 +712,24 @@ def _apply_preprocessing(
     return cte_defs, params, current, report, int(input_rows), int(prev_rows)
 
 
+def _mark_other_shown(report: list[dict[str, Any]], result: Any) -> None:
+    """Record whether each "Other" bucket made it into the final result.
+
+    A plan can bucket the tail into "Other" *and* keep only its top N rows, and
+    then the bucket is the row the limit cuts. The disclosure said the rows "were
+    grouped as 'Other'" beside a chart with no Other bar, which reads as data
+    that went missing. Only judged when the column is in the result — otherwise
+    there is no bar either way, and nothing to contradict.
+    """
+    for entry in report:
+        if entry.get("operation") != "group_rare_categories":
+            continue
+        col = entry.get("column")
+        if col in result.columns:
+            label = entry.get("other_label") or "Other"
+            entry["other_shown"] = bool((result[col] == label).any())
+
+
 def _imputation_notices(
     plan: AnalysisPlan, report: list[dict[str, Any]], input_rows: int
 ) -> list[dict[str, Any]]:
@@ -1200,6 +1218,7 @@ def execute_analysis(
                     plan, pp_ctes=pp_ctes, source_relation=source_rel
                 )
                 result = con.execute(sql, pp_params + where_params).fetchdf()
+                _mark_other_shown(pp_report, result)
                 imputation_notices = _imputation_notices(plan, pp_report, input_rows)
                 # The unified disclosure channel. `imputation_notices` and
                 # `implicit_null_exclusions` stay as they are — they are the

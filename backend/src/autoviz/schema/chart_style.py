@@ -131,6 +131,10 @@ class ChartStyle(BaseModel):
     # False hides the colour legend. Series stay distinguishable by direct label
     # or tooltip, so this is a presentation choice rather than a loss of meaning.
     legend: bool | None = None
+    # False hides the direct labels (values on bars and cells, names beside
+    # slices). Asked for in words — "hide the slice labels" — and previously
+    # impossible to express, so the request was silently dropped.
+    labels: bool | None = None
     # Single-series charts have no colour scale, so their colour is the mark's.
     mark_color: HexColor | None = None
     # Series value -> colour, for a chart that does have a colour scale.

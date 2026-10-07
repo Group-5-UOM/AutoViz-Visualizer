@@ -42,6 +42,14 @@ interface SetupPanelProps {
   messages: ChatMessage[];
   onClose: () => void;
   onAsk: (chartType: ChartType, question: string) => void;
+  /**
+   * Reply to the question on screen with one of its options. The panel used to
+   * show the question with no way to answer it, so a request made here stalled
+   * until the user found the same question in AI Chat.
+   */
+  onAnswer: (label: string) => void;
+  /** Only this message's options answer a live question; see ChatPanel. */
+  liveQuestionId?: string | null;
 }
 
 export function SetupPanel({
@@ -52,6 +60,8 @@ export function SetupPanel({
   messages,
   onClose,
   onAsk,
+  onAnswer,
+  liveQuestionId = null,
 }: SetupPanelProps) {
   const [selected, setSelected] = useState<ChartType>('bar');
   const [draft, setDraft] = useState('');
@@ -137,6 +147,34 @@ export function SetupPanel({
                     className={`tool-setup-bubble tool-setup-bubble--${msg.role}`}
                   >
                     <MessageContent content={msg.content} role={msg.role} />
+                    {msg.options && msg.options.length > 0 && (
+                      <div className="chat-options">
+                        {msg.options.map((option) => (
+                          <button
+                            key={option.label}
+                            type="button"
+                            className={
+                              option.recommended
+                                ? 'suggestion-chip suggestion-chip--recommended'
+                                : 'suggestion-chip'
+                            }
+                            disabled={isThinking || msg.id !== liveQuestionId}
+                            onClick={() => onAnswer(option.label)}
+                            title={option.technique}
+                          >
+                            <span className="suggestion-chip__label">
+                              {option.label}
+                              {option.recommended && (
+                                <span className="suggestion-chip__badge">Recommended</span>
+                              )}
+                            </span>
+                            {option.detail && (
+                              <span className="suggestion-chip__detail">{option.detail}</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
                 {isThinking && (

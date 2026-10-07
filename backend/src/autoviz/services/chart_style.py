@@ -36,7 +36,7 @@ from autoviz.services.chart_theme import (
     FONT_STACKS,
     scaled_text,
 )
-from autoviz.services.charts import primary_layer
+from autoviz.services.charts import chart_root, primary_layer
 
 
 def _rows(spec: dict[str, Any]) -> list[dict[str, Any]]:
@@ -172,6 +172,36 @@ def _apply_legend(layer: dict[str, Any], style: ChartStyle) -> None:
         color.pop("legend", None)
 
 
+def _label_layers(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """The direct-label layers: every text-mark layer that is not the data layer."""
+    layers = chart_root(spec).get("layer") or []
+    primary = primary_layer(spec)
+    out = []
+    for layer in layers:
+        mark = layer.get("mark")
+        kind = mark.get("type") if isinstance(mark, dict) else mark
+        if kind == "text" and layer is not primary:
+            out.append(layer)
+    return out
+
+
+def _apply_labels(spec: dict[str, Any], style: ChartStyle) -> None:
+    """Hide or restore the direct labels.
+
+    Hidden by opacity rather than by removing the layer, so reverting needs no
+    copy of the layer kept anywhere — it is still in the spec, just not drawn.
+    """
+    for layer in _label_layers(spec):
+        mark = layer.get("mark")
+        if not isinstance(mark, dict):
+            mark = {"type": "text"}
+            layer["mark"] = mark
+        if style.labels is False:
+            mark["opacity"] = 0
+        else:
+            mark.pop("opacity", None)
+
+
 def _apply_typography(spec: dict[str, Any], style: ChartStyle) -> None:
     """Font family and text scale for the whole chart.
 
@@ -257,6 +287,7 @@ def apply(spec: dict[str, Any], style: ChartStyle) -> dict[str, Any]:
     _apply_mark_color(layer, style)
     _apply_colors(styled, layer, style)
     _apply_legend(layer, style)
+    _apply_labels(styled, style)
     _apply_typography(styled, style)
     _apply_raw_config(styled, style)
     return styled

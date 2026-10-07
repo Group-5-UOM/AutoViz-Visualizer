@@ -239,6 +239,11 @@ def run_pipeline(
         # Same pattern: plan metadata the renderer needs but the chart grammar does
         # not carry. Intent is what tells a bar chart it is a ranking and must sort.
         spec["intent"] = plan.intent
+        # And the plan's own ordering. The SQL sorted the rows, but a nominal axis
+        # re-sorts them alphabetically, so "average price by borough, highest
+        # first" drew Bronx, Brooklyn, Manhattan... whatever the plan said.
+        if plan.sort:
+            spec["plan_sort"] = {"by": plan.sort[0].by, "dir": plan.sort[0].dir}
         return spec
 
     chart_spec = annotate(chart_spec)

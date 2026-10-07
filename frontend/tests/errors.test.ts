@@ -82,3 +82,24 @@ test('errorMessage prefers the server sentence and always returns something', ()
   assert.equal(errorMessage({ weird: true }), 'Something went wrong talking to the server.');
   assert.equal(errorMessage(null), 'Something went wrong talking to the server.');
 });
+
+// --- proxy error pages ---------------------------------------------------------
+
+import { STATUS_MESSAGES, looksLikeHtml } from '../src/lib/errors.ts';
+
+test('an nginx error page is recognised as markup, not a message', () => {
+  const page =
+    '<html>\r\n<head><title>413 Request Entity Too Large</title></head>\r\n<body>\r\n' +
+    '<center><h1>413 Request Entity Too Large</h1></center>\r\n</body>\r\n</html>';
+  assert.equal(looksLikeHtml(page), true);
+  assert.equal(looksLikeHtml('<!DOCTYPE html><html></html>'), true);
+});
+
+test('plain text and JSON-ish bodies are still shown as written', () => {
+  assert.equal(looksLikeHtml('Dataset not found'), false);
+  assert.equal(looksLikeHtml('<5 rows is too few to chart'), false);
+});
+
+test('a too-large upload gets a sentence, not a status code', () => {
+  assert.match(STATUS_MESSAGES[413], /too large/);
+});

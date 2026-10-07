@@ -154,6 +154,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
   const {
     dashboard,
     messages,
+    liveQuestionId,
     threadId,
     isThinking,
     referencedWidgetId,
@@ -203,6 +204,15 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     }, 800);
     return () => window.clearTimeout(timer);
   }, [dataset?.datasetId, hydratedDatasetId, dashboard.dashboardId, messages, threadId]);
+
+  // A board that has been saved gets its own address. Without this the URL stayed
+  // `/dashboard` after the first autosave, so leaving for Settings and pressing
+  // Back — or the browser's back button, or a reload — opened an empty board
+  // while the one the user had built sat unreferenced in the Dashboards list.
+  useEffect(() => {
+    if (routeDashboardId || !dashboard.dashboardId) return;
+    navigate(`/dashboard/${dashboard.dashboardId}`, { replace: true });
+  }, [routeDashboardId, dashboard.dashboardId, navigate]);
 
   useEffect(() => {
     if (!routeDashboardId) return;
@@ -394,9 +404,14 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
     }
   };
 
+  // Where Settings' Back button returns to: this board, by id once it has one.
+  const settingsReturnPath = dashboard.dashboardId
+    ? `/dashboard/${dashboard.dashboardId}`
+    : '/dashboard';
+
   const handleSidebarSelect = (id: SidebarItemId) => {
     if (id === 'settings') {
-      navigate('/settings');
+      navigate('/settings', { state: { from: settingsReturnPath } });
       return;
     }
     if (id === 'data') {
@@ -624,7 +639,11 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
         saveError={saveError}
         shareDashboardId={dashboard.dashboardId}
         onNewDashboard={handleNewDashboard}
-        onSetPassword={!hasPassword ? () => navigate('/settings#account') : undefined}
+        onSetPassword={
+          !hasPassword
+            ? () => navigate('/settings#account', { state: { from: settingsReturnPath } })
+            : undefined
+        }
         onLogout={onLogout}
         canExport={dashboard.widgets.length > 0}
       />
@@ -655,6 +674,8 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
           messages={setupMessages}
           onClose={closeSideTool}
           onAsk={handleSetupAsk}
+          onAnswer={(label) => handleSendMessage(label)}
+          liveQuestionId={liveQuestionId}
         />
 
         <FilterPanel
@@ -676,6 +697,7 @@ export function BoardPage({ userEmail, username, onLogout }: BoardPageProps) {
             setActiveItem(null);
           }}
           onSend={handleSendMessage}
+          liveQuestionId={liveQuestionId}
           onFocusChart={(chartId) => selectWidget(chartId)}
           referenceable={dashboard.widgets.filter((w) => w.agentChartId)}
           referencedWidgetId={referencedWidgetId}

@@ -544,7 +544,8 @@ def _detect_missing_metric(
     # Rank candidate measures by cardinality so continuous quantities (fare, age)
     # surface above low-signal integer codes (0/1 flags, small ordinals) when the
     # option list is capped.
-    ranked = _rank_by_cardinality(numeric_cols, profile)
+    measures = [c for c in numeric_cols if _is_measure_candidate(c)] or numeric_cols
+    ranked = _rank_by_cardinality(measures, profile)
     options = [
         ClarificationOption(label=f"Average {_human(c)}", resolves_to={"column": c, "fn": "mean"})
         for c in ranked[:_MAX_METRIC_OPTIONS]
@@ -927,6 +928,26 @@ def _rank_by_cardinality(cols: list[str], profile: dict[str, Any]) -> list[str]:
     """Order columns by distinct-value count (desc); stable for unknown/ties."""
     card = profile.get("cardinality", {})
     return sorted(cols, key=lambda c: card.get(c, 0), reverse=True)
+
+
+# Numeric columns that label or locate a row rather than measure anything. Ranking
+# by cardinality puts exactly these first — a unique id has the most distinct
+# values of all — so on an Airbnb listings file "which measure should rank
+# them?" offered Average id, Average host id, Average latitude and Average
+# longitude ahead of price.
+_NOT_A_MEASURE_WORDS = frozenset({
+    "id", "uuid", "guid", "key",
+    "lat", "latitude", "lon", "lng", "longitude",
+    "zip", "zipcode", "postcode", "postal",
+})
+
+
+def _is_measure_candidate(col: str) -> bool:
+    words = _col_words(col)
+    if words & _NOT_A_MEASURE_WORDS:
+        return False
+    # `long` alone is a longitude; inside a name ("long_jump") it is a word.
+    return _norm(col) != "long"
 
 
 def _first_match(text: str, needles: tuple[str, ...]) -> str | None:

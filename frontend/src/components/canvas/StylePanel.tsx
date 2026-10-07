@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Palette, RotateCcw, Trash2, X } from 'lucide-react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import type { ChartFont, ChartStyle, ChartWidget } from '../../types/dashboard';
@@ -200,6 +200,7 @@ const CLEARED_STYLE: ChartStyle = {
   x_title: null,
   y_title: null,
   legend: null,
+  labels: null,
   mark_color: null,
   series_colors: null,
   color_scheme: null,
@@ -213,6 +214,21 @@ const TABS: { id: StyleTab; label: string }[] = [
   { id: 'style', label: 'Style' },
   { id: 'advanced', label: 'Advanced' },
 ];
+
+/**
+ * Whether the chart draws direct labels — a text layer beside its data layer.
+ * The toggle is offered only then: on a scatter or a histogram it would be a
+ * switch that does nothing.
+ */
+function hasDirectLabels(spec: Record<string, unknown>): boolean {
+  const root = (spec.spec as Record<string, unknown> | undefined) ?? spec;
+  const layers = Array.isArray(root.layer) ? (root.layer as Record<string, unknown>[]) : [];
+  return layers.slice(1).some((layer) => {
+    const mark = layer.mark;
+    const kind = typeof mark === 'string' ? mark : (mark as { type?: string } | undefined)?.type;
+    return kind === 'text';
+  });
+}
 
 export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) {
   const style = widget.style ?? {};
@@ -269,15 +285,28 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
 
   useEffect(() => setError(null), [widget.id]);
 
+  // The block as the user last asked for it, ahead of what has rendered. Two
+  // edits in quick succession — a label committed on blur by the very click
+  // that picks a colour — each used to build on the same stale `style`, so the
+  // second request carried no label and the axis title snapped back.
+  const intended = useRef<ChartStyle>(style);
+  const storedStyle = widget.style;
+  useEffect(() => {
+    intended.current = storedStyle ?? {};
+  }, [widget.id, storedStyle]);
+
   // Always the whole block: the backend treats it as the widget's styling state,
   // not a diff, so an omitted field would read as a revert.
   const patch = async (change: ChartStyle) => {
-    setError(await onApply({ ...style, ...change }));
+    const next = { ...intended.current, ...change };
+    intended.current = next;
+    setError(await onApply(next));
   };
 
   const commitText = (key: 'title' | 'x_title' | 'y_title') => {
     const next = titles[key].trim();
-    const stored = typeof style[key] === 'string' ? style[key] : null;
+    const current = intended.current[key];
+    const stored = typeof current === 'string' ? current : null;
     const effective = key === 'title' ? labels.title : key === 'x_title' ? labels.x : labels.y;
 
     if (stored !== null) {
@@ -314,7 +343,9 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
         ? (parsed as Record<string, unknown>)
         : null;
     }
-    setConfigError(await onApply({ ...style, config }));
+    const nextStyle = { ...intended.current, config };
+    intended.current = nextStyle;
+    setConfigError(await onApply(nextStyle));
   };
 
   const hasStyleOverrides = (Object.keys(CLEARED_STYLE) as (keyof ChartStyle)[]).some(
@@ -492,6 +523,17 @@ export function StylePanel({ widget, busy, onApply, onClose }: StylePanelProps) 
                   value={style.mark_color ?? undefined}
                   onChange={(hex) => patch({ mark_color: hex })}
                 />
+              )}
+              {hasDirectLabels(widget.vegaLiteSpec) && (
+                <label className="style-toggle">
+                  <input
+                    type="checkbox"
+                    checked={style.labels !== false}
+                    disabled={busy}
+                    onChange={(e) => patch({ labels: e.target.checked ? null : false })}
+                  />
+                  <span>Show labels on the chart</span>
+                </label>
               )}
             </section>
           </div>

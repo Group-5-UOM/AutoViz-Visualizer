@@ -167,3 +167,41 @@ def test_labels_never_wear_the_series_colour():
     labels = _labels(spec)
     assert labels["mark"]["color"] == SECONDARY_INK
     assert "color" not in labels["encoding"]
+
+
+# --- labels that fit the card they are drawn on ----------------------------------
+
+_PRICES = [{"b": "Bronx", "avg": 127.50652}, {"b": "Manhattan", "avg": 247.53371}]
+
+
+def test_large_values_are_labelled_to_the_unit():
+    """Three decimals on every heatmap cell ran into the neighbouring cell."""
+    grid = [{"x": x, "y": y, "avg": 127.50652 + i} for i, (x, y) in
+            enumerate((x, y) for x in "ab" for y in "cd")]
+    spec = _spec(grid, {"type": "heatmap", "x": "x", "y": "y", "color": "avg"})
+    text = _labels(spec)["encoding"]["text"]
+    assert text["format"] == ",.0f"
+    assert _labels(spec)["mark"]["limit"] == {"expr": "bandwidth('x') - 2"}
+    assert _spec(_PRICES, {"type": "bar", "x": "b", "y": "avg"})["layer"][1]["encoding"][
+        "text"]["format"] == ",.0f"
+
+
+def test_small_values_keep_their_decimals():
+    spec = _spec(_BARS, {"type": "bar", "x": "c", "y": "v"})
+    assert _labels(spec)["encoding"]["text"]["format"] == ",.2~f"
+
+
+def test_slice_labels_point_away_from_the_pie_and_skip_slivers():
+    parts = [{"c": "Entire home/apt", "v": 25409.0}, {"c": "Private room", "v": 22326.0},
+             {"c": "Shared room", "v": 1160.0}]
+    spec = _spec(parts, {"type": "donut", "x": "c", "y": "v"})
+    mark = _labels(spec)["mark"]
+    # Aligned outward by the side of the pie the slice is on, not centred on the rim.
+    assert "sin(scale('theta'" in mark["align"]["expr"]
+    assert "expr" in mark["limit"]
+    # The 2% slice gets no name printed over its neighbours; the legend has it.
+    condition = _labels(spec)["encoding"]["text"]["condition"]
+    assert condition["value"] == ""
+    assert "datum['v'] <" in condition["test"]
+    # The arc leaves the margin the labels sit in.
+    assert "outerRadius" in primary_layer(spec)["mark"]

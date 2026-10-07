@@ -308,21 +308,41 @@ def _apply_orientation(form: Form, encoding: dict[str, Any]) -> dict[str, Any]:
     return swapped
 
 
-def _apply_ranking_sort(form: Form, encoding: dict[str, Any], intent: str | None) -> None:
-    """Order a ranking bar by its measure.
+def _apply_ranking_sort(
+    form: Form,
+    encoding: dict[str, Any],
+    intent: str | None,
+    plan_sort: dict[str, Any] | None = None,
+) -> None:
+    """Order a bar by its measure — for a ranking, or wherever the plan sorted.
 
     Lives here rather than in `generate_chart` because which channel to sort and
     what to sort it by are both orientation questions, and getting them from the
     wrong axis silently produces an unsorted chart whose rationale claims it is
     sorted.
+
+    A plan's explicit sort is honoured too. The SQL orders the rows, but a
+    nominal axis re-sorts its domain alphabetically unless told otherwise, so a
+    comparison sorted highest-first came out A to Z.
     """
-    if intent != "ranking" or form.chart_type != "bar":
+    if form.chart_type != "bar":
         return
     category = encoding.get(form.category_channel)
     if not isinstance(category, dict) or category.get("type") != "nominal":
         # Sorting a time axis by value destroys the axis.
         return
-    category["sort"] = f"-{form.measure_channel}"
+    measure = encoding.get(form.measure_channel)
+    measure_field = measure.get("field") if isinstance(measure, dict) else None
+    if plan_sort and plan_sort.get("by"):
+        descending = plan_sort.get("dir") == "desc"
+        if plan_sort["by"] == measure_field:
+            category["sort"] = f"{'-' if descending else ''}{form.measure_channel}"
+            return
+        if plan_sort["by"] == category.get("field"):
+            category["sort"] = "descending" if descending else "ascending"
+            return
+    if intent == "ranking":
+        category["sort"] = f"-{form.measure_channel}"
 
 
 def _apply_stack(form: Form, encoding: dict[str, Any]) -> None:
@@ -578,6 +598,8 @@ def apply(
     encoding: dict[str, Any],
     mark: Any,
     intent: str | None,
+    *,
+    plan_sort: dict[str, Any] | None = None,
 ) -> tuple[Any, dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], int]:
     """Fold every modifier into one mark + encoding.
 
@@ -622,7 +644,7 @@ def apply(
 
     # 4. Everything that names a positional channel, now that the swap has
     #    decided which channel that is.
-    _apply_ranking_sort(form, encoding, intent)
+    _apply_ranking_sort(form, encoding, intent, plan_sort)
     _apply_stack(form, encoding)
 
     # 5. Sibling layers.

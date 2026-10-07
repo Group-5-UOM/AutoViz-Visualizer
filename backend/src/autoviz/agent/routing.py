@@ -11,6 +11,7 @@ from autoviz.agent.state import (
     MAX_PLAN_ATTEMPTS,
     AutoVizState,
     WorkerState,
+    cleaning_memory_key,
 )
 from autoviz.errors import PLAN_REPAIRABLE
 
@@ -27,6 +28,12 @@ def route_after_detect(state: AutoVizState) -> str:
     return "classify_intent"
 
 
+def is_cancelled(state: AutoVizState) -> bool:
+    """The user answered a refusal with "Nothing — cancel this request"."""
+    capability = (state.get("resolved_slots") or {}).get("capability")
+    return isinstance(capability, dict) and capability.get("fallback") == "cancel"
+
+
 def route_after_clarify(state: AutoVizState) -> str:
     """Every answer goes back through detection, whoever asked the question.
 
@@ -35,7 +42,13 @@ def route_after_clarify(state: AutoVizState) -> str:
     second distinct ambiguity can surface), then classify with the answer in
     hand. Routing an LLM answer straight to the classifier used to skip the
     detectors entirely on the second round.
+
+    The one exception is a cancel. It used to resolve the slot like any other
+    answer, so the run carried on and planned the very request the user had just
+    declined — a forecast came back as a chart nobody asked for.
     """
+    if is_cancelled(state):
+        return "cancel_request"
     return "detect_ambiguity"
 
 
@@ -92,6 +105,13 @@ def route_after_classify(state: AutoVizState) -> str | list[Send]:
         prior_plan = targeted.get("plan")
         if len(tasks) == 1:
             refines_chart_id = target
+            # Plan from the user's own words against the targeted plan, not from
+            # the classifier's rewrite. The classifier sees the last few turns of
+            # history with no idea which chart was pointed at, so its "self-
+            # contained" rewrite borrowed context from whatever came last:
+            # "show this as a grouped bar" on a heatmap picked up the previous
+            # question's "under $500" and silently changed every number.
+            tasks = [state["user_request"]]
     elif state.get("intent") == "refinement":
         # No target, or one this thread has never heard of — a chart from a
         # dashboard reopened without its conversation. Guess, or append.
@@ -101,6 +121,13 @@ def route_after_classify(state: AutoVizState) -> str | list[Send]:
         # new analysis, so nothing is superseded.
         if len(tasks) == 1 and last:
             refines_chart_id = last.get("chart_id")
+
+    prefix = cleaning_memory_key(state["dataset_id"], "")
+    remembered = {
+        key[len(prefix):]: label
+        for key, label in (state.get("cleaning_memory") or {}).items()
+        if key.startswith(prefix)
+    }
 
     return [
         Send(
@@ -116,6 +143,7 @@ def route_after_classify(state: AutoVizState) -> str | list[Send]:
                 # Every worker gets the pick: the fan-out splits one request into
                 # sub-tasks, and the type the user chose applies to all of them.
                 "preferred_chart_type": state.get("preferred_chart_type"),
+                "remembered_cleaning": remembered,
                 "plan_attempts": 0,
             },
         )

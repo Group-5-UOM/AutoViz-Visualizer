@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, KeyRound, Link2, Trash2, User as UserIcon } from 'lucide-react';
 import { ApiError, clearSession } from '../lib/api';
 import { deleteAccount, fetchMe } from '../lib/auth';
@@ -30,6 +30,14 @@ interface SettingsPageProps {
  */
 export function SettingsPage({ userEmail, username }: SettingsPageProps) {
   const navigate = useNavigate();
+  // The board the user came from. Read once from router state at mount — the
+  // section effect below rewrites the history entry with replaceState, which
+  // the router does not see, so this survives it.
+  const { state: navState } = useLocation();
+  const backTo =
+    typeof (navState as { from?: unknown } | null)?.from === 'string'
+      ? (navState as { from: string }).from
+      : '/dashboard';
   const [section, setSection] = useState<SectionId>(() =>
     // Deep-link support: /settings#connections lands on the right section, which
     // is what a "generate a link" instruction in a document wants to point at.
@@ -99,7 +107,7 @@ export function SettingsPage({ userEmail, username }: SettingsPageProps) {
         <button
           type="button"
           className="set-back"
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate(backTo)}
           aria-label="Back to dashboard"
         >
           <ArrowLeft size={16} aria-hidden="true" />

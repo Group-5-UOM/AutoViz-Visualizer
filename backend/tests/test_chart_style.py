@@ -318,3 +318,27 @@ def test_raw_config_accepts_axis_and_header_families():
 def test_raw_config_is_size_bounded():
     with pytest.raises(ValidationError):
         ChartStyle(config={"title": {"subtitleColor": "#000", "x": "a" * 20_000}})
+
+
+# --- direct labels can be switched off --------------------------------------------
+
+
+def _text_opacity(spec):
+    return [layer["mark"].get("opacity") for layer in spec["layer"][1:]
+            if isinstance(layer["mark"], dict) and layer["mark"].get("type") == "text"]
+
+
+def test_labels_false_hides_the_direct_labels_and_reverting_restores_them():
+    """"Hide the slice labels" had no field to land in, so it was dropped."""
+    spec = _bar()
+    hidden = apply(spec, ChartStyle(labels=False))
+    assert _text_opacity(hidden) == [0]
+    restored = apply(hidden, ChartStyle())
+    assert _text_opacity(restored) == [None]
+    # The data layer is drawn exactly as it is with no labels setting at all.
+    assert primary_layer(hidden) == primary_layer(apply(spec, ChartStyle()))
+
+
+def test_hiding_labels_is_idempotent():
+    once = apply(_bar(), ChartStyle(labels=False))
+    assert apply(once, ChartStyle(labels=False)) == once

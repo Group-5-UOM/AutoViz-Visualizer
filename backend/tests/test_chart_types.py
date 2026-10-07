@@ -180,8 +180,11 @@ def test_recommender_prefers_donut_for_composition():
 
 def test_pie_remains_available_when_asked_for_by_name():
     spec = _spec(_PARTS, {"type": "pie", "x": "region", "y": "revenue"})
-    assert primary_layer(spec)["mark"] == "arc"
-    assert "innerRadius" not in str(primary_layer(spec)["mark"])
+    mark = primary_layer(spec)["mark"]
+    # An object now — its outer radius leaves room for the slice labels — but
+    # still an arc with no hole, which is what makes it a pie and not a donut.
+    assert mark["type"] == "arc"
+    assert "innerRadius" not in mark
 
 
 # --- colour cardinality caps (§2.2) ------------------------------------------

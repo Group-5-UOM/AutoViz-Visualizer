@@ -20,6 +20,7 @@ from autoviz.agent.state import (
     AutoVizState,
     ChartResult,
     WorkerState,
+    cleaning_memory_key,
 )
 from autoviz.errors import PLAN_REPAIRABLE, RETRYABLE
 from autoviz.llm.client import IntentDecision, PlannerError, PlannerLLM
@@ -89,6 +90,21 @@ def load_context(state: AutoVizState, *, registry: DatasetRegistry = REGISTRY) -
     return {"schema": schema["columns"], "profile": profile, "status": "running"}
 
 
+_SETTLED_BY_TARGET = frozenset({"dimension", "metric", "aggregation", "time_column"})
+
+
+def _targets_known_chart(state: AutoVizState) -> bool:
+    """Did the user point at a chart this thread produced (so its plan is known)?"""
+    target = state.get("target_chart_id")
+    if not target:
+        return False
+    return any(
+        chart.get("chart_id") == target and chart.get("plan")
+        for entry in state.get("history") or []
+        for chart in entry.get("charts") or []
+    )
+
+
 def classify_intent(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, Any]:
     """Route the request, and give the LLM its turn at finding an ambiguity.
 
@@ -121,6 +137,16 @@ def classify_intent(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, An
         request=state["user_request"],
         resolved=resolved,
     )
+    # A chart the user pointed at already answers "grouped by what?" and "measured
+    # how?" — its plan is handed to the planner as the thing to change. Asking
+    # anyway turned "show this as a grouped bar chart" into a question about which
+    # category to group by, on a chart that was already grouped by both.
+    if (
+        grounded is not None
+        and grounded.slot in _SETTLED_BY_TARGET
+        and _targets_known_chart(state)
+    ):
+        grounded = None
     # A proposal that did not survive is not a reason to stall. The model said
     # "clarification" and emitted no answerable question, so fall back to the
     # request itself rather than fanning out zero tasks.
@@ -293,6 +319,20 @@ def compose_response(state: AutoVizState, *, planner: PlannerLLM) -> dict[str, A
     return {"status": status, "final_response": final, "history": [entry]}
 
 
+CANCELLED_ANSWER = "Okay — I've cancelled that request. Nothing was added to the canvas."
+
+
+def cancel_request(state: AutoVizState) -> dict[str, Any]:
+    """End the run because the user declined the only thing on offer.
+
+    Completed rather than failed: nothing went wrong, and a failure would be shown
+    to the user as an error. No history entry either — no plan was made, so there
+    is nothing a later refinement could build on.
+    """
+    final = {"status": "completed", "answer": CANCELLED_ANSWER, "charts": []}
+    return {"status": "completed", "final_response": final}
+
+
 def record_failure(state: AutoVizState) -> dict[str, Any]:
     errors = state.get("errors") or ["The request could not be processed."]
     return {
@@ -360,13 +400,21 @@ def assess_quality(
     )
 
     resolved: dict[str, Any] = dict(state.get("cleaning_resolutions") or {})
+    # Answers from earlier turns of this conversation. Re-bound by label against
+    # the proposal this plan raised, so the op carries today's values and counts.
+    remembered = state.get("remembered_cleaning") or {}
+    for p in proposals:
+        if p.slot in remembered and p.slot not in resolved:
+            resolved[p.slot] = quality.bind_cleaning_answer(p, remembered[p.slot]).op
     # An explicit instruction in the plan already answers its slot.
     answered = set(resolved) | quality.suppressed_slots(existing)
     dimensions = quality.dimension_columns(model)
     pending = [
         p
         for p in proposals
-        if p.slot not in answered and quality.is_worth_asking(p, dimensions)
+        if p.slot not in answered
+        and quality.is_worth_asking(p, dimensions)
+        and not quality.excluded_by_filters(p, model.filters)
     ]
 
     # Safe repairs first — they need no permission and must be in place before the
@@ -427,6 +475,9 @@ def assess_quality(
     return {
         "analysis_plan": plan,
         "cleaning_resolutions": {**resolved, proposal.slot: option.op},
+        "cleaning_memory": {
+            cleaning_memory_key(state["dataset_id"], proposal.slot): option.label
+        },
         "cleaning_prompts": state.get("cleaning_prompts", 0) + 1,
         "applied_cleaning": [op for op in auto_ops],
         "cleaning_notices": notices_svc.to_wire(owed),

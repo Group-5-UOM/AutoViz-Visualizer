@@ -14,7 +14,7 @@ from autoviz.schema.allowlists import (
     MAX_SERIES_ADJACENT,
     MAX_SERIES_ALL_PAIRS,
 )
-from autoviz.services import chart_modifiers, skew
+from autoviz.services import chart_labels, chart_modifiers, skew
 from autoviz.services.chart_interaction import attach as attach_interaction
 from autoviz.services.chart_labels import build_label_layer
 from autoviz.services.chart_modifiers import COMPOSITE_MARKS, Form
@@ -399,10 +399,19 @@ def _mark_def(chart_type: str, row_count: int = 2) -> Any:
         # datum is the difference between "no data" and "one data point", which
         # are very different answers to have got.
         return {"type": chart_type, "point": True}
-    if chart_type == "donut":
+    if chart_type in ("pie", "donut"):
         # Derived from the view, not an absolute pixel count: charts size from
         # their container, so a literal innerRadius inverts at small widths.
-        return {"type": "arc", "innerRadius": {"expr": "min(width, height) / 5"}}
+        # The outer radius leaves a margin for the slice labels, which sit just
+        # outside it — at the default (the whole view) they had nowhere to go
+        # and long names were cut off at the edge of the card.
+        mark: dict[str, Any] = {
+            "type": "arc",
+            "outerRadius": {"expr": chart_labels.ARC_OUTER_RADIUS},
+        }
+        if chart_type == "donut":
+            mark["innerRadius"] = {"expr": "min(width, height) / 5"}
+        return mark
     if chart_type == "boxplot":
         # Vega-Lite rejects selection params on composite marks, so a mark
         # tooltip is the only way to surface the quartiles it computes.
@@ -641,7 +650,11 @@ def generate_chart(
     # measure is on x, and a skew notice naming the y axis of a chart whose y is
     # the category would be describing a different chart.
     mark, encoding, transforms, extra_layers, data_index = chart_modifiers.apply(
-        form, encoding, _mark_def(chart_type, len(result_table)), chart_spec.get("intent")
+        form,
+        encoding,
+        _mark_def(chart_type, len(result_table)),
+        chart_spec.get("intent"),
+        plan_sort=chart_spec.get("plan_sort"),
     )
     if form.facet:
         panels = len({row.get(form.facet) for row in result_table})

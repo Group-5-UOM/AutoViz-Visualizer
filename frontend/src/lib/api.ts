@@ -1,4 +1,4 @@
-import { ApiError, NETWORK_ERROR_STATUS } from './errors';
+import { ApiError, NETWORK_ERROR_STATUS, STATUS_MESSAGES, looksLikeHtml } from './errors';
 
 // The error taxonomy lives in ./errors so it can be tested under Node — this
 // module cannot be imported there, because `import.meta.env` below is a Vite
@@ -96,7 +96,7 @@ function formatDetail(data: unknown, status: number): string {
       return obj.errors.map((item) => String(item)).join('; ');
     }
   }
-  return `Request failed (${status})`;
+  return STATUS_MESSAGES[status] ?? `Request failed (${status})`;
 }
 
 /** The backend's typed error code, if the body carries one. */
@@ -162,7 +162,8 @@ export async function apiRequest<T>(
     try {
       data = JSON.parse(text);
     } catch {
-      data = { error: text };
+      // Plain text is a message someone wrote; a page of markup is not.
+      data = looksLikeHtml(text) ? null : { error: text };
     }
   }
 

@@ -320,3 +320,48 @@ def test_high_cardinality_is_not_silenced_by_the_row_fraction_floor(registry, tm
     bucket = next(p for p in proposals if p.slot == "cardinality:k")
     assert bucket.issue.fraction == 0.0
     assert quality.is_worth_asking(bucket, dimensions={"k"}) is True
+
+
+# --- a plan's own filters can make a question moot --------------------------------
+
+
+def _suspect(values=(999, 9999)):
+    issue = quality.QualityIssue(
+        kind="suspect_values", column="price", affected=20, fraction=0.0004,
+        detail={"values": list(values)},
+    )
+    return quality._suspect_values_proposal(issue, 48895)
+
+
+def _missing(column="price"):
+    issue = quality.QualityIssue(kind="missing_values", column=column, affected=10, fraction=0.2)
+    return quality.CleaningProposal(slot=f"missing:{column}", question="?", options=[], issue=issue)
+
+
+def _filter(column, op, value=None):
+    from autoviz.schema.analysis_plan import Filter
+    return Filter(column=column, op=op, value=value)
+
+
+def test_a_filter_below_the_codes_excludes_them():
+    assert quality.excluded_by_filters(_suspect(), [_filter("price", "lt", 500)])
+    assert quality.excluded_by_filters(_suspect(), [_filter("price", "between", [10, 900])])
+
+
+def test_a_filter_that_keeps_one_code_does_not():
+    # 999 survives "under 1000", so how it is read still changes the answer.
+    assert not quality.excluded_by_filters(_suspect(), [_filter("price", "lt", 1000)])
+
+
+def test_a_filter_on_another_column_says_nothing():
+    assert not quality.excluded_by_filters(_suspect(), [_filter("room", "eq", "Shared")])
+
+
+def test_an_undecidable_filter_still_asks():
+    # A text threshold against numeric codes cannot be judged here.
+    assert not quality.excluded_by_filters(_suspect(), [_filter("price", "lt", "cheap")])
+
+
+def test_any_comparison_drops_the_nulls_but_is_null_keeps_them():
+    assert quality.excluded_by_filters(_missing(), [_filter("price", "gt", 0)])
+    assert not quality.excluded_by_filters(_missing(), [_filter("price", "is_null")])
