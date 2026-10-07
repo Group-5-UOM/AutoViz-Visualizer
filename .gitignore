@@ -44,3 +44,5 @@ oauth.md
 frontend/node_modules/
 frontend/dist/
 dataloom/
+# external benchmark data, fetched by bench/external_suite.py
+backend/bench/.cache/

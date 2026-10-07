@@ -17,6 +17,8 @@ uv run python -m bench.perf --quick         # small scales, fewer repeats       
 uv run python -m bench.nl_run               # all 100 NL prompts, live planner   ~15 min
 uv run python -m bench.nl_run --suite v1    # the original 39, to reproduce a published number
 uv run python -m bench.nl_run --only T01,W03 # one or two cases while iterating
+uv run python -m bench.external_run         # 100 nvBench + 100 VisEval queries   ~80 min
+uv run python -m bench.external_run --rescore bench/results/external.json   # re-score, no LLM
 uv run python -m bench.chart_quality        # type / spec / legibility           instant
 uv run python -m bench.ambiguity_run --detectors-only   # 58 labelled prompts, no LLM  instant
 uv run python -m bench.ambiguity_run        # the same 58, detectors + LLM layer  ~8 min
@@ -38,6 +40,8 @@ repeat counts that produced it.
 | `perf.py` | Ingest, query, per-query overhead decomposition, the Arrow-vs-pandas A/B on `execute_analysis` itself, memory, result delivery, chart building, the end-to-end pipeline, join headroom, and the shipped ceilings |
 | `nl_suite.py` | **The frozen 100-prompt benchmark** over six tables: v1, the original 39, plus v2, 61 added on 2026-09-25 because v1 had saturated (39/39). Freezing it matters more than growing it, so v2 was appended and no v1 case was touched |
 | `nl_run.py` | Runs the suite against the live agent and scores it — five outcomes, never one averaged accuracy. Also wraps `planner.compose` to capture the **raw** prose before the grounding guard can replace it, which is the only way to measure how often the composer had to be overruled (`answers_ungrounded`) |
+| `external_suite.py` | **The frozen external sample** (`external_cases.json`): 100 nvBench and 100 VisEval single-table queries, disjoint, drawn once with a fixed seed from pinned upstream commits, scored against each benchmark's published chart data. Tables are fetched from the pinned VisEval zip into `bench/.cache/` on first use |
+| `external_run.py` | Runs that sample against the live agent: VisEval-style validity (spec against the Vega-Lite schema), chart family, x values and data values against the gold chart. Stores what it scored, so `--rescore` re-scores a run offline |
 | `ambiguity_suite.py` | **The labelled ambiguity set** — 30 prompts that should be questioned, 28 that should not. The second half is the load-bearing one: over-asking is what a broader detector costs, and only the negatives can price it |
 | `ambiguity_run.py` | Scores that set at either layer. Reports recall and over-ask together, since either alone is trivial to max out, plus three properties a raw ask/don't-ask count cannot see: options grounded in real columns, answers that bind to a plan slot, and asking about the right slot |
 | `chart_quality.py` | Chart-type accuracy, spec validity against the real Vega-Lite v6 schema, legibility guards |
