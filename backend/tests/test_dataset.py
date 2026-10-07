@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 import pytest
 
@@ -85,6 +87,18 @@ def test_preview_limit_and_nan_sanitization(registry, titanic_id):
     for row in preview["rows"]:
         for value in row.values():
             assert value is None or isinstance(value, (str, int, float, bool))
+
+
+def test_preview_blank_dates_are_json_safe(registry, tmp_path):
+    # NaT (a blank cell in a parsed date column) once reached json.dumps and
+    # turned the whole spreadsheet view into a 500.
+    csv = tmp_path / "dates.csv"
+    csv.write_text("id,last_review\n1,2019-05-21\n2,\n3,2018-10-19\n", encoding="utf-8")
+    ds = register_dataset(str(csv), registry)["dataset_id"]
+    rows = preview_dataset(ds, limit=5, registry=registry)["rows"]
+    assert rows[1]["last_review"] is None
+    assert rows[0]["last_review"].startswith("2019-05-21")
+    json.dumps(rows)
 
 
 def test_preview_unknown_dataset(registry):

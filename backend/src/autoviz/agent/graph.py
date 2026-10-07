@@ -75,6 +75,7 @@ def build_graph(
     graph.add_node("analysis_worker", worker.compile())
     graph.add_node("compose_response", partial(nodes.compose_response, planner=planner))
     graph.add_node("record_failure", nodes.record_failure)
+    graph.add_node("cancel_request", nodes.cancel_request)
 
     graph.add_edge(START, "load_context")
     graph.add_conditional_edges(
@@ -95,10 +96,11 @@ def build_graph(
     graph.add_conditional_edges(
         "clarify",
         routing.route_after_clarify,
-        ["detect_ambiguity", "classify_intent"],
+        ["detect_ambiguity", "classify_intent", "cancel_request"],
     )
     graph.add_edge("analysis_worker", "compose_response")
     graph.add_edge("compose_response", END)
     graph.add_edge("record_failure", END)
+    graph.add_edge("cancel_request", END)
 
     return graph.compile(checkpointer=checkpointer or InMemorySaver())

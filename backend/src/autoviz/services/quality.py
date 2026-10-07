@@ -724,6 +724,68 @@ def is_worth_asking(proposal: CleaningProposal, dimensions: set[str]) -> bool:
     return True
 
 
+def _passes(value: Any, op: str, target: Any) -> bool | None:
+    """Would `value` survive one filter? None when this cannot be decided here.
+
+    Only the comparison ops are judged; anything else answers None, which callers
+    treat as "might survive" — so an op this does not understand can only ever
+    cause a question to be asked, never one to be skipped.
+    """
+    try:
+        if op == "eq":
+            return value == target
+        if op == "neq":
+            return value != target
+        if op == "gt":
+            return value > target
+        if op == "gte":
+            return value >= target
+        if op == "lt":
+            return value < target
+        if op == "lte":
+            return value <= target
+        if op == "in" and isinstance(target, list):
+            return value in target
+        if op == "between" and isinstance(target, list) and len(target) == 2:
+            return target[0] <= value <= target[1]
+        if op == "is_null":
+            return False  # a placeholder code is a value, not a null
+        if op == "is_not_null":
+            return True
+    except TypeError:  # a string threshold against a number, say
+        return None
+    return None
+
+
+def excluded_by_filters(proposal: CleaningProposal, filters: list[Any]) -> bool:
+    """True when the plan's own filters already remove every row the question is about.
+
+    "Prices under $500" cannot be affected by how 999 and 9999 are read — both are
+    filtered out before anything is counted — so asking about them is a question
+    whose answer cannot change the chart. Likewise any comparison filter on a
+    column drops its nulls (a null compares as unknown), so a missing-values
+    question about it is moot.
+
+    Filters are ANDed, so a value is excluded as soon as one filter rejects it.
+    """
+    col = proposal.issue.column
+    if col is None:
+        return False
+    mine = [f for f in filters if getattr(f, "column", None) == col]
+    if not mine:
+        return False
+    if proposal.issue.kind == "missing_values":
+        return any(f.op != "is_null" for f in mine)
+    if proposal.issue.kind == "suspect_values":
+        values = list(proposal.issue.detail.get("values") or [])
+        if not values:
+            return False
+        return all(
+            any(_passes(v, f.op, f.value) is False for f in mine) for v in values
+        )
+    return False
+
+
 # --- merging recommendations into a plan the planner already wrote -------------
 
 

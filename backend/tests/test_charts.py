@@ -275,3 +275,54 @@ def test_non_empty_result_carries_no_empty_notice():
     rows = [{"region": "North", "revenue": 10.0}]
     out = generate_chart(rows, {"type": "bar", "x": "region", "y": "revenue"})
     assert [n for n in out["notices"] if n["kind"] == "empty_result"] == []
+
+
+# --- the chart keeps the order the plan asked for -----------------------------------
+
+_BOROUGHS = [
+    {"borough": "Bronx", "avg": 87.5}, {"borough": "Brooklyn", "avg": 124.3},
+    {"borough": "Manhattan", "avg": 195.0}, {"borough": "Queens", "avg": 99.5},
+]
+
+
+def _x(spec):
+    return primary_layer(spec)["encoding"]["x"]
+
+
+def test_a_plan_sorted_by_its_measure_sorts_the_bars():
+    """The SQL sorted the rows; a nominal axis re-sorted them A to Z."""
+    spec = generate_chart(_BOROUGHS, {
+        "type": "bar", "x": "borough", "y": "avg", "intent": "comparison",
+        "plan_sort": {"by": "avg", "dir": "desc"},
+    })["vega_lite_spec"]
+    assert _x(spec)["sort"] == "-y"
+    asc = generate_chart(_BOROUGHS, {
+        "type": "bar", "x": "borough", "y": "avg", "intent": "comparison",
+        "plan_sort": {"by": "avg", "dir": "asc"},
+    })["vega_lite_spec"]
+    assert _x(asc)["sort"] == "y"
+
+
+def test_a_plan_sorted_by_its_category_sorts_the_axis():
+    spec = generate_chart(_BOROUGHS, {
+        "type": "bar", "x": "borough", "y": "avg", "intent": "comparison",
+        "plan_sort": {"by": "borough", "dir": "desc"},
+    })["vega_lite_spec"]
+    assert _x(spec)["sort"] == "descending"
+
+
+def test_an_unsorted_comparison_is_left_alone():
+    spec = generate_chart(_BOROUGHS, {
+        "type": "bar", "x": "borough", "y": "avg", "intent": "comparison",
+    })["vega_lite_spec"]
+    assert "sort" not in _x(spec)
+
+
+def test_the_pipeline_hands_the_plan_sort_to_the_chart(registry, iris_id):
+    out = run_pipeline(iris_id, {
+        "dataset_id": iris_id, "intent": "comparison", "group_by": ["species"],
+        "aggregations": [{"column": "sepal_length", "fn": "mean", "as": "avg"}],
+        "sort": [{"by": "avg", "dir": "desc"}],
+    }, registry)
+    assert out["status"] == "ok", out
+    assert _x(out["vega_lite_spec"])["sort"] == "-y"

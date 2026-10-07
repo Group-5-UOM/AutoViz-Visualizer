@@ -487,3 +487,37 @@ def test_the_prefix_rule_does_not_reach_a_genuinely_absent_column():
     # were from. Those are different facts and the difference matters.
     ambs = detect_ambiguities("compare survival by nationality", TITANIC, {})
     assert any(a.type == "unknown_reference" for a in ambs)
+
+
+# --- identifiers and coordinates are not measures -------------------------------
+
+LISTINGS = [
+    {"name": "id", "type": "number"},
+    {"name": "host_id", "type": "number"},
+    {"name": "neighbourhood", "type": "string"},
+    {"name": "latitude", "type": "number"},
+    {"name": "longitude", "type": "number"},
+    {"name": "price", "type": "number"},
+    {"name": "reviews_per_month", "type": "number"},
+]
+# Ids and coordinates have the most distinct values of all, so ranking candidates
+# by cardinality put every one of them ahead of the real measures.
+LISTINGS_PROFILE = {"cardinality": {
+    "id": 48895, "host_id": 37457, "latitude": 19048, "longitude": 14718,
+    "price": 674, "reviews_per_month": 937, "neighbourhood": 221,
+}}
+
+
+def test_ids_and_coordinates_are_not_offered_as_ranking_measures():
+    ambs = detect_ambiguities("Show me the best neighbourhoods", LISTINGS, LISTINGS_PROFILE)
+    metric = next(a for a in ambs if a.type == "missing_metric")
+    columns = {o.resolves_to.get("column") for o in metric.options}
+    assert columns == {"reviews_per_month", "price", None}  # None: the count option
+    assert not columns & {"id", "host_id", "latitude", "longitude"}
+
+
+def test_a_table_of_only_ids_still_gets_options():
+    ids_only = [{"name": "id", "type": "number"}, {"name": "group", "type": "string"}]
+    ambs = detect_ambiguities("which group is best", ids_only, {})
+    metric = next(a for a in ambs if a.type == "missing_metric")
+    assert any(o.resolves_to.get("column") == "id" for o in metric.options)

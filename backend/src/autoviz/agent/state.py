@@ -68,6 +68,19 @@ def append_history(
     return (existing or []) + (update or [])
 
 
+def merge_choices(
+    existing: dict[str, str] | None, update: dict[str, str] | None
+) -> dict[str, str]:
+    """Later answers win; parallel workers that answered different slots both land."""
+    return {**(existing or {}), **(update or {})}
+
+
+def cleaning_memory_key(dataset_id: str, slot: str) -> str:
+    """Thread-level memory is per dataset: the same column name in another file is
+    a different column, and an answer about one says nothing about the other."""
+    return f"{dataset_id}|{slot}"
+
+
 class AutoVizState(TypedDict, total=False):
     # Request
     user_request: str
@@ -99,6 +112,12 @@ class AutoVizState(TypedDict, total=False):
     chart_results: Annotated[list[ChartResult], add_or_reset]
     # Cross-run memory for refinements (accumulates over the thread)
     history: Annotated[list[dict[str, Any]], append_history]
+    # Cross-run memory for cleaning answers: cleaning_memory_key -> the option
+    # label the user chose. Without it every new question re-asked "what are
+    # 999 and 9999?" on the same column, however many times it had been answered.
+    # Stored as a label, not an op, so it is re-bound against the proposal each
+    # run raises — the counts and values in the op are always the current ones.
+    cleaning_memory: Annotated[dict[str, str], merge_choices]
     # Output
     status: Literal["running", "waiting_for_user", "completed", "failed"]
     errors: list[str]
@@ -132,6 +151,13 @@ class WorkerState(TypedDict, total=False):
     # for "leave it alone". Answered slots are never re-asked, including across a
     # replan, so a repaired plan does not restart the questioning.
     cleaning_resolutions: dict[str, Any]
+    # Seeded from the thread's cleaning_memory for this dataset: slot -> label
+    # chosen in an earlier run. Applied only to slots this run's plan raises, so a
+    # remembered "exclude the missing rows" never reaches a chart that does not
+    # read that column.
+    remembered_cleaning: dict[str, str]
+    # Answers given during this run, flowed back to the parent's cleaning_memory.
+    cleaning_memory: Annotated[dict[str, str], merge_choices]
     cleaning_prompts: int
     # Set once the cleaning pass has nothing left to ask, so a replan loop does not
     # re-enter it forever.
@@ -153,3 +179,4 @@ class WorkerOutput(TypedDict):
     (plans, errors, attempts) must not collide across parallel workers."""
 
     chart_results: Annotated[list[ChartResult], add_or_reset]
+    cleaning_memory: Annotated[dict[str, str], merge_choices]

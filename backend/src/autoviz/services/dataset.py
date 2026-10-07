@@ -160,6 +160,10 @@ def _coerce_datetimes(df: pd.DataFrame, dayfirst: bool = False) -> pd.DataFrame:
 def _sanitize_scalar(value: Any) -> Any:
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return None
+    # A blank cell in a date column is NaT, which is not a Timestamp and which
+    # json.dumps cannot encode, so it has to be caught before the branch below.
+    if value is pd.NaT or value is pd.NA:
+        return None
     if isinstance(value, pd.Timestamp):
         return value.isoformat()
     if hasattr(value, "item"):  # numpy scalar -> python scalar

@@ -257,7 +257,7 @@ into a table cell, a bullet, or a parenthetical — formatting is not a licence 
 _STYLE_SYSTEM = """You turn a plain-English request about how a chart LOOKS into a style patch.
 Output ONLY a JSON object with any of these keys — omit every key the request does not mention:
 
-{"title": str, "x_title": str, "y_title": str, "legend": bool,
+{"title": str, "x_title": str, "y_title": str, "legend": bool, "labels": bool,
  "mark_color": "#rrggbb", "series_colors": {"<series value>": "#rrggbb"},
  "color_scheme": ["#rrggbb", ...],
  "font": "sans"|"system"|"serif"|"mono", "font_size": int}
@@ -270,6 +270,8 @@ Rules:
   `series_colors` when it does. Keys of `series_colors` must be exact values from `series`.
 - `color_scheme` is for "use these colours" with no series named; it replaces the palette in
   order.
+- `labels` is the text drawn on the chart itself: the values on bars and heatmap cells, the
+  names beside pie and donut slices. "hide the labels" / "no numbers on the bars" -> false.
 - `font` is one of those four names only — never a family like "Helvetica". Map what was asked
   to the nearest: a typewriter or code look is "mono", anything bookish is "serif".
 - `font_size` is the TICK LABEL size in px, 8 to 28; axis titles, the legend and the chart

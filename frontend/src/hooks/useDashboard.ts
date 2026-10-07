@@ -17,6 +17,7 @@ import {
   type AgentResponse,
 } from '../lib/agent';
 import { defaultDashboardName, persistSignature, syncDashboard } from '../lib/dashboardSync';
+import { answersPendingQuestion, type PendingPause } from '../lib/pendingQuestion';
 
 /** Used only when the backend somehow pauses without a question of its own. */
 const FALLBACK_QUESTION: Record<string, string> = {
@@ -81,6 +82,22 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
   // can pause on several at once, so the answer has to name the one it is for
   // rather than landing on whichever the backend happens to reach first.
   const pendingInterruptId = useRef<string | null>(null);
+  // Newest styling request per widget; see editWidgetStyle.
+  const styleSeq = useRef(new Map<string, number>());
+  // What kind of decision it is and which replies it understands — what decides
+  // whether the next message answers it or starts something new.
+  const pendingPause = useRef<PendingPause | null>(null);
+  // The message carrying the question that is still live. Only its options are
+  // clickable: an older question's buttons, clicked after the run moved on,
+  // would send "Treat them as missing" as a brand-new request.
+  const [liveQuestionId, setLiveQuestionId] = useState<string | null>(null);
+
+  const clearPending = useCallback(() => {
+    awaitingAnswer.current = false;
+    pendingInterruptId.current = null;
+    pendingPause.current = null;
+    setLiveQuestionId(null);
+  }, []);
   // Monotonic slot counter for canvas placement. It deliberately does not
   // decrease when a widget is deleted, so a new chart lands in a free slot
   // rather than on top of one the user kept.
@@ -143,6 +160,11 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     async (id: string, edit: { request?: string; style?: ChartStyle }): Promise<string | null> => {
       const widget = dashboardRef.current.widgets.find((w) => w.id === id);
       if (!widget) return null;
+      // Each request carries the whole intended block, so the newest one is the
+      // truth. A slower, older response landing after it would otherwise put the
+      // chart back to how it looked one edit ago.
+      const seq = (styleSeq.current.get(id) ?? 0) + 1;
+      styleSeq.current.set(id, seq);
       try {
         const res = await styleChart(
           widget.vegaLiteSpec,
@@ -150,6 +172,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
           edit.style ?? widget.style,
           edit.request,
         );
+        if (styleSeq.current.get(id) !== seq) return null;
         setDashboard((prev) => ({
           ...prev,
           widgets: prev.widgets.map((w) =>
@@ -289,12 +312,17 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     };
   }, []);
 
-  const pushAssistant = useCallback((message: Omit<ChatMessage, 'id' | 'role' | 'timestamp'>) => {
-    setMessages((prev) => [
-      ...prev,
-      { ...message, id: uid('msg'), role: 'assistant', timestamp: Date.now() },
-    ]);
-  }, []);
+  const pushAssistant = useCallback(
+    (message: Omit<ChatMessage, 'id' | 'role' | 'timestamp'>): string => {
+      const id = uid('msg');
+      setMessages((prev) => [
+        ...prev,
+        { ...message, id, role: 'assistant', timestamp: Date.now() },
+      ]);
+      return id;
+    },
+    [],
+  );
 
   /** Turn one agent envelope into chat messages and (on success) canvas widgets. */
   const applyResponse = useCallback(
@@ -309,25 +337,26 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
         // first one looks like the run stalled when the next question appears.
         const position =
           res.pending_count && res.pending_count > 1 ? `(1 of ${res.pending_count}) ` : '';
-        pushAssistant({
-          content: `${position}${question}`,
-          // A cleaning choice arrives as objects carrying the row counts and the
-          // recommendation; the other two pauses are plain strings. Normalising
-          // here keeps the chat component with one shape to render.
-          options: isCleaningOptions(res)
-            ? res.options.map((o) => ({
-                label: o.label,
-                detail: o.detail,
-                technique: o.technique,
-                recommended: o.recommended,
-              }))
-            : ((res.options ?? []) as string[]).map((label) => ({ label })),
-        });
+        // A cleaning choice arrives as objects carrying the row counts and the
+        // recommendation; the other two pauses are plain strings. Normalising
+        // here keeps the chat component with one shape to render.
+        const options = isCleaningOptions(res)
+          ? res.options.map((o) => ({
+              label: o.label,
+              detail: o.detail,
+              technique: o.technique,
+              recommended: o.recommended,
+            }))
+          : ((res.options ?? []) as string[]).map((label) => ({ label }));
+        pendingPause.current = {
+          kind: res.pause_kind ?? 'clarification',
+          options: options.map((o) => o.label),
+        };
+        setLiveQuestionId(pushAssistant({ content: `${position}${question}`, options }));
         return;
       }
 
-      awaitingAnswer.current = false;
-      pendingInterruptId.current = null;
+      clearPending();
 
       if (res.status === 'failed') {
         const detail = res.errors?.length
@@ -366,7 +395,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
         selectedWidgetId: applied.focusId,
       }));
     },
-    [pushAssistant, setThread],
+    [pushAssistant, setThread, clearPending],
   );
 
   /**
@@ -379,13 +408,19 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
   const dispatch = useCallback(
     async (request: AgentRequest) => {
       if (!datasetId) return;
+      // A message that is not an answer abandons the paused run: the new request
+      // starts its own on the same thread, which keeps the conversation (and the
+      // charts a refinement can point at) while dropping the stale question.
+      const answering =
+        awaitingAnswer.current &&
+        Boolean(threadId.current) &&
+        answersPendingQuestion(request, pendingPause.current);
+      if (awaitingAnswer.current && !answering) clearPending();
       setIsThinking(true);
       try {
         const res =
-          awaitingAnswer.current && threadId.current
-            ? // A paused run is answering its own question; neither an attachment
-              // nor a chart-type pick has anything to do with that decision.
-              await answerClarification(threadId.current, request.text, pendingInterruptId.current)
+          answering && threadId.current
+            ? await answerClarification(threadId.current, request.text, pendingInterruptId.current)
             : await analyze(
                 request.text,
                 datasetId,
@@ -410,7 +445,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
         setIsThinking(false);
       }
     },
-    [datasetId, applyResponse, pushAssistant],
+    [datasetId, applyResponse, pushAssistant, clearPending],
   );
 
   const sendMessage = useCallback(
@@ -627,8 +662,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
       // Not restored: no interrupt id comes back with the transcript, so a run
       // that was paused mid-question is treated as abandoned rather than
       // resumed against a decision the backend can no longer identify.
-      awaitingAnswer.current = false;
-      pendingInterruptId.current = null;
+      clearPending();
       lastRequest.current = null;
       setCanRetrySend(false);
       placedCount.current = widgets.length;
@@ -661,7 +695,7 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
             ],
       );
     },
-    [cancelPendingSave, setThread],
+    [cancelPendingSave, setThread, clearPending],
   );
 
   /**
@@ -671,19 +705,17 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
   const replaceMessages = useCallback(
     (next: ChatMessage[], restoredThreadId?: string | null) => {
       setThread(restoredThreadId ?? null);
-      awaitingAnswer.current = false;
-      pendingInterruptId.current = null;
+      clearPending();
       setMessages(next);
     },
-    [setThread],
+    [setThread, clearPending],
   );
 
   /** Drop canvas + conversation state when a different dataset is uploaded. */
   const resetForDataset = useCallback(() => {
     cancelPendingSave();
     setThread(null);
-    awaitingAnswer.current = false;
-    pendingInterruptId.current = null;
+    clearPending();
     placedCount.current = 0;
     const next: DashboardState = { widgets: [], selectedWidgetId: null };
     baseline.current = persistSignature(next);
@@ -694,11 +726,13 @@ export function useDashboard(datasetId: string | null, datasetFileName?: string 
     setSaveError(null);
     setLastSavedAt(null);
     setMessages([{ id: uid('msg'), role: 'assistant', content: WELCOME, timestamp: Date.now() }]);
-  }, [cancelPendingSave, setThread]);
+  }, [cancelPendingSave, setThread, clearPending]);
 
   return {
     dashboard,
     messages,
+    /** The message whose options still answer a live question, if any. */
+    liveQuestionId,
     threadId: currentThreadId,
     isThinking,
     saveStatus,

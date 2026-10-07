@@ -44,6 +44,23 @@ const RECOVERABLE_CODES = new Set(['EXECUTION_ERROR', 'TIMEOUT', 'CANCELLED']);
 /** Status used when the request never reached the server at all. */
 export const NETWORK_ERROR_STATUS = 0;
 
+/**
+ * Statuses that arrive from the proxy in front of the API rather than from the
+ * API itself, so there is no JSON body to explain them. Without these the user
+ * saw nginx's own error page, markup and all, printed into the upload card.
+ */
+export const STATUS_MESSAGES: Record<number, string> = {
+  413: 'This file is too large to upload. The limit is 50 MB.',
+  502: 'The server is not responding right now. Try again in a moment.',
+  503: 'The server is not responding right now. Try again in a moment.',
+  504: 'The server took too long to respond. Try again in a moment.',
+};
+
+/** An HTML page — a proxy or server error page, never something to show as text. */
+export function looksLikeHtml(text: string): boolean {
+  return /^\s*<(?:!doctype|html|head|body|center|h1)\b/i.test(text);
+}
+
 export class ApiError extends Error {
   status: number;
 

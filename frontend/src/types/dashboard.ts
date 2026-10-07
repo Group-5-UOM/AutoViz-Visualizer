@@ -78,6 +78,8 @@ export interface ChartStyle {
   x_title?: string | null;
   y_title?: string | null;
   legend?: boolean | null;
+  /** False hides the values and names drawn on the chart itself. */
+  labels?: boolean | null;
   mark_color?: string | null;
   series_colors?: Record<string, string> | null;
   color_scheme?: string[] | null;

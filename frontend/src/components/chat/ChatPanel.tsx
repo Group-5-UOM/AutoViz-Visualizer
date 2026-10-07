@@ -26,6 +26,12 @@ interface ChatPanelProps {
   canRetry?: boolean;
   /** Re-run the failed turn without the user retyping it. */
   onRetry?: () => void;
+  /**
+   * The message whose question is still waiting for an answer. Options on any
+   * other message are history: the run they belonged to has moved on, and a
+   * click there would be sent as a new request rather than an answer.
+   */
+  liveQuestionId?: string | null;
 }
 
 // Deliberately generic: the agent answers against whatever CSV was uploaded,
@@ -53,6 +59,7 @@ export function ChatPanel({
   onReference,
   canRetry = false,
   onRetry,
+  liveQuestionId = null,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState('');
   const [picking, setPicking] = useState(false);
@@ -60,6 +67,7 @@ export function ChatPanel({
     () => typeof window !== 'undefined' && localStorage.getItem(LLM_CONSENT_KEY) === '1',
   );
   const listRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const referenced = referenceable.find((w) => w.id === referencedWidgetId) ?? null;
 
   useEffect(() => {
@@ -90,6 +98,9 @@ export function ChatPanel({
   const attach = (id: string | null) => {
     onReference?.(id);
     setPicking(false);
+    // Picking a chart is the first half of a sentence about it; the cursor
+    // should already be where the second half goes.
+    if (id) composerRef.current?.focus();
   };
 
   return (
@@ -149,7 +160,7 @@ export function ChatPanel({
                         ? 'suggestion-chip suggestion-chip--recommended'
                         : 'suggestion-chip'
                     }
-                    disabled={isThinking || disabled}
+                    disabled={isThinking || disabled || msg.id !== liveQuestionId}
                     // The label is the reply the backend matches on, so it is
                     // sent exactly as shown.
                     onClick={() => onSend(option.label)}
@@ -280,6 +291,7 @@ export function ChatPanel({
           </button>
         )}
         <textarea
+          ref={composerRef}
           value={draft}
           onChange={(e) => {
             setDraft(e.target.value);

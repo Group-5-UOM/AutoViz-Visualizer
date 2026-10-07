@@ -109,7 +109,7 @@ def _severity_for(op_name: str, fraction: float) -> str:
     return DISCLOSED if fraction >= ROW_DROP_NOTICE_FRACTION else APPLIED
 
 
-def _columns_phrase(cols: list[str]) -> str:
+def _columns_phrase(cols: list[str], conjunction: str = "and") -> str:
     pretty = [f"'{_pretty(c)}'" for c in cols]
     if not pretty:
         # These entries are read back from stored provenance as well as built
@@ -118,7 +118,7 @@ def _columns_phrase(cols: list[str]) -> str:
         return "the affected column(s)"
     if len(pretty) == 1:
         return pretty[0]
-    return f"{', '.join(pretty[:-1])} and {pretty[-1]}"
+    return f"{', '.join(pretty[:-1])} {conjunction} {pretty[-1]}"
 
 
 def from_preprocessing(report: list[dict[str, Any]], input_rows: int) -> list[Notice]:
@@ -164,8 +164,15 @@ def from_preprocessing(report: list[dict[str, Any]], input_rows: int) -> list[No
                 f" by {list(within)}" if within else ""
             )
         elif name == "drop_nulls":
+            # how="any" drops a row missing *either* column, so "and" claimed both
+            # were blank: 10,052 listings with no review rate were reported as
+            # having "no 'neighbourhood' and 'reviews per month'" when every one
+            # had a neighbourhood. Older provenance has no `how`; "any" is the
+            # op's default.
+            either = (entry.get("how") or "any") == "any"
             note = (
-                f"{affected} row(s) with no {_columns_phrase(list(cols))} "
+                f"{affected} row(s) with no "
+                f"{_columns_phrase(list(cols), 'or' if either else 'and')} "
                 f"({_pct(fraction)}) were excluded."
             )
             technique = f"drop_nulls on {list(cols)}"
@@ -240,11 +247,19 @@ def from_preprocessing(report: list[dict[str, Any]], input_rows: int) -> list[No
                 if rank_by
                 else "the commonest categories"
             )
-            note = (
-                f"{affected} row(s) in '{_pretty(str(col))}' ({_pct(fraction)}) fell "
-                f"outside {ranked} and were grouped as "
-                f"'{entry.get('other_label') or 'Other'}'."
-            )
+            if entry.get("other_shown") is False:
+                # The plan's own top-N limit cut the bucket, so there is no
+                # Other bar to point at. Older provenance has no key: unchanged.
+                note = (
+                    f"{affected} row(s) in '{_pretty(str(col))}' ({_pct(fraction)}) "
+                    f"fell outside {ranked} and are not shown on this chart."
+                )
+            else:
+                note = (
+                    f"{affected} row(s) in '{_pretty(str(col))}' ({_pct(fraction)}) "
+                    f"fell outside {ranked} and were grouped as "
+                    f"'{entry.get('other_label') or 'Other'}'."
+                )
             technique = f"group_rare_categories on '{col}'"
 
         if note is None:

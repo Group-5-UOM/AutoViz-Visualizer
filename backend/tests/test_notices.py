@@ -310,3 +310,57 @@ def test_compose_prompt_bounds_the_elements_to_what_the_panel_renders():
     assert "No headings" in _COMPOSE_SYSTEM
     assert "no images" in _COMPOSE_SYSTEM
     assert "no HTML" in _COMPOSE_SYSTEM
+
+
+# --- wording that matched the chart it sat beside ----------------------------------
+
+
+def test_dropping_rows_missing_any_column_says_or():
+    """how="any" drops a row missing either column; "and" claimed both were blank."""
+    [note] = notices.from_preprocessing(
+        [{"operation": "drop_nulls", "columns": ["neighbourhood", "reviews_per_month"],
+          "how": "any", "rows_affected": 10052}],
+        48895,
+    )
+    assert "no 'neighbourhood' or 'reviews per month'" in note.note
+
+
+def test_dropping_rows_missing_every_column_says_and():
+    [note] = notices.from_preprocessing(
+        [{"operation": "drop_nulls", "columns": ["a", "b"], "how": "all", "rows_affected": 10}],
+        100,
+    )
+    assert "no 'a' and 'b'" in note.note
+
+
+def test_an_other_bucket_cut_by_the_limit_is_not_claimed():
+    entry = {"operation": "group_rare_categories", "column": "neighbourhood",
+             "other_label": "Other", "top_n": 10, "rows_affected": 38000}
+    [shown] = notices.from_preprocessing([{**entry, "other_shown": True}], 48895)
+    [cut] = notices.from_preprocessing([{**entry, "other_shown": False}], 48895)
+    assert "grouped as 'Other'" in shown.note
+    assert "not shown on this chart" in cut.note and "Other" not in cut.note
+
+
+def test_execution_reports_whether_other_survived_the_limit(registry, tmp_path):
+    from autoviz.services import dataset as dataset_service
+
+    rows = ["area,v"] + [f"a{i % 15},{i}" for i in range(60)]
+    path = tmp_path / "areas.csv"
+    path.write_text("\n".join(rows))
+    ds = dataset_service.register_dataset(path.as_posix(), registry)["dataset_id"]
+    bucket = {"op": "group_rare_categories", "column": "area", "top_n": 3, "other_label": "Other"}
+    plan = _plan(ds, preprocessing=[bucket], group_by=["area"],
+                 aggregations=[{"column": "v", "fn": "count", "as": "n"}],
+                 sort=[{"by": "n", "dir": "desc"}], limit=3)
+    out = execute_analysis(ds, plan, registry)
+    [entry] = [e for e in out["provenance"]["preprocessing"]
+               if e["operation"] == "group_rare_categories"]
+    # "Other" holds 12 of the 15 areas, so it is the biggest group and is kept.
+    assert entry["other_shown"] is True
+
+    plan["sort"] = [{"by": "n", "dir": "asc"}]
+    out = execute_analysis(ds, plan, registry)
+    [entry] = [e for e in out["provenance"]["preprocessing"]
+               if e["operation"] == "group_rare_categories"]
+    assert entry["other_shown"] is False

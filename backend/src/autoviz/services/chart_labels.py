@@ -40,6 +40,26 @@ LABEL_FONT_SIZE = 10
 # Shorter than the tooltip's format: a label has to fit beside a mark.
 LABEL_NUMBER_FORMAT = ",.3~f"
 
+# Pie/donut geometry, shared with the arc mark in charts.py so the labels and the
+# slices agree on where the edge is. The margin is what the labels sit in.
+ARC_LABEL_MARGIN = 26
+# Labels go left and right of the pie, so it is the *width* that has to leave room
+# for them: a card 260 wide and 200 tall has 30px either side of a full-height pie,
+# and a category name is three times that. The pie gives up radius to the labels
+# down to a quarter of the view, and below that the labels are truncated instead.
+ARC_LABEL_ROOM = 96
+ARC_OUTER_RADIUS = (
+    f"max(min(width, height) / 4, min(min(width, height) / 2 - {ARC_LABEL_MARGIN}, "
+    f"width / 2 - {ARC_LABEL_ROOM}))"
+)
+# A slice thinner than this has no room for its name beside its neighbours': the
+# 2% "Shared room" slice printed straight over "Entire home/apt". The legend
+# still names it.
+MIN_LABELLED_SLICE_SHARE = 0.04
+# Truncated with an ellipsis at whatever room is left beside the pie.
+ARC_LABEL_GAP = 6
+ARC_LABEL_LIMIT = f"max(30, width / 2 - ({ARC_OUTER_RADIUS}) - {ARC_LABEL_GAP} - 4)"
+
 
 def _text_mark(**overrides: Any) -> dict[str, Any]:
     return {
@@ -50,8 +70,32 @@ def _text_mark(**overrides: Any) -> dict[str, Any]:
     }
 
 
-def _value_text(field: str) -> dict[str, Any]:
-    return {"field": field, "type": "quantitative", "format": LABEL_NUMBER_FORMAT}
+def _number_format(numbers: list[float]) -> str:
+    """Decimals by magnitude: as many as can matter beside a mark, and no more.
+
+    A fixed three decimals printed "127.507" in every heatmap cell, and five of
+    those across a card ran into each other. A value of a hundred or more reads
+    to the unit; below that a decimal or two still carries information.
+    """
+    biggest = max((abs(n) for n in numbers), default=0)
+    if biggest >= 100:
+        return ",.0f"
+    if biggest >= 10:
+        return ",.1~f"
+    return ",.2~f"
+
+
+def _value_text(field: str, numbers: list[float] | None = None) -> dict[str, Any]:
+    fmt = _number_format(numbers) if numbers else LABEL_NUMBER_FORMAT
+    return {"field": field, "type": "quantitative", "format": fmt}
+
+
+def _numbers(table: list[dict[str, Any]], field: str) -> list[float]:
+    return [
+        v
+        for v in (row.get(field) for row in table)
+        if isinstance(v, (int, float)) and not isinstance(v, bool)
+    ]
 
 
 def _bar_values(form, encoding, table, *, grouped=False, cap):
@@ -61,10 +105,11 @@ def _bar_values(form, encoding, table, *, grouped=False, cap):
     measure, category = form.measure_channel, form.category_channel
     if measure not in encoding or category not in encoding:
         return None
+    field = encoding[measure]["field"]
     enc: dict[str, Any] = {
         category: encoding[category],
         measure: encoding[measure],
-        "text": _value_text(encoding[measure]["field"]),
+        "text": _value_text(field, _numbers(table, field)),
     }
     if grouped:
         # Without the same offset the labels sit over the group's centre rather
@@ -89,18 +134,18 @@ def _heatmap_values(form, encoding, table):
     if len(table) > MAX_LABELLED_CELLS:
         return None
     measure = encoding["color"]["field"]
-    values = [row.get(measure) for row in table]
-    numbers = [v for v in values if isinstance(v, (int, float)) and not isinstance(v, bool)]
+    numbers = _numbers(table, measure)
     if not numbers:
         return None
     # Past the ramp's midpoint the cell is dark enough that ink text disappears.
     midpoint = (min(numbers) + max(numbers)) / 2
     return {
-        "mark": _text_mark(),
+        # Clipped to the cell rather than spilling into the next one.
+        "mark": _text_mark(limit={"expr": "bandwidth('x') - 2"}),
         "encoding": {
             "x": encoding["x"],
             "y": encoding["y"],
-            "text": _value_text(measure),
+            "text": _value_text(measure, numbers),
             "color": {
                 "condition": {"test": f"datum['{measure}'] > {midpoint}", "value": SURFACE},
                 "value": SECONDARY_INK,
@@ -136,17 +181,44 @@ def _series_at_line_end(form, encoding, table):
 
 
 def _slice_categories(form, encoding, table):
-    """Category name outside its own arc."""
+    """Category name just outside its own arc, anchored away from the pie.
+
+    Centred text at the rim spilled half its width past the edge of the card on
+    both sides ("rivate room"), so each label is aligned outward instead —
+    left-aligned on the right half, right-aligned on the left — and starts a few
+    pixels beyond the slice. Slivers too thin to hold a name are left to the
+    legend rather than printed over their neighbours.
+    """
     category = encoding["color"]["field"]
     if len({row.get(category) for row in table}) > MAX_LABELLED_SLICES:
         return None
-    return {
-        "mark": _text_mark(radius={"expr": "min(width, height) / 2.1"}),
-        "encoding": {
-            "theta": {**encoding["theta"], "stack": True},
-            "text": {"field": category, "type": "nominal"},
-        },
+    theta = encoding["theta"]
+    measure = theta.get("field")
+    numbers = _numbers(table, measure) if measure else []
+    total = sum(numbers)
+    # Vega-Lite's stack writes <field>_start/_end; the angle at a slice's middle
+    # says which side of the pie its label is on.
+    mid = (
+        f"scale('theta', 0.5 * datum['{measure}_start'] + 0.5 * datum['{measure}_end'])"
+    )
+    mark = _text_mark(
+        radius={"expr": f"({ARC_OUTER_RADIUS}) + {ARC_LABEL_GAP}"},
+        align={"expr": f"sin({mid}) >= 0 ? 'left' : 'right'"},
+        baseline="middle",
+        limit={"expr": ARC_LABEL_LIMIT},
+    )
+    enc: dict[str, Any] = {
+        "theta": {**theta, "stack": True},
+        "text": {"field": category, "type": "nominal"},
     }
+    if total > 0:
+        # Empty text rather than a filter: a filter would re-stack the remaining
+        # slices and park every label at the wrong angle.
+        enc["text"]["condition"] = {
+            "test": f"datum['{measure}'] < {MIN_LABELLED_SLICE_SHARE * total}",
+            "value": "",
+        }
+    return {"mark": mark, "encoding": enc}
 
 
 # Per-type strategy. Absent means no labels, deliberately:
