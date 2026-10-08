@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  Check,
   ChevronDown,
   Download,
   FileImage,
@@ -156,25 +157,40 @@ export function TopBar({
           </button>
         )}
         {onSave && (
+          // State lives in CSS classes rather than inline styles: the inline
+          // `opacity: 1` and slate background overrode the stylesheet's
+          // :disabled rule, so "Saved" rendered as a flat grey button that
+          // looked broken, and an empty canvas offered a Save that did nothing.
           <button
             type="button"
-            className="topbar-primary-btn"
-            style={{ 
-              backgroundColor: saveStatus === 'saved' ? '#6b7280' : saveStatus === 'error' ? '#ef4444' : '#10b981', 
-              marginRight: '8px',
-              cursor: saveStatus === 'saving' ? 'wait' : 'pointer',
-              opacity: saveStatus === 'saving' ? 0.7 : 1
-            }}
+            className={`topbar-primary-btn topbar-save-btn topbar-save-btn--${
+              saveStatus === 'idle' && !canExport ? 'empty' : saveStatus ?? 'idle'
+            }`}
             onClick={onSave}
-            disabled={saveStatus === 'saving' || saveStatus === 'saved'}
+            disabled={
+              saveStatus === 'saving' ||
+              saveStatus === 'saved' ||
+              (saveStatus === 'idle' && !canExport)
+            }
+            aria-live="polite"
             title={
               saveStatus === 'error'
                 ? `Failed to save${saveError ? `: ${saveError}` : ''}. Click to retry.`
-                : 'Save dashboard charts and positions'
+                : saveStatus === 'saved'
+                  ? 'All changes saved. Dashboards save automatically.'
+                  : saveStatus === 'idle' && !canExport
+                    ? 'Nothing to save yet. Add a chart first.'
+                    : 'Save dashboard charts and positions'
             }
           >
-            <Save size={15} />
-            {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Retry save' : 'Save'}
+            {saveStatus === 'saved' ? <Check size={15} /> : <Save size={15} />}
+            {saveStatus === 'saving'
+              ? 'Saving…'
+              : saveStatus === 'saved'
+                ? 'Saved'
+                : saveStatus === 'error'
+                  ? 'Retry save'
+                  : 'Save'}
           </button>
         )}
         <div className="topbar-export" ref={exportRef}>

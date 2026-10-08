@@ -132,6 +132,59 @@
   cursor: not-allowed;
 }
 
+/* Save: each status gets a look that reads as a state, not a fault. */
+.topbar-save-btn {
+  margin-right: 8px;
+  border: 1px solid transparent;
+}
+
+.topbar-save-btn--dirty,
+.topbar-save-btn--idle {
+  background: var(--success);
+}
+
+.topbar-save-btn--dirty:hover:not(:disabled),
+.topbar-save-btn--idle:hover:not(:disabled) {
+  background: #0b6640;
+}
+
+.topbar-save-btn--saving {
+  background: var(--success);
+}
+
+.topbar-save-btn--saving:disabled {
+  opacity: 0.75;
+  cursor: wait;
+}
+
+/* Autosave already ran: a quiet confirmation, deliberately not dimmed. */
+.topbar-save-btn--saved,
+.topbar-save-btn--saved:disabled {
+  background: #e8f5ee;
+  border-color: #b7dfc9;
+  color: var(--success);
+  opacity: 1;
+  cursor: default;
+}
+
+.topbar-save-btn--error {
+  background: var(--danger);
+}
+
+.topbar-save-btn--error:hover:not(:disabled) {
+  background: #a5301f;
+}
+
+.topbar-save-btn--empty {
+  background: var(--bg-muted);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.topbar-save-btn--empty:disabled {
+  opacity: 1;
+}
+
 .topbar-user {
   display: flex;
   align-items: center;

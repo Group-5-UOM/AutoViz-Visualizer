@@ -212,7 +212,9 @@ def test_change_password_requires_current_password(api_db):
             "current_password": "nope-wrong",
         },
     )
-    assert wrong.status_code == 401
+    # 403 so the frontend does not mistake a typo for an expired session.
+    assert wrong.status_code == 403
+    assert client.get("/auth/me", headers=auth).status_code == 200
 
     ok = client.post(
         "/auth/password",

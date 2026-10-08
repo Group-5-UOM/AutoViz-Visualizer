@@ -125,7 +125,11 @@ function App() {
           path="/settings"
           element={
             user ? (
-              <SettingsPage userEmail={user.email} username={user.username} />
+              <SettingsPage
+                userEmail={user.email}
+                username={user.username}
+                onAccountDeleted={() => setUser(null)}
+              />
             ) : (
               <Navigate to="/login" replace />
             )

@@ -187,8 +187,11 @@ def _require_password(user: User, password: str | None) -> None:
             status_code=400,
             detail="Set an AutoViz password first, then try again.",
         )
+    # 403, not 401: the session is valid, only the re-auth failed. The frontend
+    # treats any 401 as an expired session and signs the user out, so a typo in
+    # the confirm-password box used to log them out mid-action.
     if not password or not verify_password(password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Current password is incorrect")
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
 
 
 @router.post("/register", status_code=201)

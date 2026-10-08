@@ -17,6 +17,12 @@ const SECTIONS: { id: SectionId; label: string; icon: typeof UserIcon }[] = [
 interface SettingsPageProps {
   userEmail?: string;
   username?: string;
+  /**
+   * Drops App's signed-in user. Clearing sessionStorage alone is not enough:
+   * App still holds the user in state, so /login bounced straight back to a
+   * dashboard whose every request failed.
+   */
+  onAccountDeleted?: () => void;
 }
 
 /**
@@ -28,7 +34,7 @@ interface SettingsPageProps {
  * application. A page also gives the URL a place to live, so "go to settings"
  * is a link rather than a sequence of clicks.
  */
-export function SettingsPage({ userEmail, username }: SettingsPageProps) {
+export function SettingsPage({ userEmail, username, onAccountDeleted }: SettingsPageProps) {
   const navigate = useNavigate();
   // The board the user came from. Read once from router state at mount — the
   // section effect below rewrites the history entry with replaceState, which
@@ -87,6 +93,7 @@ export function SettingsPage({ userEmail, username }: SettingsPageProps) {
     try {
       await deleteAccount(deletePassword);
       clearSession();
+      onAccountDeleted?.();
       navigate('/login', { replace: true });
     } catch (err) {
       setDeleteError(
@@ -196,7 +203,23 @@ export function SettingsPage({ userEmail, username }: SettingsPageProps) {
                     <Trash2 size={15} aria-hidden="true" />
                     Delete account…
                   </button>
-                ) : (
+                ) : null}
+                {!deleteOpen && !hasPassword && (
+                  // The title tooltip alone left a button that looked live and
+                  // silently did nothing for Google/GitHub sign-ins.
+                  <p className="set-hint">
+                    You signed in with {providers.join(' or ') || 'an external provider'}.{' '}
+                    <button
+                      type="button"
+                      className="set-link"
+                      onClick={() => setPasswordOpen(true)}
+                    >
+                      Set an AutoViz password
+                    </button>{' '}
+                    first, so deleting the account can be confirmed.
+                  </p>
+                )}
+                {deleteOpen && (
                   <form className="set-danger-form" onSubmit={handleDelete}>
                     <label className="set-field">
                       <span>Type DELETE to confirm</span>

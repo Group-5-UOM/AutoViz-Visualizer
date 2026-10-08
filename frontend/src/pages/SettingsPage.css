@@ -236,7 +236,29 @@
 
 .set-btn:disabled {
   opacity: 0.6;
-  cursor: default;
+  cursor: not-allowed;
+}
+
+.set-btn--danger:disabled:hover {
+  background: #fff;
+}
+
+.set-hint {
+  margin: 10px 0 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--text-secondary, #6b7280);
+  max-width: 62ch;
+}
+
+.set-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent, #2a78d6);
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .set-error {
