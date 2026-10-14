@@ -342,38 +342,102 @@
   background: var(--bg-surface);
 }
 
-.chat-model-picker {
+.model-picker {
   position: relative;
+}
+
+.model-picker__trigger {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid transparent;
   border-radius: 999px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
-  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.chat-model-picker:hover,
-.chat-model-picker:focus-within {
+.model-picker__trigger:hover:not(:disabled),
+.model-picker__trigger[aria-expanded='true'] {
   color: var(--text-primary);
-  background: var(--accent-soft);
+  background: var(--bg-hover);
+  border-color: var(--border);
 }
 
-.chat-model-picker select {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  padding: 0;
-  cursor: pointer;
+.model-picker__trigger:focus-visible {
   outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.chat-model-picker select:disabled {
+.model-picker__trigger:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
-  opacity: 0.6;
+}
+
+.model-picker__chevron {
+  opacity: 0.7;
+  transition: transform 0.15s ease;
+}
+
+.model-picker__trigger[aria-expanded='true'] .model-picker__chevron {
+  transform: rotate(180deg);
+}
+
+.model-picker__menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  min-width: 220px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.model-picker__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  color: var(--text-primary);
+}
+
+.model-picker__option:hover,
+.model-picker__option:focus-visible {
+  outline: none;
+  background: var(--bg-hover);
+}
+
+.model-picker__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.model-picker__label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.model-picker__hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.model-picker__check {
+  flex: none;
+  color: var(--accent);
 }
 
 .chat-attach-btn {

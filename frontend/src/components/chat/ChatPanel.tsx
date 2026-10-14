@@ -3,8 +3,6 @@ import {
   AlertTriangle,
   AtSign,
   BarChart3,
-  ChevronDown,
-  Cpu,
   Info,
   RotateCcw,
   SendHorizontal,
@@ -12,12 +10,7 @@ import {
 } from 'lucide-react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import { MessageContent } from './MessageContent';
-import {
-  PLANNER_MODELS,
-  getPlannerModel,
-  setPlannerModel,
-  type PlannerModelKey,
-} from '../../lib/plannerModel';
+import { ModelPicker } from './ModelPicker';
 import type { ChartWidget, ChatMessage } from '../../types/dashboard';
 import './ChatPanel.css';
 
@@ -79,7 +72,6 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [draft, setDraft] = useState('');
   const [picking, setPicking] = useState(false);
-  const [model, setModel] = useState<PlannerModelKey>(getPlannerModel);
   const [llmConsented, setLlmConsented] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem(LLM_CONSENT_KEY) === '1',
   );
@@ -352,26 +344,7 @@ export function ChatPanel({
       </form>
 
       <div className="chat-model-row">
-        <label className="chat-model-picker" title="Model that plans and explains your charts">
-          <Cpu size={12} aria-hidden="true" />
-          <select
-            aria-label="Model"
-            value={model}
-            disabled={isThinking}
-            onChange={(e) => {
-              const key = e.target.value as PlannerModelKey;
-              setPlannerModel(key);
-              setModel(key);
-            }}
-          >
-            {PLANNER_MODELS.map((m) => (
-              <option key={m.key} value={m.key}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={12} aria-hidden="true" />
-        </label>
+        <ModelPicker disabled={isThinking} />
       </div>
     </section>
   );

@@ -1,6 +1,6 @@
 export const PLANNER_MODELS = [
-  { key: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
-  { key: 'qwen3.5-4b', label: 'Qwen 3.5 4B' },
+  { key: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', hint: 'Fast, default' },
+  { key: 'qwen3.5-4b', label: 'Qwen 3.5 4B', hint: 'Fine-tuned planner, slower' },
 ] as const;
 
 export type PlannerModelKey = (typeof PLANNER_MODELS)[number]['key'];
