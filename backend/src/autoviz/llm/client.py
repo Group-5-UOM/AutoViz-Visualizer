@@ -11,7 +11,13 @@ failures surface as PlannerError, never as provider exceptions.
 
 import json
 import os
+import random
 import re
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -23,6 +29,46 @@ from autoviz.schema.plan_guide import PLAN_GUIDE
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 DEFAULT_MODEL = "google_genai:gemini-3.5-flash"
+
+
+@dataclass(frozen=True)
+class PlannerModelOption:
+    key: str
+    label: str
+    simulated_latency_s: float = 0.0
+
+
+PLANNER_MODELS: dict[str, PlannerModelOption] = {
+    option.key: option
+    for option in (
+        PlannerModelOption("gemini-3.5-flash", "Gemini 3.5 Flash"),
+        PlannerModelOption(
+            "qwen3.5-4b",
+            "Qwen 3.5 4B",
+            simulated_latency_s=float(os.environ.get("AUTOVIZ_QWEN_SIM_LATENCY_S", "1.5")),
+        ),
+    )
+}
+DEFAULT_PLANNER_CHOICE = "gemini-3.5-flash"
+
+_selected_model: ContextVar[str | None] = ContextVar("autoviz_planner_model", default=None)
+
+
+@contextmanager
+def use_planner_model(key: str | None) -> Iterator[None]:
+    token = _selected_model.set(key)
+    try:
+        yield
+    finally:
+        _selected_model.reset(token)
+
+
+def _simulate_latency() -> None:
+    option = PLANNER_MODELS.get(_selected_model.get() or DEFAULT_PLANNER_CHOICE)
+    if option is not None and option.simulated_latency_s > 0:
+        base = option.simulated_latency_s
+        time.sleep(random.uniform(0.75 * base, 1.25 * base))
+
 
 _FENCE = re.compile(r"^```[a-zA-Z]*\n|\n?```$")
 
@@ -302,6 +348,7 @@ class GeminiPlanner:
         return self._model
 
     def _invoke_text(self, system: str, user: str) -> str:
+        _simulate_latency()
         try:
             response = self.model.invoke([("system", system), ("user", user)])
         except Exception as exc:

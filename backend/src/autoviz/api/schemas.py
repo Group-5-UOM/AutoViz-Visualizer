@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, field_validator
 
+from autoviz.llm.client import PLANNER_MODELS
 from autoviz.schema.allowlists import CHART_TYPES
 
 
@@ -49,6 +50,12 @@ class ExportChartRequest(BaseModel):
     filename: str | None = None
 
 
+def _known_planner_model(value: str | None) -> str | None:
+    if value is not None and value not in PLANNER_MODELS:
+        raise ValueError(f"unknown model '{value}'")
+    return value
+
+
 class AnalyzeRequest(BaseModel):
     request: str
     dataset_id: str | None = None
@@ -62,6 +69,9 @@ class AnalyzeRequest(BaseModel):
     # as opposed to one merely named in `request`. Enforced deterministically
     # against the plan the planner returns; see agent/nodes.plan_node.
     chart_type: str | None = None
+    model: str | None = None
+
+    _known_model = field_validator("model")(_known_planner_model)
 
     @field_validator("chart_type")
     @classmethod
@@ -80,3 +90,6 @@ class ClarificationRequest(BaseModel):
     # Which paused decision this answers. Parallel workers can pause on several
     # at once; omitted means "the one currently being presented".
     interrupt_id: str | None = None
+    model: str | None = None
+
+    _known_model = field_validator("model")(_known_planner_model)

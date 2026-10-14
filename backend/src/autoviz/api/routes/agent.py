@@ -27,6 +27,7 @@ from autoviz.api.errors import respond
 from autoviz.api.rate_limit import is_rate_limited
 from autoviz.api.schemas import AnalyzeRequest, ClarificationRequest
 from autoviz.core.config import settings
+from autoviz.llm.client import DEFAULT_PLANNER_CHOICE, PLANNER_MODELS, use_planner_model
 from autoviz.models import User
 from autoviz.services.registry import DatasetRegistry
 from autoviz.storage import repository
@@ -71,8 +72,8 @@ def analyze(
     _enforce_llm_budget(user)
     if body.dataset_id is not None:
         _require_owned(db, registry, body.dataset_id, user)
-    return respond(
-        agent.run(
+    with use_planner_model(body.model):
+        result = agent.run(
             body.request,
             dataset_id=body.dataset_id,
             file_ref=body.file_ref,
@@ -80,7 +81,15 @@ def analyze(
             chart_id=body.chart_id,
             chart_type=body.chart_type,
         )
-    )
+    return respond(result)
+
+
+@router.get("/models")
+def models(user: User = Depends(get_current_user)):
+    return {
+        "default": DEFAULT_PLANNER_CHOICE,
+        "models": [{"key": m.key, "label": m.label} for m in PLANNER_MODELS.values()],
+    }
 
 
 @router.post("/answer")
@@ -90,4 +99,6 @@ def answer(
     agent=Depends(get_agent),
 ):
     _enforce_llm_budget(user)
-    return respond(agent.resume(body.thread_id, body.answer, body.interrupt_id))
+    with use_planner_model(body.model):
+        result = agent.resume(body.thread_id, body.answer, body.interrupt_id)
+    return respond(result)

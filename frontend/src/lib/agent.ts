@@ -1,4 +1,5 @@
 import { apiRequest } from './api';
+import { getPlannerModel } from './plannerModel';
 
 /**
  * Client for the agentic routes (`POST /agent/analyze`, `POST /agent/answer`).
@@ -143,6 +144,7 @@ export async function analyze(
     body: {
       request,
       dataset_id: datasetId,
+      model: getPlannerModel(),
       ...(threadId ? { thread_id: threadId } : {}),
       ...(chartId ? { chart_id: chartId } : {}),
       ...(chartType ? { chart_type: chartType } : {}),
@@ -165,6 +167,7 @@ export async function answerClarification(
     body: {
       thread_id: threadId,
       answer,
+      model: getPlannerModel(),
       ...(interruptId ? { interrupt_id: interruptId } : {}),
     },
   });
