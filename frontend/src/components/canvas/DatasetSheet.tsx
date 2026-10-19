@@ -13,6 +13,7 @@ import {
   ArrowUpDown,
   Columns3,
   CopyMinus,
+  Download,
   Eraser,
   Filter,
   Pencil,
@@ -531,6 +532,20 @@ export function DatasetSheet({
     }
   };
 
+  // Downloads what the grid currently holds, unsaved edits included — no
+  // round trip, since the server copy is the pre-edit one until Save.
+  const exportCsv = () => {
+    const blob = new Blob([toCsv(columns, rows)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName.endsWith('.csv') ? fileName : `${fileName.replace(/\.[^.]+$/, '')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const sortBySelectedColumn = () => {
     if (selectedCol === null) return;
     setRows((prev) => {
@@ -843,6 +858,15 @@ export function DatasetSheet({
           onClick: discardEdits,
           disabled: !dirty || busy,
           hover: 'Discard unsaved edits.',
+        },
+        {
+          label: 'Export CSV',
+          icon: Download,
+          onClick: exportCsv,
+          disabled: busy || !sheetReady,
+          hover: truncated
+            ? `Download the ${rows.length.toLocaleString()} loaded rows as CSV (of ${rowCount.toLocaleString()} total).`
+            : 'Download the sheet, including unsaved edits, as CSV.',
         },
       ],
     },
