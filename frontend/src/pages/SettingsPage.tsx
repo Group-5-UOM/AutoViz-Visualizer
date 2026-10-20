@@ -1,8 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, KeyRound, Link2, Trash2, User as UserIcon } from 'lucide-react';
-import { ApiError, clearSession } from '../lib/api';
-import { deleteAccount, fetchMe } from '../lib/auth';
+import { ApiError, clearSession, getAccessToken, setSession } from '../lib/api';
+import {
+  deleteAccount,
+  fetchMe,
+  requestEmailChange,
+  updateUsername,
+} from '../lib/auth';
 import { AccountPasswordModal } from '../components/layout/AccountPasswordModal';
 import { ConnectionsSection } from '../components/settings/ConnectionsSection';
 import './SettingsPage.css';
@@ -23,6 +28,8 @@ interface SettingsPageProps {
    * dashboard whose every request failed.
    */
   onAccountDeleted?: () => void;
+  /** Keep App's header / session storage in sync after profile edits. */
+  onUserUpdated?: (user: { email: string; username: string }) => void;
 }
 
 /**
@@ -34,7 +41,12 @@ interface SettingsPageProps {
  * application. A page also gives the URL a place to live, so "go to settings"
  * is a link rather than a sequence of clicks.
  */
-export function SettingsPage({ userEmail, username, onAccountDeleted }: SettingsPageProps) {
+export function SettingsPage({
+  userEmail,
+  username,
+  onAccountDeleted,
+  onUserUpdated,
+}: SettingsPageProps) {
   const navigate = useNavigate();
   // The board the user came from. Read once from router state at mount — the
   // section effect below rewrites the history entry with replaceState, which
@@ -51,6 +63,17 @@ export function SettingsPage({ userEmail, username, onAccountDeleted }: Settings
   );
   const [hasPassword, setHasPassword] = useState(true);
   const [providers, setProviders] = useState<string[]>([]);
+  const [email, setEmail] = useState(userEmail || '');
+  const [displayUsername, setDisplayUsername] = useState(username || '');
+  const [usernameDraft, setUsernameDraft] = useState(username || '');
+  const [emailDraft, setEmailDraft] = useState(userEmail || '');
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [profileOk, setProfileOk] = useState('');
+  const [savingUsername, setSavingUsername] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [devVerifyUrl, setDevVerifyUrl] = useState<string | null>(null);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -65,6 +88,11 @@ export function SettingsPage({ userEmail, username, onAccountDeleted }: Settings
         const me = await fetchMe();
         setHasPassword(me.has_password !== false);
         setProviders(me.oauth_providers ?? []);
+        setEmail(me.email);
+        setEmailDraft(me.email);
+        setDisplayUsername(me.username);
+        setUsernameDraft(me.username);
+        setPendingEmail(me.pending_email ?? null);
       } catch (err) {
         setLoadError(
           err instanceof ApiError ? err.message : 'Could not load your account details.',
@@ -77,6 +105,94 @@ export function SettingsPage({ userEmail, username, onAccountDeleted }: Settings
     // Keep the address bar honest so a refresh or a shared link returns here.
     window.history.replaceState(null, '', `/settings#${section}`);
   }, [section]);
+
+  const syncUser = (nextEmail: string, nextUsername: string) => {
+    setEmail(nextEmail);
+    setDisplayUsername(nextUsername);
+    onUserUpdated?.({ email: nextEmail, username: nextUsername });
+  };
+
+  const handleSaveUsername = async (e: FormEvent) => {
+    e.preventDefault();
+    setProfileError('');
+    setProfileOk('');
+    setDevVerifyUrl(null);
+    if (!hasPassword) {
+      setProfileError('Set an AutoViz password first so this change can be confirmed.');
+      return;
+    }
+    const next = usernameDraft.trim();
+    if (next.length < 2) {
+      setProfileError('Username must be at least 2 characters.');
+      return;
+    }
+    if (!currentPassword) {
+      setProfileError('Enter your current password to save.');
+      return;
+    }
+    setSavingUsername(true);
+    try {
+      const me = await updateUsername(next, currentPassword);
+      const token = getAccessToken();
+      if (token) setSession(me.email, token, me.username);
+      syncUser(me.email, me.username);
+      setUsernameDraft(me.username);
+      setCurrentPassword('');
+      setProfileOk('Username saved.');
+    } catch (err) {
+      setProfileError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Could not save username.',
+      );
+    } finally {
+      setSavingUsername(false);
+    }
+  };
+
+  const handleSaveEmail = async (e: FormEvent) => {
+    e.preventDefault();
+    setProfileError('');
+    setProfileOk('');
+    setDevVerifyUrl(null);
+    if (!hasPassword) {
+      setProfileError('Set an AutoViz password first so this change can be confirmed.');
+      return;
+    }
+    const next = emailDraft.trim().toLowerCase();
+    if (!next.includes('@')) {
+      setProfileError('Enter a valid email address.');
+      return;
+    }
+    if (next === email.trim().toLowerCase()) {
+      setProfileError('That is already your email address.');
+      return;
+    }
+    if (!currentPassword) {
+      setProfileError('Enter your current password to save.');
+      return;
+    }
+    setSavingEmail(true);
+    try {
+      const result = await requestEmailChange(next, currentPassword);
+      setPendingEmail(result.pending_email);
+      setCurrentPassword('');
+      setProfileOk(result.detail);
+      if (result.verify_url) setDevVerifyUrl(result.verify_url);
+    } catch (err) {
+      setProfileError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Could not start the email change.',
+      );
+    } finally {
+      setSavingEmail(false);
+    }
+  };
 
   const handleDelete = async (e: FormEvent) => {
     e.preventDefault();
@@ -121,7 +237,7 @@ export function SettingsPage({ userEmail, username, onAccountDeleted }: Settings
           Back
         </button>
         <h1>Settings</h1>
-        <span className="set-who">{username || userEmail}</span>
+        <span className="set-who">{displayUsername || email}</span>
       </header>
 
       <div className="set-body">
@@ -156,14 +272,6 @@ export function SettingsPage({ userEmail, username, onAccountDeleted }: Settings
 
               <dl className="set-facts">
                 <div>
-                  <dt>Email</dt>
-                  <dd>{userEmail || '—'}</dd>
-                </div>
-                <div>
-                  <dt>Username</dt>
-                  <dd>{username || '—'}</dd>
-                </div>
-                <div>
                   <dt>Sign-in methods</dt>
                   <dd>
                     {[hasPassword ? 'Password' : null, ...providers]
@@ -172,6 +280,101 @@ export function SettingsPage({ userEmail, username, onAccountDeleted }: Settings
                   </dd>
                 </div>
               </dl>
+
+              {pendingEmail && (
+                <p className="set-pending" role="status">
+                  Pending email: <strong>{pendingEmail}</strong> — check that inbox for a
+                  confirmation link. Your current address stays{' '}
+                  <strong>{email}</strong> until you confirm.
+                </p>
+              )}
+
+              <form className="set-profile-form" onSubmit={handleSaveUsername}>
+                <label className="set-field">
+                  <span>Username</span>
+                  <input
+                    value={usernameDraft}
+                    onChange={(e) => setUsernameDraft(e.target.value)}
+                    autoComplete="username"
+                    minLength={2}
+                    maxLength={64}
+                    required
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="set-btn set-btn--primary"
+                  disabled={savingUsername || usernameDraft.trim() === displayUsername}
+                >
+                  {savingUsername ? 'Saving…' : 'Save username'}
+                </button>
+              </form>
+
+              <form className="set-profile-form" onSubmit={handleSaveEmail}>
+                <label className="set-field">
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    value={emailDraft}
+                    onChange={(e) => setEmailDraft(e.target.value)}
+                    autoComplete="email"
+                    required
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="set-btn set-btn--primary"
+                  disabled={
+                    savingEmail || emailDraft.trim().toLowerCase() === email.trim().toLowerCase()
+                  }
+                >
+                  {savingEmail ? 'Sending…' : 'Save email'}
+                </button>
+              </form>
+
+              <label className="set-field set-field--password">
+                <span>Current password</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Required to save username or email"
+                  disabled={!hasPassword}
+                />
+              </label>
+              {!hasPassword && (
+                <p className="set-hint">
+                  You signed in with {providers.join(' or ') || 'an external provider'}.{' '}
+                  <button
+                    type="button"
+                    className="set-link"
+                    onClick={() => setPasswordOpen(true)}
+                  >
+                    Set an AutoViz password
+                  </button>{' '}
+                  before changing username or email.
+                </p>
+              )}
+
+              {profileError && (
+                <p className="set-error" role="alert">
+                  {profileError}
+                </p>
+              )}
+              {profileOk && (
+                <p className="set-ok" role="status">
+                  {profileOk}
+                </p>
+              )}
+              {devVerifyUrl && (
+                <p className="set-hint" role="status">
+                  Dev verify link:{' '}
+                  <a href={devVerifyUrl} className="set-link">
+                    {devVerifyUrl}
+                  </a>
+                </p>
+              )}
 
               <button
                 type="button"
@@ -205,8 +408,6 @@ export function SettingsPage({ userEmail, username, onAccountDeleted }: Settings
                   </button>
                 ) : null}
                 {!deleteOpen && !hasPassword && (
-                  // The title tooltip alone left a button that looked live and
-                  // silently did nothing for Google/GitHub sign-ins.
                   <p className="set-hint">
                     You signed in with {providers.join(' or ') || 'an external provider'}.{' '}
                     <button

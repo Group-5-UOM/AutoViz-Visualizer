@@ -18,6 +18,7 @@ from autoviz.models import (
     Conversation,
     Dashboard,
     DashboardWidget,
+    EmailChangeToken,
     McpKey,
     OAuthAccount,
     PasswordResetToken,
@@ -134,6 +135,68 @@ def unique_username(session: Session, base: str) -> str:
 def set_user_password(session: Session, user: User, password_hash: str) -> None:
     user.password_hash = password_hash
     session.commit()
+
+
+def set_username(session: Session, user: User, username: str) -> User:
+    user.username = username
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+def set_user_email(session: Session, user: User, email: str, *, verified: bool = True) -> User:
+    user.email = email.strip().lower()
+    user.email_verified = verified
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+def create_email_change_token(
+    session: Session, user_id: str, new_email: str, ttl_hours: int = 24
+) -> EmailChangeToken:
+    """Replace any unused pending change for this user with a fresh token."""
+    prior = session.scalars(
+        select(EmailChangeToken).where(
+            EmailChangeToken.user_id == user_id,
+            EmailChangeToken.used_at.is_(None),
+        )
+    ).all()
+    for row in prior:
+        session.delete(row)
+    row = EmailChangeToken(
+        user_id=user_id,
+        new_email=new_email.strip().lower(),
+        token=secrets.token_urlsafe(32),
+        expires_at=_now() + datetime.timedelta(hours=ttl_hours),
+    )
+    session.add(row)
+    session.commit()
+    return row
+
+
+def get_email_change_token(session: Session, token: str) -> EmailChangeToken | None:
+    return session.scalar(select(EmailChangeToken).where(EmailChangeToken.token == token))
+
+
+def get_pending_email_change(session: Session, user_id: str) -> EmailChangeToken | None:
+    """Newest unused, unexpired email-change request for this user, if any."""
+    now = _now()
+    rows = session.scalars(
+        select(EmailChangeToken)
+        .where(
+            EmailChangeToken.user_id == user_id,
+            EmailChangeToken.used_at.is_(None),
+        )
+        .order_by(EmailChangeToken.created_at.desc())
+    ).all()
+    for row in rows:
+        expires = row.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=datetime.timezone.utc)
+        if expires > now:
+            return row
+    return None
 
 
 def create_password_reset_token(

@@ -37,8 +37,16 @@ class Settings(BaseSettings):
     GITHUB_OAUTH_REDIRECT_URI: str = ""
     GOOGLE_OAUTH_REDIRECT_URI: str = ""
 
-    # When true, forgot-password responses include the reset token/URL (local only).
+    # When true, forgot-password / email-change responses include the token URL (local only).
     AUTOVIZ_EXPOSE_RESET_TOKENS: bool = True
+
+    # Optional SMTP for password-reset and email-change mail. Empty host = log only.
+    AUTOVIZ_SMTP_HOST: str = ""
+    AUTOVIZ_SMTP_PORT: int = 587
+    AUTOVIZ_SMTP_USER: str = ""
+    AUTOVIZ_SMTP_PASSWORD: str = ""
+    AUTOVIZ_SMTP_FROM: str = ""
+    AUTOVIZ_SMTP_TLS: bool = True
 
     # Idle session timeout in minutes (FR-14). Absolute token TTL still applies.
     AUTOVIZ_IDLE_TIMEOUT_MINUTES: int = 30

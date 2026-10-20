@@ -5,6 +5,7 @@ from autoviz.models.user import User  # noqa: F401
 from autoviz.models.session import UserSession  # noqa: F401
 from autoviz.models.oauth_account import OAuthAccount  # noqa: F401
 from autoviz.models.password_reset import PasswordResetToken  # noqa: F401
+from autoviz.models.email_change import EmailChangeToken  # noqa: F401
 from autoviz.models.dataset import UserDataset  # noqa: F401
 from autoviz.models.dataset_blob import DatasetBlob  # noqa: F401
 from autoviz.models.chart import SavedChart  # noqa: F401
@@ -18,6 +19,7 @@ __all__ = [
     "UserSession",
     "OAuthAccount",
     "PasswordResetToken",
+    "EmailChangeToken",
     "UserDataset",
     "DatasetBlob",
     "SavedChart",

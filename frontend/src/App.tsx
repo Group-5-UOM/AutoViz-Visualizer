@@ -6,6 +6,7 @@ import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SharedBoardPage } from './pages/SharedBoardPage';
+import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import {
   SESSION_EXPIRED_EVENT,
   clearSession,
@@ -98,6 +99,10 @@ function App() {
         />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route
+          path="/verify-email"
+          element={<VerifyEmailPage onVerified={setUser} />}
+        />
+        <Route
           path="/oauth/callback"
           element={<OAuthCallbackPage onLogin={setUser} />}
         />
@@ -129,6 +134,7 @@ function App() {
                 userEmail={user.email}
                 username={user.username}
                 onAccountDeleted={() => setUser(null)}
+                onUserUpdated={setUser}
               />
             ) : (
               <Navigate to="/login" replace />
