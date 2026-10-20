@@ -48,6 +48,7 @@ Mentor: Dr. Chathuranga Hettiaracchi · TA: Shaveen Silva
 | [24 — Performance and Evaluation](24-Performance-and-Evaluation.md) | *(the project's first measured numbers — latency, scaling, memory, ceilings, NL accuracy, chart quality, answer grounding — and the eight defects measuring them found. Harness in [`backend/bench/`](../backend/bench/) — not from a PDF)* |
 | [25 — Mid-Evaluation Presentation](25-Mid-Evaluation-Presentation.md) | *(what to present and in what order: slide plan, demo script, the numbers to put on screen, rehearsed Q&A, and the completion arithmetic — not from a PDF)* |
 | [26 — Remote MCP Access](26-Remote-MCP-Access.md) | *(**plan, not yet built** — per-user connection links so Gemini and other MCP hosts can drive AutoViz's tools directly. Verified against Google's connector requirements, the MCP auth spec, and the live EC2 host — not from a PDF)* |
+| [32 — Pipeline and Novelty Analysis](32-Pipeline-and-Novelty-Analysis.md) | *(how the pipeline actually works end to end, area-by-area novelty verdicts against prior work, the recommended contribution statement, and paper claims to correct — verified against the code, not from a PDF)* |
 
 ## At a Glance
 

@@ -1,0 +1,295 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{url}
+\graphicspath{{paper-figures/}}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+\title{AutoViz AI: Trustworthy Conversational Visualization\\
+with Structured Plans and Deterministic Execution}
+
+\author{\IEEEauthorblockN{K.\,S.\,H. Daishika}
+\IEEEauthorblockA{\textit{Dept.\ of Computer Science \& Engineering}\\
+\textit{University of Moratuwa}\\
+Moratuwa, Sri Lanka}
+\and
+\IEEEauthorblockN{J.\,M.\,T.\,D. Chandrasiri}
+\IEEEauthorblockA{\textit{Dept.\ of Computer Science \& Engineering}\\
+\textit{University of Moratuwa}\\
+Moratuwa, Sri Lanka}
+\and
+\IEEEauthorblockN{D.\,W.\,K.\,G. Bulagala}
+\IEEEauthorblockA{\textit{Dept.\ of Computer Science \& Engineering}\\
+\textit{University of Moratuwa}\\
+Moratuwa, Sri Lanka}
+\linebreakand
+\IEEEauthorblockN{Shaveen De Silva}
+\IEEEauthorblockA{\textit{Dept.\ of Computer Science \& Engineering}\\
+\textit{University of Moratuwa}\\
+Moratuwa, Sri Lanka}
+\and
+\IEEEauthorblockN{Chathuranga Hettiarachchi}
+\IEEEauthorblockA{\textit{Dept.\ of Computer Science \& Engineering}\\
+\textit{University of Moratuwa}\\
+Moratuwa, Sri Lanka}
+}
+
+\maketitle
+
+\begin{abstract}
+Large language models (LLMs) can map natural-language questions to charts, yet pipelines that let the model write and execute code routinely invent columns, misuse plotting APIs, or emit numbers that cannot be audited. We present \emph{AutoViz AI}, a conversational visualization platform specified and built against a formal Software Requirements Specification (SRS) for CS3501 Project~P09. The LLM proposes only a typed \emph{analysis plan}---never free-form code or arithmetic---while DuckDB executes validated queries and Vega-Lite renders charts. A LangGraph agent bounds clarification, capability decline, risk-tiered preprocessing consent, and grounded prose summaries. The same service core is exposed through a React/FastAPI dashboard and the Model Context Protocol (MCP). On a frozen suite of 39 prompts, AutoViz yields 32 correct answers and 7 clarifications with \emph{zero} incorrect charts, exceeding the SRS interpretation-accuracy target (REL-06). Chart-type recommendation is 14/14; generated specs validate against Vega-Lite~v6; deterministic compute for a one-million-row group-by completes in 68--78\,ms. A multi-layer verification strategy---unit, API, Playwright end-to-end, and corpus benches---implements the SRS traceability matrix (test, demonstration, inspection, analysis). AutoViz shows that requirements-driven, plan-constrained NL-to-visualization can be both trustworthy and productively interactive.
+\end{abstract}
+
+\begin{IEEEkeywords}
+natural language to visualization, software requirements, analysis plans, DuckDB, Vega-Lite, MCP, trustworthy AI, verification
+\end{IEEEkeywords}
+
+\section{Introduction}
+Turning a spreadsheet into a trustworthy dashboard remains expensive for students, analysts, and small organizations. Enterprise NL copilots only partially replace cleaning, querying, and charting---usually behind commercial platforms---while LLM ``code-and-run'' assistants inherit fabricated attributes, illegal encodings, and library misuse~\cite{chen2024viseval,galimzyanov2025pandasplotbench,chen2024waitgpt,wang2024insightlens}.
+
+AutoViz AI addresses this with a design rule fixed early in the project's SRS~\cite{autovizsrs}: \emph{the LLM decides what analytical question to ask; a closed grammar and a deterministic engine decide what the answer is}. The planner emits an \texttt{AnalysisPlan} constrained to the uploaded schema; validation rejects unknown columns and disallowed operators; DuckDB evaluates parameterized SQL; Vega-Lite~\cite{satyanarayan2017vega} renders; provenance accompanies every chart. Ambiguous questions interrupt for clarification; out-of-scope requests decline; risky cleaning asks for consent.
+
+This paper reports the shipped system against that SRS baseline: architecture, requirements fulfillment (including deliberate MVP extensions), evaluation, and verification evidence.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+\item A requirements-traced architecture that confines LLMs to structured plans, with interruptible agent flows, preprocessing consent, and grounded prose (SRS FR-63--FR-146, FR-76--FR-82).
+\item Dual access---React dashboard via FastAPI and MCP tools---sharing one deterministic core (FR-178--FR-187; use case UC-04).
+\item Empirical verification spanning a 39-prompt NL suite, chart-quality benches, scaling to $10^6$ rows, and a CI-gated test pyramid mapped to the SRS methods T/D/I/A.
+\end{enumerate}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{fig_ui_dashboard.png}
+\caption{Illustrative AutoViz loop: NL chat produces validated charts on a draggable canvas (SRS UC-02/UC-03).}
+\label{fig:ui}
+\end{figure}
+
+\section{Requirements Baseline and Scope}
+\subsection{SRS-Driven Development}
+AutoViz was specified under ISO/IEC/IEEE~29148-style requirements engineering~\cite{iso29148} as SRS~v1.1 (29~July~2026)~\cite{autovizsrs}, derived from the approved proposal and feasibility study. Requirements use \emph{shall}/\emph{should}/\emph{may}; identifiers FR, UR, REL, PERF, SEC, SUP, CON, DOC, IF, DB, LEG, and STD support traceability. Section~4 of the SRS defines use cases UC-01--UC-04 and a verification matrix with methods \textbf{T}~(test), \textbf{D}~(demonstration), \textbf{I}~(inspection), and \textbf{A}~(analysis).
+
+\subsection{MVP Scope and Delivered Extensions}
+SRS~v1.0 scoped CSV upload, profiling, NL analysis, controlled Pandas/DuckDB execution, hybrid chart recommendation, dashboard edit/save/export, provenance, and one MCP host demonstration---excluding streaming sources, collaborative editing, and ML training. The shipped product meets that MVP and extends it where engineering risk was low:
+
+\begin{itemize}
+\item \textbf{Ingest:} eight formats (CSV/TSV/TXT, Excel, Parquet, JSON/JSONL) and multi-sheet inspect/upload, beyond CSV-only FR-16--FR-35.
+\item \textbf{Frontend:} React~19 + Vite (SRS CON-03 named Next.js; same React ecosystem, lighter SPA for the canvas).
+\item \textbf{Auth:} email/password plus Google/GitHub OAuth; account deletion (FR-01--FR-15).
+\item \textbf{Agent:} LangGraph interrupts for clarification, cleaning consent, and capability decline; prose grounding.
+\item \textbf{Ops:} Docker/AWS deployment with pytest as a CodeBuild gate; Playwright E2E across five browser projects.
+\end{itemize}
+
+\subsection{Principal Use Cases}
+Table~\ref{tab:uc} summarizes the normative SRS use cases exercised by the implementation and evaluation.
+
+\begin{table}[!t]
+\caption{SRS use cases and verification focus}
+\label{tab:uc}
+\centering
+\small
+\begin{tabular}{llp{0.42\columnwidth}}
+\toprule
+\textbf{UC} & \textbf{Name} & \textbf{Primary evidence} \\
+\midrule
+UC-01 & Upload \& profile & Ingest tests; Playwright CSV upload; profiling APIs \\
+UC-02 & Ask \& chart & NL suite; FakePlanner/API tests; chart benches \\
+UC-03 & Dashboard compose & Dashboard API tests; export unit tests; UI E2E \\
+UC-04 & MCP host tools & MCP envelope tests; remote MCP path \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Related Work}
+VisEval~\cite{chen2024viseval} motivates multi-axis NL2VIS evaluation and feasible-region labels; nvBench~\cite{luo2021nvbench} remains a standard corpus. PandasPlotBench~\cite{galimzyanov2025pandasplotbench} and WaitGPT~\cite{chen2024waitgpt} document code-generation failures; InsightLens~\cite{wang2024insightlens} constrains attributes to the true schema. DynaVis~\cite{vaithilingam2024dynavis} centers editable Vega-Lite with validate-and-retry. AutoViz combines these lessons with an explicit SRS contract: closed plans, deterministic execution, and mapped verification.
+
+\section{System Design}
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.95\textwidth]{fig_architecture.png}
+\caption{Layered architecture matching the SRS product perspective: web and MCP entry points share validation, deterministic execution, visualization, security, and provenance.}
+\label{fig:arch}
+\end{figure*}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{fig_trust_compare.png}
+\caption{Trust comparison aligned with SRS constraints: no arbitrary Python/SQL/shell; LLM plans only (FR-73--FR-74, FR-90--FR-94).}
+\label{fig:trust}
+\end{figure}
+
+\subsection{Threat Model and Privacy}
+Fig.~\ref{fig:trust} contrasts code-and-run pipelines with AutoViz. Per FR-76--FR-82, external models receive request text, schema, profile summary, and at most bounded low-cardinality samples---not full rows, credentials, or computed result tables. Users are informed before first NL use; administrators may point the planner at a local model.
+
+\subsection{Ingest, Profile, and Consent}
+Upload validates format, size, and structure (FR-16--FR-35). Profiling records types, missingness, duplicates, and summaries (FR-36--FR-50). Safe preprocessing may auto-apply; value-changing or large row-drop transforms require consent with disclosed row effects (extension of FR-98--FR-110).
+
+\subsection{Agent, Plans, and Execution}
+\label{sec:plan}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.95\columnwidth]{fig_plan_json.png}
+\caption{Illustrative closed-grammar \texttt{AnalysisPlan} (SRS §4.2 style).}
+\label{fig:plan}
+\end{figure}
+
+LangGraph loads context, detects ambiguity (FR-58), classifies intent, plans, and routes through \texttt{run\_pipeline()}: validate $\rightarrow$ execute $\rightarrow$ recommend $\rightarrow$ generate. Fig.~\ref{fig:plan} shows the typed plan (FR-63--FR-75). Validation enforces columns, ops, limits, and forbids arbitrary code (FR-83--FR-97). DuckDB/Pandas compute results (FR-98--FR-112); charts are recommended and Vega-Lite-validated (FR-113--FR-136); provenance is retained (FR-137--FR-146).
+
+\subsection{Dashboard, Export, MCP, Deployment}
+Canvas widgets support move/resize/edit/delete, save/load, and PNG/PDF export (FR-147--FR-177). MCP exposes typed tools with the same auth, validation, and provenance as the web app (FR-178--FR-187). Production: Docker on AWS, nginx TLS; demo at \url{https://autoviz.duckdns.org}.
+
+\section{Requirements Fulfillment and Traceability}
+Table~\ref{tab:trace} maps SRS requirement groups to shipped evidence, following the SRS §4.3 matrix.
+
+\begin{table}[!t]
+\caption{Requirements groups $\rightarrow$ implementation evidence (abridged)}
+\label{tab:trace}
+\centering
+\small
+\begin{tabular}{p{0.28\columnwidth}p{0.18\columnwidth}p{0.42\columnwidth}}
+\toprule
+\textbf{Group} & \textbf{IDs} & \textbf{Shipped evidence} \\
+\midrule
+Auth \& isolation & FR-01--15 & Register/login/logout APIs; OAuth; Playwright auth \\
+Upload \& lifecycle & FR-16--35 & Multi-format ingest; retention; delete/reopen \\
+Profiling & FR-36--50 & Profile APIs; quality notices \\
+NL interaction & FR-51--62 & Chat UI; clarification interrupts; history \\
+Analysis plans & FR-63--75 & Pydantic grammar; FakePlanner tests \\
+Privacy / LLM I/O & FR-76--82 & Schema-only planner context; consent UI \\
+Validation \& execute & FR-83--112 & Allow-lists; DuckDB governors; empty/KPI cases \\
+Charts \& provenance & FR-113--146 & Recommender; v6 validate; SQL provenance \\
+Dashboard \& export & FR-147--177 & Canvas; save; PNG/PDF \\
+MCP & FR-178--187 & Typed tools; envelope tests; remote MCP \\
+Logging / errors & FR-188--197 & Request IDs; sanitized user errors \\
+Usability / a11y & UR-01--20 & Keyboard flows; labels; chart text alternatives \\
+Reliability & REL-01--09 & NL suite vs REL-06; CI defect gate \\
+Perf.\ / security & PERF/SEC & Benches; HTTPS; hashed passwords; limits \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+REL-06 required $\geq$30 NL questions, $\geq$80\% numerical match, $\geq$90\% safe failure among misses, and $\leq$5\% silent wrong answers. Our 39-prompt suite achieved 32/39 correct ($\approx$82\%), 7/39 safe clarify/decline, and \textbf{0\%} silent wrong---meeting and strengthening the safety clause.
+
+\section{Implementation}
+Backend: Python~3.11+, FastAPI, Pydantic~v2, LangChain, DuckDB, PostgreSQL/Parquet (DB-01--DB-05). Frontend: React/TypeScript/Vite, Vega-Lite~v6. Planner: Gemini by default, OpenAI optional (PC-01). Shared services ensure HTTP and MCP exercise identical paths (SUP-02--SUP-03). Packaging: \texttt{uv} and \texttt{npm}; config externalized (SUP-05).
+
+\section{Evaluation and Verification}
+
+\subsection{Method}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.95\columnwidth]{fig_test_layers.png}
+\caption{Verification layers implementing SRS methods T/D/I/A.}
+\label{fig:layers}
+\end{figure}
+
+Fig.~\ref{fig:layers} shows corpus quality (\textbf{A}/\textbf{T}), unit/service and API tests (\textbf{T}/\textbf{I}), and Playwright system E2E (\textbf{T}/\textbf{D}).
+
+\subsection{NL Suite and Chart Quality}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.92\columnwidth]{fig_nl_outcomes.png}
+\caption{Frozen NL suite (39 prompts): 32 correct, 7 clarified/declined, 0 wrong, 0 over-asked.}
+\label{fig:nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.92\columnwidth]{fig_chart_quality.png}
+\caption{Chart benches: type accuracy, Vega-Lite~v6 validity, legibility, render verify.}
+\label{fig:chartq}
+\end{figure}
+
+Fig.~\ref{fig:nl}--\ref{fig:chartq}: 39/39 acceptable outcomes; 14/14 type accuracy; 10/10 v6-valid specs; 14/14 render-verified references. Assertions follow feasible-region scoring~\cite{chen2024viseval}, not brittle plan equality.
+
+\subsection{Performance}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.95\columnwidth]{fig_scaling.png}
+\caption{Median execute time at 1k vs.\ 1M rows (PERF resource governors).}
+\label{fig:scale}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.95\columnwidth]{fig_latency.png}
+\caption{Interactive wait dominated by planner LLM ($\approx$99\%).}
+\label{fig:lat}
+\end{figure}
+
+\begin{table}[!t]
+\caption{Median execute times (ms)}
+\label{tab:scale}
+\centering
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Plan shape} & \textbf{1k} & \textbf{1M} & \textbf{Growth} \\
+\midrule
+Group-by 1 key, sum & 21.9 & 50.0 & $2.3\times$ \\
+Group-by 2 keys, 2 aggs & 20.9 & 76.1 & $3.6\times$ \\
+Derive month + group & 21.2 & 68.8 & $3.2\times$ \\
+Filter + group + top-10 & 19.9 & 89.4 & $4.5\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:scale}: $1000\times$ more rows costs $2.3$--$4.5\times$ time. Deterministic 1M-row group-by+chart: 68--78\,ms. Interactive medians 7--12\,s are planner-bound (Fig.~\ref{fig:lat}), consistent with PERF-06's LLM-dependent bound.
+
+\subsection{Engineering Tests}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{fig_testing_overview.png}
+\caption{Automated assurance: pytest/API suites and Playwright across five browser projects.}
+\label{fig:testing}
+\end{figure}
+
+Fig.~\ref{fig:testing}: 1083 backend tests collected; 56 frontend unit tests; 30 Playwright runs (auth, board, upload, settings). CodeBuild fails the image publish if pytest fails---operationalizing REL-07's critical-defect gate.
+
+\section{Discussion}
+Requirements-first design made the plan/execute boundary a testable contract rather than a slogan. Extending beyond CSV and Next.js did not weaken the SRS safety invariants (FR-90--FR-94). Limitations: no multi-table joins; planner non-determinism; VisEval/nvBench full scorecards remain budget-sensitive; formal multi-user usability (UR learnability targets) is future work.
+
+\section{Conclusion}
+AutoViz AI realizes an SRS-specified conversational visualization MVP in which LLMs plan, DuckDB computes, and Vega-Lite renders under validated contracts. Traceable requirements, dual web/MCP access, and layered verification show that trustworthy NL2VIS can ship as an interactive dashboard product. Future work: published corpus scorecards, staged-planner UI E2E, planner latency reduction, and completed usability studies.
+
+\section*{Acknowledgment}
+Project P09 (Group~05), CS3501 Data Science and Engineering Project, University of Moratuwa.
+
+\begin{thebibliography}{00}
+\bibitem{chen2024viseval}
+N. Chen, Y. Zhang, J. Xu, K. Ren, and Y. Yang, ``VisEval: A Benchmark for Data Visualization in the Era of Large Language Models,'' \emph{IEEE Trans. Vis. Comput. Graphics}, vol.~30, no.~1, pp.~1--11, 2024.
+
+\bibitem{galimzyanov2025pandasplotbench}
+T. Galimzyanov, A. Khakhaev, and S. Titov, ``PandasPlotBench: Evaluating LLMs at Generating Python Plots from Natural Language,'' 2025.
+
+\bibitem{chen2024waitgpt}
+L. Chen \emph{et al.}, ``WaitGPT: Monitoring and Steering Conversational LLM Agent in Data Analysis with Visual Analytics,'' in \emph{Proc. ACM UIST}, 2024.
+
+\bibitem{satyanarayan2017vega}
+A. Satyanarayan, D. Moritz, K. Wongsuphasawat, and J. Heer, ``Vega-Lite: A Grammar of Interactive Graphics,'' \emph{IEEE Trans. Vis. Comput. Graphics}, vol.~23, no.~1, pp.~341--350, Jan. 2017.
+
+\bibitem{luo2021nvbench}
+Y. Luo, N. Tang, G. Li, C. Chai, and W. Li, ``nvBench: A Large-Scale Synthesized Dataset for Cross-Domain Natural Language to Visualization Task,'' 2021. [Online]. Available: \url{https://github.com/Tracy-King/NVBench}
+
+\bibitem{wang2024insightlens}
+Q. Wang \emph{et al.}, ``InsightLens: Discovering and Exploring Insights from Conversational Contexts in Data Analytics,'' \emph{IEEE Trans. Vis. Comput. Graphics}, 2024.
+
+\bibitem{vaithilingam2024dynavis}
+P. Vaithilingam \emph{et al.}, ``DynaVis: Dynamically Synthesized UI Widgets for Visualization Editing,'' in \emph{Proc. CHI}, 2024.
+
+\bibitem{iso29148}
+ISO/IEC/IEEE 29148:2018, \emph{Systems and software engineering---Life cycle processes---Requirements engineering}, 2018.
+
+\bibitem{autovizsrs}
+K.\,S.\,H. Daishika, J.\,M.\,T.\,D. Chandrasiri, and D.\,W.\,K.\,G. Bulagala, ``AutoViz AI---Software Requirements Specification,'' CS3501 Data Science and Engineering Project, Group~05, Ver.~1.1, 29~Jul.~2026.
+\end{thebibliography}
+
+\end{document}
