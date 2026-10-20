@@ -202,6 +202,21 @@
   height: 100%;
 }
 
+/* A flex item defaults to `min-width: auto`, so the embed could not shrink
+   below the SVG Vega last drew: shrinking the card left the box (and so the
+   ResizeObserver) at the old size and the overflow was clipped by the card.
+   Nothing inside needs to escape it now the export menu lives in the header. */
+.chart-widget-body .vega-embed {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* An inline SVG sits on a text baseline and adds a descender gap below it. */
+.chart-widget-body .vega-embed svg {
+  display: block;
+}
+
 .chart-error {
   margin: 0;
   color: var(--danger);
