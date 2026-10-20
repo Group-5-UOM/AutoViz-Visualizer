@@ -196,24 +196,20 @@
   user-select: text;
 }
 
-.chart-widget-body .vega-embed,
-.chart-widget-body .vega-embed .chart-wrapper {
-  width: 100%;
-  height: 100%;
-}
-
-/* A flex item defaults to `min-width: auto`, so the embed could not shrink
-   below the SVG Vega last drew: shrinking the card left the box (and so the
-   ResizeObserver) at the old size and the overflow was clipped by the card.
-   Nothing inside needs to escape it now the export menu lives in the header. */
-.chart-widget-body .vega-embed {
+/* What Vega renders into and measures. It must carry no padding: Vega sizes the
+   chart from `clientWidth`/`clientHeight`, which include padding, but draws in
+   the content box — so padding here overflows the chart by exactly that much.
+   The gutter lives on .chart-widget-body instead. `min-width: 0` lets the card
+   shrink below the SVG Vega last drew, so the ResizeObserver sees it. */
+.chart-widget-plot {
+  flex: 1;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
 /* An inline SVG sits on a text baseline and adds a descender gap below it. */
-.chart-widget-body .vega-embed svg {
+.chart-widget-plot svg {
   display: block;
 }
 

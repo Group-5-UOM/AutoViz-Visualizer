@@ -224,8 +224,9 @@ export function ChartWidgetCard({
         const view = viewRef.current;
         if (!view) return;
         // What `containerSize()` reads: vega-embed initialises the view against
-        // the wrapper it inserts, not the element it was handed. Falling back to
-        // `el` is still right — that is the container when there is no wrapper.
+        // the wrapper it inserts when actions are on, and against `el` itself
+        // when they are off (as now). `el` carries no padding, so its client box
+        // is the box the chart is drawn in.
         const box = el.querySelector<HTMLElement>('.chart-wrapper') ?? el;
         // Mid-teardown, or a hidden card: a zero-size view is not worth drawing
         // and would leave the chart collapsed once it came back.
@@ -549,7 +550,9 @@ export function ChartWidgetCard({
           </div>
         )}
 
-        <div className="chart-widget-body" ref={chartRef} />
+        <div className="chart-widget-body">
+          <div className="chart-widget-plot" ref={chartRef} />
+        </div>
       </div>
 
       {hasBrush(brush) && rows && (
