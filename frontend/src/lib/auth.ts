@@ -107,15 +107,53 @@ export async function resetPassword(token: string, password: string, confirmPass
   });
 }
 
+export interface MeResponse {
+  id: string;
+  email: string;
+  username: string;
+  has_password: boolean;
+  email_verified: boolean;
+  oauth_providers: string[];
+  pending_email?: string | null;
+}
+
 export async function fetchMe() {
+  return apiRequest<MeResponse>('/auth/me');
+}
+
+export async function updateUsername(username: string, currentPassword: string) {
+  return apiRequest<MeResponse>('/auth/me', {
+    method: 'PATCH',
+    body: { username, current_password: currentPassword },
+  });
+}
+
+export async function requestEmailChange(newEmail: string, currentPassword: string) {
   return apiRequest<{
-    id: string;
-    email: string;
-    username: string;
-    has_password: boolean;
-    email_verified: boolean;
-    oauth_providers: string[];
-  }>('/auth/me');
+    ok: boolean;
+    pending_email: string;
+    detail: string;
+    verify_token?: string;
+    verify_url?: string;
+  }>('/auth/email/change', {
+    method: 'POST',
+    body: { new_email: newEmail, current_password: currentPassword },
+  });
+}
+
+export async function confirmEmailChange(token: string) {
+  const data = await apiRequest<LoginResponse & { email_confirmed: boolean }>(
+    '/auth/email/confirm',
+    {
+      method: 'POST',
+      body: { token },
+      auth: false,
+    },
+  );
+  if (data.access_token && data.email) {
+    setSession(data.email, data.access_token, data.username);
+  }
+  return data;
 }
 
 export async function logoutUser() {

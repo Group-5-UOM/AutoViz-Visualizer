@@ -10,6 +10,7 @@ import embed from 'vega-embed';
 import {
   AtSign,
   Braces,
+  Download,
   Info,
   Palette,
   Trash2,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import type { ChartWidget } from '../../types/dashboard';
 import { describeChart } from '../../lib/chartDescription';
+import { downloadBlob } from '../../lib/exportDashboard';
 import {
   BRUSH_SIGNAL,
   hasBrush,
@@ -36,6 +38,27 @@ interface ChartView {
   width: (px: number) => unknown;
   height: (px: number) => unknown;
   resize: () => { runAsync: () => Promise<unknown> };
+  toSVG: () => Promise<string>;
+  toImageURL: (type: string, scaleFactor?: number) => Promise<string>;
+}
+
+type ChartExportFormat = 'png' | 'svg';
+
+/** Same sanitising idea as dashboard export — safe for every OS downloads folder. */
+function chartFileName(title: string, extension: ChartExportFormat): string {
+  const cleaned = title
+    .replace(/\.[A-Za-z0-9]{1,5}$/, '')
+    .replace(/[^\p{L}\p{N} .()_-]+/gu, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/-{2,}/g, '-')
+    .trim()
+    .replace(/^[-.]+|[-.]+$/g, '');
+  return `${(cleaned.slice(0, 80) || 'chart').trim()}.${extension}`;
+}
+
+async function downloadDataUrl(dataUrl: string, fileName: string): Promise<void> {
+  const response = await fetch(dataUrl);
+  downloadBlob(await response.blob(), fileName);
 }
 
 interface ChartWidgetCardProps {
@@ -83,6 +106,10 @@ export function ChartWidgetCard({
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   const rows = useMemo(() => specRows(widget.vegaLiteSpec), [widget.vegaLiteSpec]);
   const tableRows = useMemo(() => rowsInBrush(rows ?? [], brush), [rows, brush]);
   const aboutText = useMemo(() => {
@@ -96,13 +123,26 @@ export function ChartWidgetCard({
   }, [widget.description, widget.explanation, widget.title, widget.chartType, widget.plan]);
 
   useEffect(() => {
-    if (!infoOpen) return;
+    if (!infoOpen && !exportOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setInfoOpen(false);
+      if (e.key === 'Escape') {
+        setInfoOpen(false);
+        setExportOpen(false);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [infoOpen]);
+  }, [infoOpen, exportOpen]);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (exportMenuRef.current?.contains(e.target as Node)) return;
+      setExportOpen(false);
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }, [exportOpen]);
   const dragRef = useRef<{
     mode: 'move' | 'resize';
     startX: number;
@@ -123,8 +163,8 @@ export function ChartWidgetCard({
     const run = async () => {
       try {
         const result = await embed(el, widget.vegaLiteSpec as never, {
-          // Per-chart Save as PNG / SVG via Vega's ⋮ menu.
-          actions: { export: true, source: false, compiled: false, editor: false },
+          // Export lives on the header Download button (PNG / SVG popup).
+          actions: false,
           renderer: 'svg',
           tooltip: true,
         });
@@ -245,6 +285,30 @@ export function ChartWidgetCard({
     setEditing(false);
   };
 
+  const saveChart = async (format: ChartExportFormat) => {
+    const view = viewRef.current;
+    if (!view || exportBusy) return;
+    setExportBusy(true);
+    setExportError(null);
+    try {
+      const fileName = chartFileName(widget.title, format);
+      if (format === 'svg') {
+        const svg = await view.toSVG();
+        downloadBlob(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }), fileName);
+      } else {
+        // 2× keeps labels sharp when the PNG is opened full-size.
+        const url = await view.toImageURL('png', 2);
+        await downloadDataUrl(url, fileName);
+      }
+      setExportOpen(false);
+    } catch (err) {
+      console.error(err);
+      setExportError(format === 'svg' ? 'Could not save SVG.' : 'Could not save PNG.');
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
   const startDrag = (e: ReactPointerEvent, mode: 'move' | 'resize') => {
     e.stopPropagation();
     e.preventDefault();
@@ -290,18 +354,84 @@ export function ChartWidgetCard({
             <button
               type="button"
               className="chart-header-btn"
-              title={referenced ? 'Attached to the chat' : 'Ask the chat about this chart'}
-              aria-label={referenced ? 'Attached to the chat' : 'Ask the chat about this chart'}
+              title={
+                referenced
+                  ? 'Attached to chat — ask for changes to this chart'
+                  : 'Reference in chat (@) — ask for changes to this chart'
+              }
+              aria-label={
+                referenced
+                  ? 'Attached to chat — ask for changes to this chart'
+                  : 'Reference in chat (@) — ask for changes to this chart'
+              }
               aria-pressed={referenced}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelect();
+                setExportOpen(false);
+                setEditing(false);
+                setInfoOpen(false);
                 onReference();
               }}
             >
               <AtSign size={14} />
             </button>
           )}
+
+          <div className="chart-export-wrap" ref={exportMenuRef}>
+            <button
+              type="button"
+              className="chart-header-btn"
+              title="Save chart"
+              aria-label="Save chart"
+              aria-haspopup="menu"
+              aria-expanded={exportOpen}
+              disabled={exportBusy}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect();
+                setEditing(false);
+                setInfoOpen(false);
+                setExportError(null);
+                setExportOpen((on) => !on);
+              }}
+            >
+              <Download size={14} />
+            </button>
+            {exportOpen && (
+              <div className="chart-export-menu" role="menu" aria-label="Save chart as">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="chart-export-item"
+                  disabled={exportBusy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void saveChart('png');
+                  }}
+                >
+                  Save as PNG
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="chart-export-item"
+                  disabled={exportBusy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void saveChart('svg');
+                  }}
+                >
+                  Save as SVG
+                </button>
+                {exportError && (
+                  <p className="chart-export-error" role="alert">
+                    {exportError}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
 
           <button
             type="button"
@@ -312,6 +442,7 @@ export function ChartWidgetCard({
             onClick={(e) => {
               e.stopPropagation();
               onSelect();
+              setExportOpen(false);
               setEditing(false);
               setInfoOpen((on) => !on);
             }}
@@ -329,6 +460,7 @@ export function ChartWidgetCard({
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelect();
+                  setExportOpen(false);
                   setEditing(false);
                   setInfoOpen(false);
                   onOpenPlan();
@@ -345,6 +477,7 @@ export function ChartWidgetCard({
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelect();
+                  setExportOpen(false);
                   setEditing(false);
                   setInfoOpen(false);
                   onOpenStyle();
@@ -362,6 +495,7 @@ export function ChartWidgetCard({
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelect();
+                  setExportOpen(false);
                   setInfoOpen(false);
                   setEditing((on) => !on);
                   setEditError(null);
@@ -377,6 +511,7 @@ export function ChartWidgetCard({
                 aria-label="Delete chart"
                 onClick={(e) => {
                   e.stopPropagation();
+                  setExportOpen(false);
                   onDelete();
                 }}
               >

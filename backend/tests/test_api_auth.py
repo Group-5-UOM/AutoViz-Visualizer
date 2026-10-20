@@ -322,3 +322,126 @@ def test_dataset_retention_policy(api_db):
     assert r.status_code == 200
     assert r.json()["retention_days"] == 90
     assert "days" in r.json()["message"]
+
+
+def test_patch_username(api_db):
+    client = _client()
+    creds = {"email": "name@example.com", "password": "pw12345678", "username": "oldname"}
+    client.post("/auth/register", json=creds)
+    token = client.post("/auth/login", json=creds).json()["access_token"]
+    auth = {"Authorization": f"Bearer {token}"}
+
+    bad = client.patch(
+        "/auth/me",
+        headers=auth,
+        json={"username": "newname", "current_password": "wrong-pw"},
+    )
+    assert bad.status_code == 403
+
+    ok = client.patch(
+        "/auth/me",
+        headers=auth,
+        json={"username": "newname", "current_password": "pw12345678"},
+    )
+    assert ok.status_code == 200
+    assert ok.json()["username"] == "newname"
+    me = client.get("/auth/me", headers=auth)
+    assert me.json()["username"] == "newname"
+    assert me.json().get("pending_email") is None
+
+
+def test_patch_username_conflict(api_db):
+    client = _client()
+    client.post(
+        "/auth/register",
+        json={"email": "u1@example.com", "password": "pw12345678", "username": "taken"},
+    )
+    client.post(
+        "/auth/register",
+        json={"email": "u2@example.com", "password": "pw12345678", "username": "freeuser"},
+    )
+    token = client.post(
+        "/auth/login",
+        json={"email": "u2@example.com", "password": "pw12345678"},
+    ).json()["access_token"]
+    r = client.patch(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"username": "taken", "current_password": "pw12345678"},
+    )
+    assert r.status_code == 409
+
+
+def test_email_change_and_confirm(api_db, monkeypatch):
+    from autoviz.core import config as config_mod
+
+    monkeypatch.setattr(config_mod.settings, "AUTOVIZ_EXPOSE_RESET_TOKENS", True)
+    monkeypatch.setattr(config_mod.settings, "AUTOVIZ_FRONTEND_URL", "http://localhost:5173")
+    client = _client()
+    creds = {"email": "old@example.com", "password": "pw12345678", "username": "emailer"}
+    client.post("/auth/register", json=creds)
+    token = client.post("/auth/login", json=creds).json()["access_token"]
+    auth = {"Authorization": f"Bearer {token}"}
+
+    req = client.post(
+        "/auth/email/change",
+        headers=auth,
+        json={"new_email": "new@example.com", "current_password": "pw12345678"},
+    )
+    assert req.status_code == 200
+    body = req.json()
+    assert body["pending_email"] == "new@example.com"
+    assert body["verify_token"]
+    assert "/verify-email" in body["verify_url"]
+
+    me = client.get("/auth/me", headers=auth)
+    assert me.json()["email"] == "old@example.com"
+    assert me.json()["pending_email"] == "new@example.com"
+
+    confirm = client.post("/auth/email/confirm", json={"token": body["verify_token"]})
+    assert confirm.status_code == 200
+    assert confirm.json()["email"] == "new@example.com"
+    assert confirm.json()["email_confirmed"] is True
+    new_token = confirm.json()["access_token"]
+
+    # Old session invalidated.
+    assert client.get("/auth/me", headers=auth).status_code == 401
+    me2 = client.get("/auth/me", headers={"Authorization": f"Bearer {new_token}"})
+    assert me2.status_code == 200
+    assert me2.json()["email"] == "new@example.com"
+    assert me2.json()["pending_email"] is None
+    assert me2.json()["email_verified"] is True
+
+    login = client.post(
+        "/auth/login",
+        json={"email": "new@example.com", "password": "pw12345678"},
+    )
+    assert login.status_code == 200
+
+
+def test_email_change_conflict(api_db):
+    client = _client()
+    client.post(
+        "/auth/register",
+        json={"email": "taken@example.com", "password": "pw12345678", "username": "takenmail"},
+    )
+    client.post(
+        "/auth/register",
+        json={"email": "changer@example.com", "password": "pw12345678", "username": "changer"},
+    )
+    token = client.post(
+        "/auth/login",
+        json={"email": "changer@example.com", "password": "pw12345678"},
+    ).json()["access_token"]
+    r = client.post(
+        "/auth/email/change",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"new_email": "taken@example.com", "current_password": "pw12345678"},
+    )
+    assert r.status_code == 409
+
+
+def test_email_confirm_bad_token(api_db):
+    client = _client()
+    r = client.post("/auth/email/confirm", json={"token": "x" * 32})
+    assert r.status_code == 400

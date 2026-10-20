@@ -254,6 +254,7 @@ def logout(
 
 @router.get("/me")
 def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    pending = repository.get_pending_email_change(db, user.id)
     return {
         "id": user.id,
         "email": user.email,
@@ -261,7 +262,118 @@ def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
         "has_password": bool(user.password_hash),
         "email_verified": bool(user.email_verified),
         "oauth_providers": repository.list_oauth_providers(db, user.id),
+        "pending_email": pending.new_email if pending else None,
     }
+
+
+class PatchMeRequest(BaseModel):
+    username: str | None = Field(default=None, min_length=2, max_length=64)
+    current_password: str | None = Field(default=None, max_length=128)
+
+
+class EmailChangeRequest(BaseModel):
+    new_email: str = Field(min_length=3, max_length=320)
+    current_password: str = Field(min_length=1, max_length=128)
+
+
+class EmailConfirmRequest(BaseModel):
+    token: str = Field(min_length=20)
+
+
+@router.patch("/me")
+def patch_me(
+    body: PatchMeRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Update profile fields that take effect immediately (username)."""
+    if body.username is None:
+        raise HTTPException(status_code=422, detail="Nothing to update")
+    _require_password(user, body.current_password)
+    username = body.username.strip()
+    if len(username) < 2:
+        raise HTTPException(status_code=422, detail="Username must be at least 2 characters")
+    other = repository.get_user_by_username(db, username)
+    if other is not None and other.id != user.id:
+        raise HTTPException(status_code=409, detail="Username already taken")
+    repository.set_username(db, user, username)
+    pending = repository.get_pending_email_change(db, user.id)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "username": _display_name(user),
+        "has_password": bool(user.password_hash),
+        "email_verified": bool(user.email_verified),
+        "oauth_providers": repository.list_oauth_providers(db, user.id),
+        "pending_email": pending.new_email if pending else None,
+    }
+
+
+@router.post("/email/change")
+def request_email_change(
+    body: EmailChangeRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Start an email change; the new address is applied only after confirm."""
+    _require_password(user, body.current_password)
+    new_email = body.new_email.strip().lower()
+    if "@" not in new_email or "." not in new_email.split("@", 1)[-1]:
+        raise HTTPException(status_code=422, detail="Enter a valid email address")
+    if new_email == user.email.strip().lower():
+        raise HTTPException(status_code=422, detail="That is already your email address")
+    if repository.get_user_by_email(db, new_email) is not None:
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    row = repository.create_email_change_token(db, user.id, new_email)
+    frontend = (settings.AUTOVIZ_FRONTEND_URL or "").rstrip("/") or "http://localhost:5173"
+    verify_url = f"{frontend}/verify-email?{urlencode({'token': row.token})}"
+    from autoviz.services.mail import send_email_change_verification
+
+    sent = send_email_change_verification(to=new_email, verify_url=verify_url)
+    _log.info("email change for user=%s → %s (smtp_sent=%s)", user.id, verify_url, sent)
+
+    response: dict = {
+        "ok": True,
+        "pending_email": new_email,
+        "detail": "Check the new inbox for a confirmation link.",
+    }
+    if settings.AUTOVIZ_EXPOSE_RESET_TOKENS:
+        response["verify_token"] = row.token
+        response["verify_url"] = verify_url
+    return response
+
+
+@router.post("/email/confirm")
+def confirm_email_change(body: EmailConfirmRequest, db: Session = Depends(get_db)):
+    """Apply a pending email change from the verification link."""
+    from datetime import timezone
+
+    row = repository.get_email_change_token(db, body.token)
+    if row is None or row.used_at is not None:
+        raise HTTPException(status_code=400, detail="Invalid or expired confirmation link")
+    expires = row.expires_at
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if expires <= datetime.datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Invalid or expired confirmation link")
+
+    user = db.get(User, row.user_id)
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired confirmation link")
+
+    taken = repository.get_user_by_email(db, row.new_email)
+    if taken is not None and taken.id != user.id:
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    repository.set_user_email(db, user, row.new_email, verified=True)
+    row.used_at = datetime.datetime.now(timezone.utc)
+    db.commit()
+
+    # Force other sessions to sign in again under the new email.
+    repository.delete_all_tokens_for_user(db, user.id)
+    token = repository.create_token(db, user.id)
+    return {"email_confirmed": True, **_session_payload(user, token, db)}
 
 
 @router.post("/password")
